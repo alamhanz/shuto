@@ -38,7 +38,8 @@ with scraped cookies or browser bots; it's captcha-protected and risks your acco
 | Path | What |
 |---|---|
 | `app.py`, `cdk.json` | CDK app entry + config (model ID, schedule, flags) |
-| `infra/shuto_stack.py` | All AWS resources |
+| `infra/shuto_stack.py` | All pipeline AWS resources |
+| `infra/github_oidc_stack.py` | One-time GitHub Actions deploy role (OIDC) |
 | `infra/bundling.py` | Builds the Lambda package with pip (no Docker needed) |
 | `src/shuto/handlers.py` | Lambda entry points (process + export) |
 | `src/shuto/metadata.py` | Bedrock prompt, validation, image checks |
@@ -60,15 +61,19 @@ python -m venv .venv
 .venv\Scripts\activate          # macOS/Linux: source .venv/bin/activate
 pip install -r requirements-dev.txt
 
-# 2. AWS credentials (IAM Identity Center recommended)
-aws configure sso --profile shuto
+# 2. AWS credentials: sign in with your console login (AWS CLI >= 2.32, browser opens)
+#    Use an IAM user (not root) with AdministratorAccess + SignInLocalDevelopmentAccess.
+aws login --profile shuto        # region: ap-northeast-1; valid up to 12 h, then run again
 $env:AWS_PROFILE = "shuto"       # bash: export AWS_PROFILE=shuto
 
 # 3. Bootstrap CDK once per account/region
 cdk bootstrap aws://<ACCOUNT_ID>/ap-northeast-1
 
 # 4. Deploy in dry-run mode (generates metadata, does NOT upload to Shutterstock)
-cdk deploy -c notify_email=you@example.com
+cdk deploy ShutoStack -c notify_email=you@example.com
+
+# 5. Optional, once: role that lets GitHub Actions deploy (see "CI deploy")
+cdk deploy ShutoGithubOidc
 ```
 
 Then:
@@ -94,7 +99,7 @@ Then:
    If you change your Shutterstock password, update the secret too (running Lambdas cache it
    until their next cold start).
 5. When the metadata looks good, turn on real uploads: set `"upload_enabled": "true"` in
-   `cdk.json` and `cdk deploy`.
+   `cdk.json` and deploy (`cdk deploy ShutoStack`, or push to `main` once CI deploy is set up).
 
 ## Weekly use
 
@@ -125,6 +130,27 @@ photos you upload again are sent over FTPS and show up in the next CSV.
 Photo state (DynamoDB): `status` = `described` | `uploaded` | `too_small`, plus `uploaded_at`
 and `exported_at`. Photos that fail 3 times go to the DLQ (`DeadLetterQueueUrl`) and you get
 an alarm email.
+
+## CI deploy (GitHub Actions)
+
+`.github/workflows/ci.yml` runs lint, tests and `cdk synth` on every push and PR. Its
+`deploy` job runs `cdk deploy ShutoStack` on pushes to `main` after tests pass. It authenticates
+with GitHub OIDC (short-lived credentials, no AWS keys stored in GitHub), and stays inactive
+until you set it up:
+
+1. `cdk deploy ShutoGithubOidc` (once, from your machine) and copy the `DeployRoleArn` output.
+   It creates the GitHub OIDC provider and a role `shuto-github-deploy` that can only assume the
+   CDK bootstrap roles, and only from this repo's `production` environment.
+   If the account already has a GitHub OIDC provider, add
+   `-c github_oidc_provider_arn=arn:aws:iam::<ACCOUNT_ID>:oidc-provider/token.actions.githubusercontent.com`.
+2. GitHub → repo **Settings → Environments → New environment** `production`.
+   Optional: add yourself as **Required reviewer** to approve each deploy.
+3. **Settings → Secrets and variables → Actions → Variables**:
+   - `AWS_DEPLOY_ROLE_ARN` = the `DeployRoleArn` output
+   - `NOTIFY_EMAIL` = your email (otherwise CI deploys would remove the email subscription)
+
+Config otherwise comes from `cdk.json`, so change `upload_enabled` there, not with `-c`, or
+the next CI deploy will undo it.
 
 ## Config (`cdk.json` → `context`, or `-c key=value`)
 

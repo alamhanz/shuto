@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   test:
@@ -27,3 +28,39 @@ jobs:
         env:
           CDK_DEFAULT_ACCOUNT: "111111111111"
           CDK_DEFAULT_REGION: ap-northeast-1
+
+  # Deploys ShutoStack on every push to main once tests pass.
+  # Inactive until the repo variable AWS_DEPLOY_ROLE_ARN is set (see README "CI deploy").
+  deploy:
+    needs: test
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      github.event_name != 'pull_request' &&
+      vars.AWS_DEPLOY_ROLE_ARN != ''
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    permissions:
+      id-token: write # GitHub OIDC -> AWS role, no stored keys
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - run: pip install -r requirements.txt -r src/requirements.txt
+      - run: npm install -g aws-cdk
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ap-northeast-1
+      - name: cdk deploy
+        run: >-
+          cdk deploy ShutoStack --require-approval never --ci
+          -c notify_email="${{ vars.NOTIFY_EMAIL }}"

@@ -20,56 +20,84 @@ SRC_DIR = Path(__file__).resolve().parent.parent / "src"
 
 @jsii.implements(ILocalBundling)
 class PipLocalBundling:
-    def __init__(self, platform: str, python_version: str) -> None:
-        self.platform = platform
+    def __init__(self, arm64: bool, python_version: str) -> None:
+        cpu = "aarch64" if arm64 else "x86_64"
+        self.platform = f"manylinux2014_{cpu}"  # pip --platform
+        self.uv_platform = f"{cpu}-manylinux2014"  # uv --python-platform
         self.python_version = python_version
 
     def try_bundle(self, output_dir: str, *, image=None, **_kwargs) -> bool:  # noqa: ARG002
-        try:
-            subprocess.run(
+        req = str(SRC_DIR / "requirements.txt")
+        # pip first; uv as a fallback (uv-created venvs have no pip).
+        commands = [
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "--quiet",
+                "-r",
+                req,
+                "--target",
+                output_dir,
+                "--platform",
+                self.platform,
+                "--implementation",
+                "cp",
+                "--python-version",
+                self.python_version,
+                "--only-binary=:all:",
+                "--upgrade",
+            ]
+        ]
+        uv = shutil.which("uv")
+        if uv:
+            commands.append(
                 [
-                    sys.executable,
-                    "-m",
+                    uv,
                     "pip",
                     "install",
                     "--quiet",
                     "-r",
-                    str(SRC_DIR / "requirements.txt"),
+                    req,
                     "--target",
                     output_dir,
-                    "--platform",
-                    self.platform,
-                    "--implementation",
-                    "cp",
+                    "--python-platform",
+                    self.uv_platform,
                     "--python-version",
                     self.python_version,
-                    "--only-binary=:all:",
-                    "--upgrade",
-                ],
-                check=True,
+                    "--only-binary",
+                    ":all:",
+                ]
             )
-            shutil.copytree(
-                SRC_DIR / "shuto",
-                Path(output_dir) / "shuto",
-                dirs_exist_ok=True,
-                ignore=shutil.ignore_patterns("__pycache__"),
-            )
-            return True
-        except Exception as exc:  # noqa: BLE001
-            print(f"[shuto] local bundling failed, falling back to Docker: {exc}")
+        for cmd in commands:
+            try:
+                subprocess.run(cmd, check=True)
+                break
+            except (OSError, subprocess.CalledProcessError) as exc:
+                print(f"[shuto] {cmd[0]} bundling failed: {exc}")
+        else:
+            print("[shuto] local bundling failed, falling back to Docker")
             return False
+        shutil.copytree(
+            SRC_DIR / "shuto",
+            Path(output_dir) / "shuto",
+            dirs_exist_ok=True,
+            ignore=shutil.ignore_patterns("__pycache__"),
+        )
+        return True
 
 
 def lambda_code(runtime: _lambda.Runtime, arch: _lambda.Architecture) -> _lambda.Code:
-    platform = (
-        "manylinux2014_aarch64" if arch == _lambda.Architecture.ARM_64 else "manylinux2014_x86_64"
-    )
+    # Compare by name: jsii returns a new proxy object each time, so `==` is always False.
+    arm64 = arch.name == _lambda.Architecture.ARM_64.name
     py_version = runtime.name.replace("python", "")  # "python3.13" -> "3.13"
     return _lambda.Code.from_asset(
         str(SRC_DIR),
         bundling=BundlingOptions(
             image=DockerImage.from_registry(f"public.ecr.aws/sam/build-{runtime.name}"),
-            local=PipLocalBundling(platform, py_version),
+            platform="linux/arm64" if arm64 else "linux/amd64",
+            local=PipLocalBundling(arm64, py_version),
             command=[
                 "bash",
                 "-c",

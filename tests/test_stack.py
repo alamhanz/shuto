@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import aws_cdk as cdk
 from aws_cdk.assertions import Match, Template
 
@@ -71,3 +73,14 @@ def test_alarm_and_budget_when_email_set():
             "Environment": {"Variables": Match.object_like({"UPLOAD_ENABLED": "false"})},
         },
     )
+
+
+def test_lambda_bundle_matches_arm64():
+    """Regression: the bundle must contain aarch64 wheels (Lambda runs on arm64)."""
+    app = cdk.App(context={"bedrock_model_id": "jp.anthropic.claude-sonnet-4-6"})
+    ShutoStack(app, "T3", env=cdk.Environment(account="111111111111", region="ap-northeast-1"))
+    out = Path(app.synth().directory)
+    wheels = list(out.glob("asset.*/pillow-*.dist-info/WHEEL"))
+    assert wheels, "Pillow not bundled"
+    tags = wheels[0].read_text()
+    assert "aarch64" in tags and "x86_64" not in tags

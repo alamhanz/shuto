@@ -1,0 +1,2 @@
+# Lambda runtime dependencies (boto3 is provided by the Lambda runtime)
+pillow>=11.0

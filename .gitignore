@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+*.egg-info/
+
+# CDK
+cdk.out/
+
+# Local data / secrets
+.env
+*.env
+photos/
+*.jpg
+*.jpeg
+!tests/fixtures/*.jpg
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -12,7 +12,6 @@ SHUTTERSTOCK_CATEGORIES: tuple[str, ...] = (
     "Beauty/Fashion",
     "Buildings/Landmarks",
     "Business/Finance",
-    "Celebrities",
     "Education",
     "Food and drink",
     "Healthcare/Medical",

@@ -1,5 +1,6 @@
 -r requirements.txt
 -r src/requirements.txt
 boto3
+moto[s3,dynamodb]>=5
 pytest>=8
 ruff>=0.6

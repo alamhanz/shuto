@@ -48,3 +48,26 @@ def test_bucket_blocks_public_access():
             }
         },
     )
+
+
+def test_alarm_and_budget_when_email_set():
+    app = cdk.App(
+        context={
+            "bedrock_model_id": "jp.anthropic.claude-sonnet-4-6",
+            "notify_email": "me@example.com",
+            "monthly_budget_usd": "20",
+        }
+    )
+    stack = ShutoStack(
+        app, "T2", env=cdk.Environment(account="111111111111", region="ap-northeast-1")
+    )
+    t = Template.from_stack(stack)
+    t.resource_count_is("AWS::CloudWatch::Alarm", 1)
+    t.resource_count_is("AWS::Budgets::Budget", 1)
+    t.has_resource_properties(
+        "AWS::Lambda::Function",
+        {
+            "Handler": "shuto.handlers.export_handler",
+            "Environment": {"Variables": Match.object_like({"UPLOAD_ENABLED": "false"})},
+        },
+    )

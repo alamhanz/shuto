@@ -6,22 +6,32 @@ Weekly photo batches → AI-generated metadata (Claude on Amazon Bedrock) → Sh
 you ──upload_batch──▶ S3 incoming/<batch>/*.jpg
                          │ ObjectCreated
                          ▼
-                      SQS (retries, DLQ)
+                      SQS (3 retries, then DLQ ──▶ alarm email)
                          ▼
-                Lambda: ProcessPhotoFn ──▶ Bedrock (Claude, vision)
-                         │                   title / keywords / categories / editorial flag
-                         ├──▶ S3 metadata/<batch>/<photo>.json
-                         ├──▶ DynamoDB (status per photo)
-                         └──▶ FTPS upload to Shutterstock   (only when upload_enabled=true)
+                Lambda: ProcessPhotoFn
+                   ├─ < 4 MP? ──▶ skipped, reported in the weekly email
+                   ├─ Bedrock (Claude, vision) ──▶ S3 metadata/<batch>/<photo>.json  (source of truth)
+                   └─ upload_enabled: write title/keywords into the JPEG (IPTC + XMP)
+                                      ──▶ FTPS to Shutterstock ("Not submitted" in your portal)
 
-EventBridge (weekly) ──▶ Lambda: ExportCsvFn ──▶ S3 exports/<batch>/shutterstock-*.csv ──▶ SNS email
+EventBridge (weekly) ──▶ Lambda: ExportCsvFn ──▶ S3 exports/<batch>/shutterstock[-editorial]-<ts>.csv
+                                              └─▶ SNS email (CSV paths + anything needing attention)
 ```
 
-**Why a CSV step?** Shutterstock has no public contributor-upload API. Photos go in over FTPS
-(or the web uploader), and metadata is applied by uploading a CSV with the **CSV** button on
-[submit.shutterstock.com](https://submit.shutterstock.com). A CSV sent over FTPS is ignored.
-So the weekly flow is: photos land in your Submit queue → you get an email → upload the CSV →
-review → submit.
+## How it works with Shutterstock
+
+Shutterstock has **no API for contributor uploads**: its public API is for buyers. The only
+official ways in are the web uploader and FTPS. So:
+
+| Step | Who | What |
+|---|---|---|
+| 1 | you (1 min) | `upload_batch.ps1` → photos into S3 |
+| 2 | automatic | Claude writes title, keywords, categories and flags. The photo is uploaded over FTPS with title and keywords **embedded** (IPTC/XMP), so it already shows them in the portal |
+| 3 | automatic | Monday email: "CSV ready" |
+| 4 | you (~5 min) | submit.shutterstock.com → **CSV** button → upload the CSV (adds categories + editorial/mature flags, matched by filename) → check → **Submit** |
+
+The final Submit stays manual on purpose. It's your quality gate. Don't automate the portal
+with scraped cookies or browser bots; it's captcha-protected and risks your account.
 
 ## Repo layout
 
@@ -30,9 +40,14 @@ review → submit.
 | `app.py`, `cdk.json` | CDK app entry + config (model ID, schedule, flags) |
 | `infra/shuto_stack.py` | All AWS resources |
 | `infra/bundling.py` | Builds the Lambda package with pip (no Docker needed) |
-| `src/shuto/` | Lambda code: `handlers.py`, `metadata.py` (Bedrock), `ftps.py`, `csv_export.py`, `categories.py` |
+| `src/shuto/handlers.py` | Lambda entry points (process + export) |
+| `src/shuto/metadata.py` | Bedrock prompt, validation, image checks |
+| `src/shuto/embed.py` | Lossless IPTC/XMP writer for JPEGs |
+| `src/shuto/ftps.py` | FTPS upload (explicit TLS, session reuse) |
+| `src/shuto/csv_export.py`, `categories.py` | Shutterstock CSV + category list |
 | `scripts/upload_batch.{ps1,sh}` | Upload a local folder as a batch |
-| `tests/` | Unit tests + CDK assertions |
+| `scripts/check_ftps.py` | Test your Shutterstock FTPS login locally |
+| `tests/` | Unit tests, handler tests (moto), CDK assertions |
 
 ## One-time setup
 
@@ -52,53 +67,74 @@ $env:AWS_PROFILE = "shuto"       # bash: export AWS_PROFILE=shuto
 # 3. Bootstrap CDK once per account/region
 cdk bootstrap aws://<ACCOUNT_ID>/ap-northeast-1
 
-# 4. Deploy (dry-run mode: generates metadata, does NOT upload to Shutterstock)
+# 4. Deploy in dry-run mode (generates metadata, does NOT upload to Shutterstock)
 cdk deploy -c notify_email=you@example.com
 ```
 
 Then:
 
-1. **Bedrock model access**: in the Bedrock console (Tokyo), make sure Anthropic Claude models are
-   enabled for your account. Default model is `jp.anthropic.claude-sonnet-4-6` (JP cross-region
-   profile: inference stays in Tokyo/Osaka). Change it in `cdk.json` → `bedrock_model_id`,
-   e.g. `global.anthropic.claude-sonnet-5-5`.
-2. **Confirm the SNS email subscription** from your inbox.
-3. **Shutterstock FTPS credentials**: put your contributor FTPS login into the secret named in
-   the `FtpsSecretName` output:
+1. **Confirm the SNS subscription email** (and the AWS Budgets email, if you get one).
+2. **Bedrock model access**: in the Bedrock console (Tokyo), make sure Anthropic Claude models
+   are enabled (first use asks for a short use-case form). Default model:
+   `jp.anthropic.claude-sonnet-4-6` (JP cross-region profile: inference stays in Tokyo/Osaka).
+   Change `bedrock_model_id` in `cdk.json`, e.g. `global.anthropic.claude-sonnet-5-5`
+   (Sonnet 5.5 is only available in Tokyo via the global profile).
+3. **Test your FTPS login locally** (uploads nothing):
    ```powershell
-   aws secretsmanager put-secret-value --secret-id <FtpsSecretName> `
-     --secret-string '{\"host\":\"ftps.shutterstock.com\",\"username\":\"...\",\"password\":\"...\"}'
+   python scripts\check_ftps.py --user you@example.com
    ```
-4. When metadata quality looks good, turn on real uploads:
-   `cdk deploy -c upload_enabled=true` (or set it in `cdk.json`).
+4. **Store the FTPS login in AWS.** Shutterstock FTPS uses your **account** email + password.
+   Write it to a file (keeps PowerShell quoting out of it), store it, delete the file:
+   ```powershell
+   '{"host":"ftps.shutterstock.com","username":"you@example.com","password":"..."}' |
+     Set-Content -Encoding ascii ftps.json
+   aws secretsmanager put-secret-value --secret-id <FtpsSecretName> --secret-string file://ftps.json
+   Remove-Item ftps.json
+   ```
+   If you change your Shutterstock password, update the secret too (running Lambdas cache it
+   until their next cold start).
+5. When the metadata looks good, turn on real uploads: set `"upload_enabled": "true"` in
+   `cdk.json` and `cdk deploy`.
 
 ## Weekly use
 
 ```powershell
-# optional: D:\Photos\week40\notes.txt  e.g. "Kyoto, autumn foliage, Tofuku-ji, Nov 2026"
-.\scripts\upload_batch.ps1 -Folder D:\Photos\week40            # batch defaults to ISO week, e.g. 2026-W40
+# optional context for Claude: D:\Photos\week40\notes.txt
+#   e.g. "Kyoto, Tofuku-ji temple, autumn foliage. Shot Nov 2026."
+.\scripts\upload_batch.ps1 -Folder D:\Photos\week40      # batch = current ISO week, e.g. 2026-W40
 ```
 
-- Each photo is described by Claude; results go to `metadata/<batch>/<photo>.json` (edit freely).
-- Every Monday 09:00 JST (`export_schedule_cron`, UTC) the exporter writes a CSV per pending batch
-  and emails you. Export one batch on demand:
+- `metadata/<batch>/<photo>.json` is the **source of truth**. Edit it to fix a title or keyword
+  and the next export uses your edit. Delete it and re-upload the photo to make Claude regenerate.
+- Every Monday 09:00 JST (`export_schedule_cron`, in UTC) the exporter writes per batch:
+  - `shutterstock-<ts>.csv`: commercial photos
+  - `shutterstock-editorial-<ts>.csv`: editorial photos. Check the captions follow
+    `CITY, COUNTRY - Month D, YYYY: …` before submitting.
+
+  The email also lists anything needing attention: under 4 MP, too few keywords, broken JSON.
+- Export one batch on demand:
   ```powershell
-  aws lambda invoke --function-name <ExportFunctionName> --payload '{\"batch\":\"2026-W40\"}' `
+  '{"batch":"2026-W40"}' | Set-Content -Encoding ascii payload.json
+  aws lambda invoke --function-name <ExportFunctionName> --payload file://payload.json `
     --cli-binary-format raw-in-base64-out out.json
   ```
-- Download the CSV, upload it on the Submit page, review, submit.
 
-Photo status in DynamoDB: `described` → `uploaded` (FTPS done) → `exported` (in a CSV).
-Failed photos retry 3× and then land in the DLQ (`DeadLetterQueueUrl` output).
+In **dry-run** mode (`upload_enabled=false`) the CSVs are a preview. When you switch uploads on,
+photos you upload again are sent over FTPS and show up in the next CSV.
+
+Photo state (DynamoDB): `status` = `described` | `uploaded` | `too_small`, plus `uploaded_at`
+and `exported_at`. Photos that fail 3 times go to the DLQ (`DeadLetterQueueUrl`) and you get
+an alarm email.
 
 ## Config (`cdk.json` → `context`, or `-c key=value`)
 
 | Key | Default | Meaning |
 |---|---|---|
 | `bedrock_model_id` | `jp.anthropic.claude-sonnet-4-6` | Bedrock model / inference profile |
-| `upload_enabled` | `false` | FTPS-upload originals to Shutterstock |
-| `notify_email` | `""` | Email for "CSV ready" notifications |
+| `upload_enabled` | `false` | FTPS-upload photos to Shutterstock |
+| `notify_email` | `""` | Email for CSV-ready, DLQ alarm and budget alerts |
 | `export_schedule_cron` | `cron(0 0 ? * MON *)` | Weekly export (UTC) |
+| `monthly_budget_usd` | `20` | Account-wide AWS budget alert (80% actual / 100% forecast); `0` disables |
 
 ## Dev
 
@@ -108,13 +144,14 @@ ruff check . ; ruff format .
 cdk synth            # cdk diff before deploy
 ```
 
-## Notes / Shutterstock rules baked in
+## Shutterstock rules baked in
 
-- JPEG only (S3 notifications filter `.jpg/.jpeg`); Shutterstock minimum is 4 MP.
-- 7–50 keywords, most relevant first; 1–2 categories from the fixed list in `categories.py`.
-- Claude flags `editorial` when recognizable people (no model release), logos or brands appear —
-  double-check these before submitting.
-- Filenames are case-sensitive and must match between FTPS upload and CSV.
+- JPEG only, ≥ 4 MP (smaller photos are skipped and reported).
+- 7–50 keywords, most relevant first; 1–2 categories from the list in `categories.py`.
+- Editorial: Claude flags recognizable people (no model release), logos/brands and news events,
+  and writes the caption in editorial format using the EXIF capture date + your `notes.txt`.
+- Filenames are case-sensitive and must match between the FTPS upload and the CSV.
+- Before the first real batch, compare the CSV headers with the sample CSV on the Submit page.
 
 ## Ideas / next
 

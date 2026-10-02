@@ -7,6 +7,9 @@ from aws_cdk import (
     Size,
     Stack,
 )
+from aws_cdk import aws_budgets as budgets
+from aws_cdk import aws_cloudwatch as cw
+from aws_cdk import aws_cloudwatch_actions as cw_actions
 from aws_cdk import aws_dynamodb as ddb
 from aws_cdk import aws_events as events
 from aws_cdk import aws_events_targets as targets
@@ -37,6 +40,7 @@ class ShutoStack(Stack):
         upload_enabled: bool = str(ctx("upload_enabled")).lower() == "true"
         notify_email: str | None = ctx("notify_email") or None
         export_cron: str = ctx("export_schedule_cron") or "cron(0 0 ? * MON *)"
+        monthly_budget_usd = float(ctx("monthly_budget_usd") or 0)
 
         # --- Storage -------------------------------------------------------
         bucket = s3.Bucket(
@@ -98,12 +102,26 @@ class ShutoStack(Stack):
             dead_letter_queue=sqs.DeadLetterQueue(queue=dlq, max_receive_count=3),
             enforce_ssl=True,
         )
-        for suffix in (".jpg", ".jpeg", ".JPG", ".JPEG"):
-            bucket.add_event_notification(
-                s3.EventType.OBJECT_CREATED,
-                s3n.SqsDestination(queue),
-                s3.NotificationKeyFilter(prefix="incoming/", suffix=suffix),
-            )
+        # Prefix-only filter: S3 suffix filters are case-sensitive (.Jpg would be missed);
+        # the handler ignores anything that isn't incoming/<batch>/<file>.jp(e)g.
+        bucket.add_event_notification(
+            s3.EventType.OBJECT_CREATED,
+            s3n.SqsDestination(queue),
+            s3.NotificationKeyFilter(prefix="incoming/"),
+        )
+
+        # Email when photos end up in the DLQ (failed 3 times).
+        dlq_alarm = cw.Alarm(
+            self,
+            "PhotoDLQAlarm",
+            alarm_description="Shuto: photos failed processing and are in the DLQ",
+            metric=dlq.metric_approximate_number_of_messages_visible(period=Duration.minutes(5)),
+            threshold=1,
+            evaluation_periods=1,
+            comparison_operator=cw.ComparisonOperator.GREATER_THAN_OR_EQUAL_TO_THRESHOLD,
+            treat_missing_data=cw.TreatMissingData.NOT_BREACHING,
+        )
+        dlq_alarm.add_alarm_action(cw_actions.SnsAction(topic))
 
         # --- Lambdas -------------------------------------------------------
         code = lambda_code(RUNTIME, ARCH)
@@ -172,7 +190,10 @@ class ShutoStack(Stack):
                 retention=logs.RetentionDays.ONE_MONTH,
                 removal_policy=RemovalPolicy.DESTROY,
             ),
-            environment=common_env,
+            environment={
+                **common_env,
+                "UPLOAD_ENABLED": "true" if upload_enabled else "false",
+            },
         )
         bucket.grant_read_write(export_fn)
         table.grant_read_write_data(export_fn)
@@ -184,6 +205,35 @@ class ShutoStack(Stack):
             schedule=events.Schedule.expression(export_cron),
             targets=[targets.LambdaFunction(export_fn)],
         )
+
+        # --- Cost guardrail (account-wide monthly budget, emails at 80% / forecast 100%) --
+        if monthly_budget_usd > 0 and notify_email:
+            subscriber = budgets.CfnBudget.SubscriberProperty(
+                subscription_type="EMAIL", address=notify_email
+            )
+            budgets.CfnBudget(
+                self,
+                "MonthlyBudget",
+                budget=budgets.CfnBudget.BudgetDataProperty(
+                    budget_type="COST",
+                    time_unit="MONTHLY",
+                    budget_limit=budgets.CfnBudget.SpendProperty(
+                        amount=monthly_budget_usd, unit="USD"
+                    ),
+                ),
+                notifications_with_subscribers=[
+                    budgets.CfnBudget.NotificationWithSubscribersProperty(
+                        notification=budgets.CfnBudget.NotificationProperty(
+                            notification_type=kind,
+                            comparison_operator="GREATER_THAN",
+                            threshold=pct,
+                            threshold_type="PERCENTAGE",
+                        ),
+                        subscribers=[subscriber],
+                    )
+                    for kind, pct in (("ACTUAL", 80), ("FORECASTED", 100))
+                ],
+            )
 
         # --- Outputs -------------------------------------------------------
         CfnOutput(self, "BucketName", value=bucket.bucket_name)

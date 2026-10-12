@@ -30,6 +30,9 @@ _PEOPLE_KEYS = ("recognizable_people", "people")
 _LOGO_KEYS = ("logos_or_brands", "logos", "has_logos")
 
 
+HOUSE_RULE_PREFIX = "shuto-"
+
+
 @dataclass(frozen=True)
 class Rule:
     id: str
@@ -144,9 +147,11 @@ def load_restrictions(
     builtin: bool = True,
     extra_files: Iterable[str | Path] = (),
     disabled: Iterable[str] = (),
+    house_rules: bool = True,
 ) -> Restrictions:
     """Load the built-in rules and merge extra files (same schema); later rules with the same id
-    replace earlier ones. ``disabled`` rule ids are dropped."""
+    replace earlier ones. ``disabled`` rule ids are dropped. ``house_rules=False`` also drops
+    shuto's own "shuto-*" rules (the Everyday Japan ones, which are not on Shutterstock's list)."""
     merged: dict[str, Rule] = {}
     terms: list[str] = []
     levels = dict(LEVEL_ACTIONS)
@@ -173,6 +178,8 @@ def load_restrictions(
             version = int(data.get("version", 1))
             compiled = str(data.get("compiled", ""))
     off = set(disabled)
+    if not house_rules:
+        off |= {i for i in merged if i.startswith(HOUSE_RULE_PREFIX)}
     return Restrictions(
         version=version,
         compiled=compiled,
@@ -194,9 +201,11 @@ def prompt_summary(r: Restrictions, region_hint: str | None = None, max_items: i
     hint = (region_hint or "").casefold()
 
     def rank(rule: Rule) -> int:
-        if hint and rule.region.casefold() == hint:
+        if not hint:
             return 0
-        if rule.region in ("japan", "asia"):
+        if rule.region.casefold() == hint:
+            return 0
+        if hint == "japan" and rule.region == "asia":
             return 1
         return 2
 

@@ -65,8 +65,43 @@ def get_secret(name: str) -> str | None:
     return None
 
 
+def keyring_available() -> bool:
+    """True when the OS keyring can be used (the package is installed and has a backend)."""
+    kr = _keyring()
+    if kr is None:
+        return False
+    try:
+        from keyring.backends import fail
+
+        return not isinstance(kr.get_keyring(), fail.Keyring)
+    except Exception:
+        return False
+
+
 def set_secret(name: str, value: str) -> None:
     kr = _keyring()
     if kr is None:
-        raise RuntimeError("keyring is not installed; run: pip install 'shuto[keyring]'")
-    kr.set_password(KEYRING_SERVICE, name, value)
+        raise RuntimeError(
+            "Cannot save the password: the keyring add-on is missing. "
+            "Reinstall shuto (pip install --upgrade shuto) or put it in a .env file instead."
+        )
+    try:
+        kr.set_password(KEYRING_SERVICE, name, value)
+    except Exception as exc:
+        raise RuntimeError(
+            f"Cannot save the password: this computer's keyring refused it ({exc}). "
+            "You can put it in a .env file instead."
+        ) from exc
+
+
+def delete_secret(name: str) -> None:
+    """Remove a stored secret from the keyring. Not stored or no keyring is not an error."""
+    kr = _keyring()
+    if kr is None:
+        return
+    try:
+        kr.delete_password(KEYRING_SERVICE, name)
+    except Exception as exc:
+        if type(exc).__name__ == "PasswordDeleteError":
+            return
+        raise RuntimeError(f"Cannot remove the saved password ({exc}).") from exc

@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% from "_ui.html" import empty, next_action, icon with context %}
+{% block title %}shuto - Review {{ batch.id }}{% endblock %}
+{% block stepper %}{% include "_batch_stepper.html" %}{% endblock %}
+{% block content %}
+<h1>Review your photos</h1>
+<nav class="chips" aria-label="Show photos">
+  {% for f in filters %}
+  <a class="chip {{ {'attention': 'review', 'good': 'ok', 'aside': 'blocked'}.get(f, 'neutral') }}" href="/batch/{{ batch.id|urlencode }}/review?show={{ f }}"{% if f == show %} aria-current="true"{% endif %}>
+    {% if f == 'attention' %}{{ icon('alert') }}{% elif f == 'good' %}{{ icon('check') }}{% elif f == 'aside' %}{{ icon('stop') }}{% endif %}{{ BUCKET_LABELS[f] }} <span class="chip-count">{{ by_bucket[f] }}</span>{% if f == show %}<span class="sr-only"> (showing)</span>{% endif %}
+  </a>
+  {% endfor %}
+</nav>
+<p class="hint">{{ HELP[show] if show in HELP else 'Every photo in this batch.' }}</p>
+
+<form id="bulk-form" method="post" action="/batch/{{ batch.id|urlencode }}/bulk" class="toolbar" aria-label="Actions for photos">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <input type="hidden" name="show" value="{{ show }}">
+  <button type="button" class="secondary" data-select-all>Select all on screen</button>
+  <button type="button" class="secondary" data-select-none>Select none</button>
+  <button type="submit" name="action" value="approve_all"{% if not clean %} disabled{% endif %}>Approve all that look good ({{ clean }})</button>
+  <button type="submit" name="action" value="approve" class="secondary" data-needs-selection disabled>Approve selected</button>
+  <button type="button" class="secondary" data-needs-selection disabled
+          hx-get="/batch/{{ batch.id|urlencode }}/bulk-edit?show={{ show }}" hx-include="input[name=ids]:checked"
+          hx-target="#bulk-edit-area" hx-swap="innerHTML">Edit selected...</button>
+  <button type="submit" name="action" value="ready" class="secondary" data-needs-selection disabled
+          title="The AI will write the text again for these photos">Send back to AI</button>
+  <span class="count" data-select-count data-select-template="{n} selected" aria-live="polite">0 selected</span>
+</form>
+<div id="bulk-edit-area"></div>
+
+{% if cards %}
+<div class="grid">
+  {% for c in cards %}{% include "_photo_card.html" %}{% endfor %}
+</div>
+{% elif total == 0 %}
+{{ empty('No photos in this batch', 'Add a folder of photos to get started.', '/add', 'Add photos') }}
+{% elif show == 'attention' %}
+{{ empty('Nothing needs a look', 'Every photo passed the checks. Open "Looks good" to approve them.', '/batch/' ~ (batch.id|urlencode) ~ '/review?show=good', 'Show photos that look good') }}
+{% elif show == 'good' %}
+{{ empty('No photos here', 'Nothing is waiting for approval right now.', '/batch/' ~ (batch.id|urlencode) ~ '/review?show=all', 'Show all photos') }}
+{% elif show == 'aside' %}
+{{ empty('Nothing was set aside', 'No photos were left out because of quality, copies or earlier uploads.') }}
+{% else %}
+{{ empty('No photos here', 'Try another filter above.') }}
+{% endif %}
+{% endblock %}
+{% block next %}
+{% if approved %}{{ next_action('Go to Upload (' ~ approved ~ ' approved)', upload_href) }}
+{% else %}<p class="hint next-action">Approve at least one photo to go to Upload.</p>{% endif %}
+{% endblock %}

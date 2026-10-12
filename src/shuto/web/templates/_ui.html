@@ -1,0 +1,74 @@
+{#- shuto UI macros. Import with:
+    {% from "_ui.html" import button, chip, stepper, empty, progress, field, icon, next_action with context %}
+    Icons: check alert stop folder upload download gear help arrow spinner. -#}
+
+{% macro icon(name) -%}
+<svg class="icon" aria-hidden="true" focusable="false"><use href="/static/icons.svg#{{ name }}"></use></svg>
+{%- endmacro %}
+
+{# kind: primary | secondary | quiet | danger. attrs: dict of extra HTML attributes. #}
+{% macro button(label, kind='primary', type='submit', attrs={}) -%}
+<button class="btn {{ kind }}" type="{{ type }}"{% for k, v in attrs.items() %} {{ k }}="{{ v }}"{% endfor %}>{{ label }}</button>
+{%- endmacro %}
+
+{# bucket: ok | review | blocked | danger | neutral (also good=ok, attention=review, aside=blocked). #}
+{% macro chip(bucket, label, count=None) -%}
+{%- set kind = {'good': 'ok', 'attention': 'review', 'aside': 'blocked'}.get(bucket, bucket) -%}
+{%- set ico = {'ok': 'check', 'review': 'alert', 'blocked': 'stop', 'danger': 'alert'}.get(kind) -%}
+<span class="chip {{ kind }}">{% if ico %}{{ icon(ico) }}{% endif %}{{ label }}{% if count is not none %} <span class="chip-count">{{ count }}</span>{% endif %}</span>
+{%- endmacro %}
+
+{# steps: list of {key,label,href,state}; state = done | current | todo. `current` (a key) overrides state. #}
+{% macro stepper(steps, current=None, mini=False) -%}
+<ol class="stepper{% if mini %} mini{% endif %}" aria-label="Steps">
+{%- for s in steps %}
+{%- set st = 'current' if (current is not none and s.key == current) else s.state %}
+  <li class="{{ st }}"{% if st == 'current' %} aria-current="step"{% endif %}>
+    {%- if s.href and st != 'todo' %}<a href="{{ s.href }}">{% endif -%}
+    <span class="n">{% if st == 'done' %}{{ icon('check') }}<span class="sr-only">{{ loop.index }}</span>{% else %}{{ loop.index }}{% endif %}</span>
+    <span class="t">{{ s.label }}{% if st == 'done' %} <span class="sr-only">(done)</span>{% elif st == 'current' %} <span class="sr-only">(current step)</span>{% endif %}</span>
+    {%- if s.href and st != 'todo' %}</a>{% endif -%}
+  </li>
+{%- endfor %}
+</ol>
+{%- endmacro %}
+
+{% macro empty(title, text, action_href=None, action_label=None) -%}
+<div class="empty">
+  <h2>{{ title }}</h2>
+  <p>{{ text }}</p>
+  {% if action_href %}<a class="btn primary" href="{{ action_href }}">{{ action_label }} {{ icon('arrow') }}</a>{% endif %}
+</div>
+{%- endmacro %}
+
+{# job: object or dict with id, state (running|done|failed|cancelled), kind, done, total, error. #}
+{% macro progress(job, label=None) -%}
+{%- set state = job.state or 'running' -%}
+<div class="progress {{ state }}" id="job-{{ job.id }}">
+  <div class="label">
+    {%- if state == 'done' %}{{ icon('check') }}{% elif state == 'failed' %}{{ icon('alert') }}{% elif state == 'cancelled' %}{{ icon('stop') }}{% else %}<span class="spin">{{ icon('spinner') }}</span>{% endif %}
+    {{ label or job.kind }}
+  </div>
+  {% if job.total %}<progress max="{{ job.total }}" value="{{ job.done }}">{{ job.done }} of {{ job.total }}</progress>
+  <p class="hint">{{ job.done }} of {{ job.total }}</p>
+  {%- elif state not in ('done', 'failed', 'cancelled') %}<progress aria-label="Working"></progress>{% endif %}
+  {% if state == 'failed' %}<p class="bad">{{ job.error }}</p>{% endif %}
+  {% if state == 'cancelled' %}<p>Stopped.</p>{% endif %}
+</div>
+{%- endmacro %}
+
+{# Form field. Use with {% call field('title', 'Title', help='...') %}<input id="title" name="title">{% endcall %}
+   The input id must equal `name`; help/error ids are <name>-help / <name>-error. #}
+{% macro field(name, label, help=None, error=None) -%}
+<div class="field{% if error %} has-error{% endif %}">
+  <label for="{{ name }}">{{ label }}</label>
+  {{ caller() if caller else '' }}
+  {% if help %}<p class="field-help" id="{{ name }}-help">{{ help }}</p>{% endif %}
+  {% if error %}<p class="field-error" id="{{ name }}-error" role="alert">{{ icon('alert') }}{{ error }}</p>{% endif %}
+</div>
+{%- endmacro %}
+
+{# The one primary button of a page, right-aligned. #}
+{% macro next_action(label, href) -%}
+<p class="next-action"><a class="btn primary" href="{{ href }}">{{ label }} {{ icon('arrow') }}</a></p>
+{%- endmacro %}

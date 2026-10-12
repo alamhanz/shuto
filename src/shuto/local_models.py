@@ -352,7 +352,7 @@ def disk_advice(
     adv.message = (
         f"{model.tag} needs about {need} GB but only {have} GB is free at {models_dir}. "
         + (
-            "Move model storage to another drive by setting OLLAMA_MODELS, "
+            "Move model storage to another drive, "
             if adv.volumes
             else "No other drive has enough space; "
         )

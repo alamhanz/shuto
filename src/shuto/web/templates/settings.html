@@ -1,85 +1,99 @@
 {% extends "base.html" %}
+{% from "_ui.html" import field, chip, icon %}
 {% block title %}shuto - settings{% endblock %}
 {% block content %}
 <h1>Settings</h1>
-<p>Current AI choice: <strong>{{ report.selected or "none chosen yet" }}</strong>
-{% if not report.selected %}<span class="hint"> - pick one below. shuto never chooses a model for you.</span>{% endif %}</p>
+<nav aria-label="Settings sections"><p class="chips">
+  <a class="chip" href="#model">AI model</a><a class="chip" href="#shutterstock">Shutterstock login</a><a class="chip" href="#style">Style</a><a class="chip" href="#computer">This computer</a><a class="chip" href="#advanced">Advanced</a>
+</p></nav>
+<p><a href="/welcome">Run setup again</a></p>
 
-<h2>This computer</h2>
+<section id="model" aria-labelledby="h-model">
+<h2 id="h-model">AI model</h2>
+<p>Now using: <strong>{{ selected or "nothing chosen yet" }}</strong>
+{% if not selected %}<span class="hint"> Pick one below. shuto never picks a model for you.</span>{% endif %}</p>
+<p class="snip">Times are a rough guess until you press "Measure speed" on a downloaded model.</p>
+{% with use_action="/settings/use", return_to="/settings", show_bench=true, open_online=false %}
+{% include "_model_cards.html" %}
+{% endwith %}
+<div id="job-resume">{% if job %}{% with active=job_active, result=None %}{% include "_job.html" %}{% endwith %}{% endif %}</div>
+</section>
+
+<section id="shutterstock" aria-labelledby="h-login">
+<h2 id="h-login">Shutterstock upload login</h2>
+<p>Used only to send your photos to Shutterstock. It is saved in this computer's secure password store and never shown again.</p>
+<p>{% if login.user_set and login.password_set %}{{ chip('ok', 'A login is saved') }}{% else %}{{ chip('neutral', 'No login saved yet') }}{% endif %}
+  {% if not login.keyring_ok %}<span class="hint"> No secure password store was found on this computer, so saving may fail.</span>{% endif %}</p>
+<form method="post" action="/settings/ftps" class="stack">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  {% call field('username', 'Shutterstock email or username') %}
+  <input id="username" name="username" autocomplete="off" size="40">
+  {% endcall %}
+  {% call field('password', 'Shutterstock password', help='Leave empty to keep the one already saved.') %}
+  <input id="password" name="password" type="password" autocomplete="off" size="40" aria-describedby="password-help">
+  {% endcall %}
+  <p><button type="submit" class="btn primary">Save login</button></p>
+</form>
+<div class="row">
+  <form hx-post="/settings/ftps/test" hx-target="#job-area" hx-swap="innerHTML">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <button type="submit" class="secondary">Test login</button>
+  </form>
+  <form hx-post="/settings/ftps/forget" hx-confirm="Remove the saved Shutterstock login from this computer?">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <button type="submit" class="danger">Forget saved login</button>
+  </form>
+</div>
+</section>
+
+<section id="style" aria-labelledby="h-style">
+<h2 id="h-style">Your style</h2>
+<p>These guide the AI when it writes about your photos.</p>
+<form method="post" action="/settings/style" class="stack">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  {% call field('theme', 'Theme of your portfolio', help='For example: Street food, Mountain trails.') %}
+  <input id="theme" name="theme" value="{{ style.theme }}" maxlength="200" aria-describedby="theme-help">
+  {% endcall %}
+  {% call field('always_include', 'Words to always add', help='Separate with commas.') %}
+  <input id="always_include" name="always_include" value="{{ style.always_include }}" aria-describedby="always_include-help">
+  {% endcall %}
+  {% call field('tone', 'Tone') %}
+  <input id="tone" name="tone" value="{{ style.tone }}" maxlength="200">
+  {% endcall %}
+  {% call field('region_focus', 'Region focus', help='Japan adds romaji place names, checks Japan rules first and applies extra Japan checks (shop signs, vending machines, trains). Leave on None for any other place.') %}
+  <select id="region_focus" name="region_focus" aria-describedby="region_focus-help">
+    <option value=""{% if not style.region_focus %} selected{% endif %}>None</option>
+    <option value="japan"{% if style.region_focus == 'japan' %} selected{% endif %}>Japan</option>
+  </select>
+  {% endcall %}
+  <p><button type="submit" class="btn primary">Save style</button></p>
+</form>
+</section>
+
+<section id="computer" aria-labelledby="h-computer">
+<h2 id="h-computer">This computer</h2>
 <dl class="facts">
   <dt>System</dt><dd>{{ hw.os }} {{ hw.arch }}</dd>
-  <dt>CPU</dt><dd>{{ hw.cpu }} ({{ hw.cores }} cores)</dd>
+  <dt>Processor</dt><dd>{{ hw.cpu }} ({{ hw.cores }} cores)</dd>
   <dt>Memory</dt><dd>{{ "%.0f"|format(hw.ram_gb) }} GB</dd>
-  <dt>GPU</dt><dd>{% for g in hw.gpus %}{{ g.name }}{% if g.vram_total_gb %} ({{ "%.0f"|format(g.vram_total_gb) }} GB){% endif %}{% if not loop.last %}, {% endif %}{% else %}none detected (CPU only){% endfor %}</dd>
-  <dt>Usable for models</dt><dd>{{ "%.0f"|format(hw.usable_gpu_gb) }} GB GPU memory, hardware tier <code>{{ hw.tier }}</code></dd>
-  <dt>Ollama</dt><dd>{% if ollama.running %}running, version {{ ollama.version }}, {{ ollama.pulled|length }} model(s) downloaded{% elif ollama.installed %}installed but not running (start it){% else %}not installed{% endif %}</dd>
+  <dt>Graphics card</dt><dd>{% for g in hw.gpus %}{{ g.name }}{% if g.vram_total_gb %} ({{ "%.0f"|format(g.vram_total_gb) }} GB){% endif %}{% if not loop.last %}, {% endif %}{% else %}none found (the main processor does the work, which is slower){% endfor %}</dd>
+  <dt>AI helper (Ollama)</dt><dd>{% if ollama.running %}running, {{ ollama.pulled|length }} model(s) downloaded{% elif ollama.installed %}installed but not running. Open Ollama.{% else %}not installed{% endif %}</dd>
   <dt>Model folder</dt><dd><code>{{ report.models_dir }}</code>{% if report.disk_free_gb is not none %}, {{ "%.0f"|format(report.disk_free_gb) }} GB free{% endif %}</dd>
 </dl>
 {% for n in hw.notes or [] %}<p class="snip">{{ n }}</p>{% endfor %}
-{% if not ollama.running %}<p class="hint">{{ guidance }}</p>{% endif %}
+{% if not ollama.running %}
+<p>To run the AI on this computer, set up Ollama:</p>
+<ol>{% for s in helper_steps %}<li>{{ s }}</li>{% endfor %}</ol>
+<p><a href="{{ ollama_url }}" target="_blank" rel="noopener">Open the Ollama website</a></p>
+{% endif %}
+</section>
 
-<h2>Top local models for this computer</h2>
-<p class="snip">Time per image is a rough guess ("heuristic") until you run a benchmark on your machine.</p>
-<table>
-  <thead><tr><th>#</th><th>Model</th><th>Download</th><th>Seconds / image</th><th>Quality / speed</th><th>Fits hardware</th><th>Fits disk</th><th>Downloaded</th><th>Actions</th></tr></thead>
-  <tbody>
-  {% for r in rows %}
-  <tr id="row-{{ loop.index }}">
-    <td>{{ r.rank }}</td>
-    <td><strong>{{ r.tag }}</strong>{% if r.recommended %} <span class="badge">recommended</span>{% endif %}<div class="snip">{{ r.notes }}</div></td>
-    <td>{{ "%.1f"|format(r.size_gb) }} GB</td>
-    <td>~{{ "%.0f"|format(r.est_seconds_per_image) }} s <span class="snip">({{ r.basis }}, {{ r.mode }})</span></td>
-    <td>{{ r.tier_label }}</td>
-    <td>{{ "yes" if r.fits_hardware else "no" }}</td>
-    <td>{{ "yes" if r.fits_disk else "no" }}</td>
-    <td>{{ "yes" if r.pulled else "no" }}</td>
-    <td class="acts">
-      <form method="post" action="/settings/use">
-        <input type="hidden" name="csrf_token" value="{{ csrf }}">
-        <input type="hidden" name="spec" value="{{ r.tag }}">
-        <button type="submit"{% if not r.fits_hardware %} disabled{% endif %}>Use this model</button>
-      </form>
-      {% if not r.pulled %}
-      <button type="button" hx-get="/settings/advice" hx-vals='{"tag": "{{ r.tag }}"}' hx-target="#advice-{{ r.rank }}" hx-swap="innerHTML">Download...</button>
-      {% else %}
-      <form hx-post="/settings/benchmark" hx-target="#job-area" hx-swap="innerHTML"
-            hx-confirm="Run {{ r.tag }} twice on a sample image to measure speed? This can take a minute.">
-        <input type="hidden" name="csrf_token" value="{{ csrf }}">
-        <input type="hidden" name="tag" value="{{ r.tag }}">
-        <button type="submit">Benchmark</button>
-      </form>
-      {% endif %}
-      <div id="advice-{{ r.rank }}"></div>
-    </td>
-  </tr>
-  {% else %}
-  <tr><td colspan="9">No local model fits this computer. Use an online provider below.</td></tr>
-  {% endfor %}
-  </tbody>
-</table>
-<div id="job-area">{% if job %}{% with active=job_active, result=None %}{% include "_job.html" %}{% endwith %}{% endif %}</div>
-
-<h2>Online providers (optional)</h2>
-<p class="snip">Photos are sent to the provider only if you choose it here. Keys are read from environment variables, a <code>.env</code> file or the OS keyring (<code>shuto secrets set NAME</code>). They are never shown.</p>
-<table>
-  <thead><tr><th>Provider</th><th>Default model</th><th>~ cost / image</th><th>Key</th><th></th></tr></thead>
-  <tbody>
-  {% for p in providers %}
-  <tr>
-    <td>{{ p.name }}{% if p.selected %} <span class="badge">in use</span>{% endif %}</td>
-    <td>{{ p.model or "-" }}</td>
-    <td>{% if p.usd_per_image is not none %}${{ "%.4f"|format(p.usd_per_image) }}{% else %}-{% endif %}</td>
-    <td>{% if p.key_env %}{{ p.key_env }}: <strong>{{ "set" if p.key_set else "not set" }}</strong>{% else %}uses your AWS profile{% if p.profile %} ({{ p.profile }}){% endif %}{% if p.region %}, region {{ p.region }}{% endif %}{% endif %}</td>
-    <td>
-      <form method="post" action="/settings/use">
-        <input type="hidden" name="csrf_token" value="{{ csrf }}">
-        <input type="hidden" name="spec" value="{{ p.name }}:">
-        <button type="submit"{% if not p.model %} disabled{% endif %}>Use {{ p.name }}</button>
-      </form>
-    </td>
-  </tr>
-  {% endfor %}
-  </tbody>
-</table>
-<p class="snip">Config file: {{ report.config_path or "none (defaults)" }}. Workspace: {{ report.workspace }}.</p>
+<section id="advanced" aria-labelledby="h-advanced">
+<h2 id="h-advanced">Advanced</h2>
+<dl class="facts">
+  <dt>Where shuto keeps its files</dt><dd><code>{{ report.workspace }}</code></dd>
+  <dt>Settings file</dt><dd>{{ report.config_path or "none (built-in defaults)" }}</dd>
+  <dt>AI use so far</dt><dd>{{ usage.calls }} requests, {{ "%.0f"|format(usage.seconds) }} seconds</dd>
+</dl>
+</section>
 {% endblock %}

@@ -26,13 +26,14 @@ MONTHS = (
 
 @dataclass
 class Style:
-    theme: str = "Everyday Japan"
+    theme: str = ""
     tone: str = "documentary, warm, factual; no hype words"
     language: str = "en"
+    region_focus: str = ""
     keywords_min: int = 25
     keywords_max: int = 50
-    always_include: list[str] = field(default_factory=lambda: ["japan"])
-    romaji_place_names: bool = True
+    always_include: list[str] = field(default_factory=list)
+    romaji_place_names: bool = False
     seasonal_terms: bool = True
     avoid: list[str] = field(default_factory=lambda: ["beautiful", "amazing", "stunning"])
     extra_instructions: str = ""
@@ -41,14 +42,16 @@ class Style:
     def from_config(cls, style: Any) -> Style:
         """Build from ``config.StyleConfig`` (duck-typed, so this module stays config-free)."""
         k = style.keywords
+        focus = str(getattr(style, "region_focus", "") or "")
         return cls(
             theme=style.theme,
             tone=style.tone,
             language=style.language,
+            region_focus=focus,
             keywords_min=k.min,
             keywords_max=k.max,
             always_include=list(k.always_include),
-            romaji_place_names=k.romaji_place_names,
+            romaji_place_names=k.romaji_place_names or focus == "japan",
             seasonal_terms=k.seasonal_terms,
             avoid=list(style.avoid),
             extra_instructions=style.extra_instructions,
@@ -135,7 +138,15 @@ def build_prompt(
     if style.always_include:
         kw_rules.append("Always include: " + ", ".join(style.always_include) + ".")
     parts = [
-        f'Portfolio theme: "{style.theme}". Tone: {style.tone}. Language: {style.language}.',
+        " ".join(
+            bit
+            for bit in (
+                f'Portfolio theme: "{style.theme}".' if style.theme else "",
+                f"Tone: {style.tone}." if style.tone else "",
+                f"Language: {style.language}.",
+            )
+            if bit
+        ),
         "",
         "Return a JSON object with exactly these fields:",
         f'- "description": one natural sentence, at most {MAX_DESCRIPTION_CHARS} characters, '
@@ -220,7 +231,11 @@ def describe_photo(
     has_property_release: bool = False,
 ) -> DescribeResult:
     system, user = build_prompt(
-        style, guardrails.prompt_summary(restrictions), feedback, notes, captured
+        style,
+        guardrails.prompt_summary(restrictions, style.region_focus or None),
+        feedback,
+        notes,
+        captured,
     )
     req = LLMRequest(
         image_jpeg=image_jpeg,

@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% from "_ui.html" import button, empty, next_action, icon with context %}
+{% block title %}shuto - Check {{ batch.id }}{% endblock %}
+{% block stepper %}{% include "_batch_stepper.html" %}{% endblock %}
+{% block content %}
+<h1>Check your photos</h1>
+{% if to_check %}
+<div class="panel">
+  <p>shuto will check <strong>{{ to_check }}</strong> new photo{{ '' if to_check == 1 else 's' }} in three parts:</p>
+  <ol>
+    <li>A quality check: is the photo sharp, bright enough and big enough?</li>
+    <li>The AI writes a title, a description and keywords for each photo.</li>
+    <li>shuto compares the text with the Shutterstock rules and flags anything that needs a look.</li>
+  </ol>
+  {% if model %}<p>AI in use: <strong>{{ model }}</strong>.{% if estimate %} This will take {{ estimate }}.{% endif %}</p>{% endif %}
+  {% for p in problems %}
+  <p class="flash bad" role="alert">{{ icon('alert') }}<span>{{ p }} <a href="/settings">Fix in Settings</a></span></p>
+  {% endfor %}
+  {% if active_job %}
+  <div id="active-job" hx-get="/jobs/{{ active_job }}" hx-trigger="load" hx-target="#job-area" hx-swap="innerHTML"></div>
+  {% endif %}
+  <form hx-post="/batch/{{ batch.id|urlencode }}/check" hx-target="#job-area" hx-swap="innerHTML"
+        hx-confirm="Check {{ to_check }} photo{{ '' if to_check == 1 else 's' }}?{% if estimate %} This will take {{ estimate }}.{% endif %} You can stop it at any time.">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    {{ button('Check all ' ~ to_check ~ ' photo' ~ ('' if to_check == 1 else 's'), attrs={'disabled': 'disabled'} if problems else {}) }}
+  </form>
+  <p class="hint">Your photos stay on this computer. Nothing is sent to Shutterstock yet.</p>
+</div>
+{% else %}
+{{ empty('Nothing new to check', 'All photos in this batch have been checked already.', next_step.href if next_step else none, next_step.label if next_step else none) }}
+{% endif %}
+{% endblock %}
+{% block next %}
+{% if to_check %}<p class="hint">When the check is finished, go on to <a href="{{ review_href }}">Review</a>.</p>{% endif %}
+{% endblock %}

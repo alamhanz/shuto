@@ -1,0 +1,87 @@
+#!/bin/sh
+# shuto installer for macOS and Linux. Per-user, no sudo needed.
+#
+# Usage (once the repository is public):
+#   curl -LsSf https://raw.githubusercontent.com/alamhanz/shuto/main/install/install.sh | sh
+#
+# Options (when running the downloaded file):
+#   --from <source>   wheel path, PyPI name or URL to install instead of the default
+#   --no-shortcut     do not create launchers
+#   --no-start        do not start shuto at the end
+# The SHUTO_SOURCE environment variable does the same as --from.
+set -eu
+
+DEFAULT_SOURCE="https://github.com/alamhanz/shuto/archive/refs/heads/main.zip"
+SOURCE="${SHUTO_SOURCE:-$DEFAULT_SOURCE}"
+# uv installer pinned to a known release (0.12.22, current when this was written) so a changed
+# "latest" installer cannot alter what runs here. Raise it on purpose after checking.
+UV_INSTALLER="https://astral.sh/uv/0.12.22/install.sh"
+SHORTCUT=1
+START=1
+
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --from) [ $# -ge 2 ] || { echo "--from needs a value" >&2; exit 2; }; SOURCE="$2"; shift ;;
+        --no-shortcut) SHORTCUT=0 ;;
+        --no-start) START=0 ;;
+        *) echo "Unknown option: $1" >&2; exit 2 ;;
+    esac
+    shift
+done
+
+say() { printf '[shuto] %s\n' "$1"; }
+fail() {
+    printf '[shuto] Something went wrong: %s\n' "$1" >&2
+    printf '[shuto] See docs/install.md (Troubleshooting) or run the line again.\n' >&2
+    exit 1
+}
+
+say "Step 1 of 5: checking for the uv installer helper..."
+if ! command -v uv >/dev/null 2>&1; then
+    for d in "$HOME/.local/bin" "$HOME/.cargo/bin"; do
+        [ -x "$d/uv" ] && PATH="$d:$PATH" && break
+    done
+fi
+if ! command -v uv >/dev/null 2>&1; then
+    say "Installing uv (a small tool that also installs Python for you)..."
+    curl -LsSf "$UV_INSTALLER" | sh || fail "could not install uv. Check your internet connection."
+    PATH="$HOME/.local/bin:$HOME/.cargo/bin:$PATH"
+    command -v uv >/dev/null 2>&1 || fail "uv was installed but could not be found. Open a new Terminal and run this line again."
+fi
+
+say "Step 2 of 5: installing shuto (this can take a few minutes the first time)..."
+uv tool install --force --python 3.12 "$SOURCE" || fail "the shuto install did not finish. Check your internet connection."
+
+say "Step 3 of 5: making the shuto command available..."
+uv tool update-shell >/dev/null 2>&1 || true
+BIN_DIR="$(uv tool dir --bin)"
+PATH="$BIN_DIR:$PATH"
+[ -x "$BIN_DIR/shuto" ] || fail "shuto was installed but $BIN_DIR/shuto was not found."
+
+if [ "$SHORTCUT" = 1 ]; then
+    say "Step 4 of 5: creating the shuto launcher..."
+    "$BIN_DIR/shuto" shortcut || say "Could not create the launcher. You can still start shuto by typing: shuto"
+else
+    say "Step 4 of 5: skipping the launcher."
+fi
+
+say "Step 5 of 5: checking for Ollama (the free AI helper that runs on your computer)..."
+if command -v ollama >/dev/null 2>&1 || [ -d /Applications/Ollama.app ]; then
+    say "Ollama is installed."
+else
+    say "Ollama is not installed yet. shuto needs it to write titles and keywords."
+    say "Download it from https://ollama.com/download, install it, then come back."
+    if [ "$START" = 1 ]; then
+        if command -v open >/dev/null 2>&1; then
+            open "https://ollama.com/download" >/dev/null 2>&1 || true
+        elif command -v xdg-open >/dev/null 2>&1; then
+            xdg-open "https://ollama.com/download" >/dev/null 2>&1 || true
+        fi
+    fi
+fi
+
+say "Done. Next time, double-click the shuto launcher, or type: shuto"
+if [ "$START" = 1 ]; then
+    say "Starting shuto in your browser..."
+    exec "$BIN_DIR/shuto"
+fi

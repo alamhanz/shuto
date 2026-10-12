@@ -121,3 +121,21 @@ def test_style_keyword_rules():
     k = res.metadata.keywords
     assert "beautiful sky" not in k and "amazing" not in k
     assert k[-1] == "japan" and len(k) == 5
+
+
+def test_neutral_defaults_have_no_japan():
+    style = Style()
+    _, user = build_prompt(style, "", (), "", WHEN)
+    assert style.theme == "" and style.always_include == [] and not style.romaji_place_names
+    assert "Japan" not in user and "romaji" not in user and "Portfolio theme" not in user
+
+
+def test_japan_focus_turns_on_romaji():
+    from shuto.config import StyleConfig
+
+    neutral = Style.from_config(StyleConfig())
+    japan = Style.from_config(StyleConfig(region_focus="japan"))
+    assert not neutral.romaji_place_names and neutral.region_focus == ""
+    assert japan.romaji_place_names and japan.region_focus == "japan"
+    _, user = build_prompt(japan, "", (), "", WHEN)
+    assert "romaji" in user

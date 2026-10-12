@@ -1,0 +1,22 @@
+{% from "_ui.html" import field, icon, chip %}
+<h1>Shutterstock upload login (optional)</h1>
+<p>To send photos to Shutterstock, shuto needs the email and password you use there. They are saved in this computer's secure password store, and never shown again.</p>
+<p>{% if login.user_set and login.password_set %}{{ chip('ok', 'A login is saved') }}{% else %}{{ chip('neutral', 'No login saved yet') }}{% endif %}
+   {% if not login.keyring_ok %}<span class="hint"> This computer has no secure password store available. Saving may fail.</span>{% endif %}</p>
+<form method="post" action="/welcome/4" class="stack">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  {% call field('username', 'Shutterstock email or username') %}
+  <input id="username" name="username" autocomplete="off" size="40">
+  {% endcall %}
+  {% call field('password', 'Shutterstock password', help='Leave empty to keep the one already saved.') %}
+  <input id="password" name="password" type="password" autocomplete="off" size="40" aria-describedby="password-help">
+  {% endcall %}
+  <p class="next-action"><button type="submit" class="btn primary">Save and continue</button></p>
+</form>
+{% if login.user_set and login.password_set %}
+<form hx-post="/settings/ftps/test" hx-target="#job-area" hx-swap="innerHTML">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <button type="submit" class="secondary">Test login</button>
+</form>
+{% endif %}
+<p><a href="/welcome?step=3">Back</a> &middot; <a href="/welcome?step=5">Skip this step</a></p>

@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% from "_ui.html" import button, empty, icon with context %}
+{% block title %}shuto - Submit {{ batch.id }}{% endblock %}
+{% block stepper %}{% include "_batch_stepper.html" %}{% endblock %}
+{% block content %}
+<h1>Submit on Shutterstock</h1>
+{% if waiting or exports or finished %}
+<p>Your photos are uploaded. The last step is yours: shuto never presses Submit for you. Follow these steps in your web browser.</p>
+<ol class="steps-list">
+  <li>
+    <p>Download the info file{{ '' if exports|length == 1 else 's' }} below and keep {{ 'it' if exports|length == 1 else 'them' }} somewhere easy to find.</p>
+    <div class="row">
+    {% for f in exports %}<a class="btn secondary" href="/batch/{{ batch.id|urlencode }}/exports/{{ f|urlencode }}">{{ icon('download') }}Download {{ f }}</a>{% else %}<span class="hint">No info file yet. Go back to Upload and finish it first.</span>{% endfor %}
+    </div>
+    <p class="hint">{{ HELP.csv }}</p>
+  </li>
+  <li>
+    <p>Open <a href="https://submit.shutterstock.com" target="_blank" rel="noopener noreferrer">submit.shutterstock.com</a> and sign in. Your uploaded photos are waiting there.</p>
+    <img class="shot" src="/static/img/submit-1.png" alt="Screenshot placeholder: the Shutterstock page that lists uploaded photos" width="480" height="270">
+  </li>
+  <li>
+    <p>Choose the option to upload a CSV, and pick the info file you just downloaded.</p>
+    <img class="shot" src="/static/img/submit-2.png" alt="Screenshot placeholder: choosing the info file on Shutterstock" width="480" height="270">
+  </li>
+  <li>
+    <p>Look over the titles and keywords Shutterstock shows you. Fix anything that looks wrong.</p>
+  </li>
+  <li>
+    <p>Press <strong>Submit</strong> on the Shutterstock page.</p>
+    <img class="shot" src="/static/img/submit-3.png" alt="Screenshot placeholder: the Submit button on Shutterstock" width="480" height="270">
+  </li>
+</ol>
+<section class="panel">
+  <h2>After you press Submit</h2>
+  {% if waiting %}
+  <form method="post" action="/batch/{{ batch.id|urlencode }}/submitted">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    {{ button('I submitted this batch') }}
+  </form>
+  <p class="hint">This only makes a note in shuto. Later you can open a photo to note whether Shutterstock accepted it.</p>
+  {% else %}
+  <p>{{ icon('check') }} {{ finished }} photo{{ '' if finished == 1 else 's' }} marked as submitted. Open a photo from <a href="/batch/{{ batch.id|urlencode }}/review?show=all">Review</a> to note the result.</p>
+  {% endif %}
+</section>
+{% else %}
+{{ empty('Nothing to submit yet', 'Upload your approved photos first.', '/batch/' ~ (batch.id|urlencode) ~ '/upload', 'Go to Upload') }}
+{% endif %}
+{% endblock %}

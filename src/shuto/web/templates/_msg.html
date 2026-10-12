@@ -1,1 +1,2 @@
-<p class="flash bad" role="alert">{{ message }}</p>
+{% from "_ui.html" import icon %}
+<p class="flash bad" role="alert">{{ icon('alert') }}<span>{{ message }}</span></p>

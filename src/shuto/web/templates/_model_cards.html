@@ -1,0 +1,93 @@
+{#- Needs: cards, providers, selected, use_action, return_to, show_bench -#}
+{% from "_ui.html" import chip, icon, field %}
+{% if not cards %}
+<p class="flash warn">{{ icon('alert') }}<span>No AI model on this list fits this computer. Use an online AI below.</span></p>
+{% endif %}
+<div class="cards">
+  {% for r in cards %}
+  <article class="card" id="row-{{ loop.index }}" aria-labelledby="m-{{ loop.index }}">
+    <div class="body">
+      <h3 id="m-{{ loop.index }}">{{ r.tag }}</h3>
+      <p class="chips">
+        {% for t in r.tags %}{{ chip('neutral', t) }}{% endfor %}
+        {% if selected == 'ollama:' ~ r.tag %}{{ chip('ok', 'In use') }}{% endif %}
+        {% if r.pulled %}{{ chip('ok', 'Already downloaded') }}{% endif %}
+      </p>
+      <p>{{ r.time_text }} &middot; {{ "%.1f"|format(r.size_gb) }} GB download</p>
+      <p>Works on this computer: <strong>{{ "yes" if r.fits_hardware else "no" }}</strong>
+        {% if not r.pulled %}&middot; Enough free space: <strong>{{ "yes" if r.fits_disk else "no" }}</strong>{% endif %}</p>
+      {% if r.notes %}<p class="snip">{{ r.notes }}</p>{% endif %}
+      <div class="row">
+        {% if r.pulled %}
+        <form method="post" action="{{ use_action }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <input type="hidden" name="spec" value="{{ r.tag }}">
+          <button type="submit" class="btn primary"{% if not r.fits_hardware %} disabled{% endif %}>Use this</button>
+        </form>
+        {% if show_bench %}
+        <form hx-post="/settings/benchmark" hx-target="#job-area" hx-swap="innerHTML" hx-confirm="Run {{ r.tag }} twice on a sample photo to measure its speed? This can take a minute.">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <input type="hidden" name="tag" value="{{ r.tag }}">
+          <button type="submit" class="secondary">Measure speed</button>
+        </form>
+        {% endif %}
+        {% else %}
+        <button type="button" class="btn primary" hx-get="/settings/advice" hx-vals='{"tag": "{{ r.tag }}", "return_to": "{{ return_to }}"}' hx-target="#advice-{{ r.rank }}" hx-swap="innerHTML"{% if not r.fits_hardware %} disabled{% endif %}>Download ({{ "%.0f"|format(r.size_gb) }} GB)...</button>
+        {% endif %}
+      </div>
+      <div id="advice-{{ r.rank }}"></div>
+    </div>
+  </article>
+  {% endfor %}
+</div>
+
+<details id="online"{% if open_online %} open{% endif %}>
+  <summary>Use an online AI instead</summary>
+  <p class="hint">Your photos are sent to the company you pick, and it costs a little for each photo. Nothing is sent unless you choose one here. Access keys are never shown again after you save them.</p>
+  <div class="cards">
+    {% for p in providers %}
+    <article class="card">
+      <div class="body">
+        <h3>{{ p.name|capitalize }}{% if p.selected %} {{ chip('ok', 'In use') }}{% endif %}</h3>
+        <p>{{ p.model or "-" }}{% if p.usd_per_image is not none %} &middot; about ${{ "%.3f"|format(p.usd_per_image) }} per photo{% endif %}</p>
+        {% if p.key_env %}
+        <p>Access key: {% if p.key_set %}{{ chip('ok', 'Set') }}{% else %}{{ chip('neutral', 'Not set') }}{% endif %}</p>
+        <form method="post" action="/settings/key" class="stack">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <input type="hidden" name="provider" value="{{ p.name }}">
+          <input type="hidden" name="return_to" value="{{ return_to }}">
+          {% call field('key-' ~ p.name, 'Access key for ' ~ (p.name|capitalize), help='Paste it here. It is kept in the secure password store on this computer and never shown again.') %}
+          <input id="key-{{ p.name }}" name="key" type="password" autocomplete="off" size="30" aria-describedby="key-{{ p.name }}-help">
+          {% endcall %}
+          <p><button type="submit" class="secondary">Save access key</button></p>
+        </form>
+        {% if p.key_set %}
+        <form method="post" action="/settings/key/forget" hx-post="/settings/key/forget" hx-confirm="Remove the saved {{ p.name|capitalize }} access key from this computer?">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <input type="hidden" name="provider" value="{{ p.name }}">
+          <input type="hidden" name="return_to" value="{{ return_to }}">
+          <button type="submit" class="danger">Forget</button>
+        </form>
+        {% endif %}
+        {% else %}
+        <p>Uses your AWS account{% if p.region %}, region {{ p.region }}{% endif %}.</p>
+        <form method="post" action="/settings/key" class="stack">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <input type="hidden" name="provider" value="bedrock">
+          <input type="hidden" name="return_to" value="{{ return_to }}">
+          {% call field('profile-bedrock', 'AWS profile name', help='Leave empty to use the default profile.') %}
+          <input id="profile-bedrock" name="profile" value="{{ p.profile or '' }}" maxlength="100" size="30" autocomplete="off" aria-describedby="profile-bedrock-help">
+          {% endcall %}
+          <p><button type="submit" class="secondary">Save profile</button></p>
+        </form>
+        {% endif %}
+        <form method="post" action="{{ use_action }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <input type="hidden" name="spec" value="{{ p.name }}:">
+          <button type="submit" class="secondary"{% if not p.model %} disabled{% endif %}>Use {{ p.name|capitalize }}</button>
+        </form>
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+</details>

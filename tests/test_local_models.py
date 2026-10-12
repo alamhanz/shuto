@@ -126,7 +126,7 @@ def test_disk_advice_no_fit_lists_volumes_and_apis():
     assert a.volumes[0].mount == "E:\\" and a.volumes[0].env_hint.startswith("setx")
     costs = [o.usd_per_image for o in a.api_options]
     assert costs == sorted(costs) and {o.provider for o in a.api_options} >= {"anthropic", "gemini"}
-    assert "OLLAMA_MODELS" in a.message
+    assert "another drive" in a.message
     assert a.to_dict()["api_options"][0]["text"].startswith("~$")
 
 

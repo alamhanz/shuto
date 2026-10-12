@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}shuto - help{% endblock %}
+{% block content %}
+<h1>Help</h1>
+
+<h2>What the words mean</h2>
+<dl class="facts">
+  <dt>Batch</dt><dd>{{ HELP.batch }}</dd>
+  <dt>Check</dt><dd>{{ HELP.check }}</dd>
+  <dt>Needs a look</dt><dd>{{ HELP.attention }}</dd>
+  <dt>Looks good</dt><dd>{{ HELP.good }}</dd>
+  <dt>Can't send as is</dt><dd>Something must change before this photo can go to Shutterstock, for example a brand name in the text.</dd>
+  <dt>Set aside</dt><dd>{{ HELP.aside }}</dd>
+  <dt>Sent before</dt><dd>shuto remembers photos you already uploaded and leaves them out, so you do not send the same photo twice.</dd>
+  <dt>Commercial</dt><dd>{{ HELP.commercial }}</dd>
+  <dt>Editorial</dt><dd>{{ HELP.editorial }}</dd>
+  <dt>Shutterstock info file (CSV)</dt><dd>{{ HELP.csv }}</dd>
+</dl>
+
+<h2>What happens to my photos</h2>
+<ul>
+  <li>Your original photos are only read. They are never changed or moved.</li>
+  <li>The AI runs on this computer by default, so your photos stay here. If you choose an online AI in Settings, the photos you check are sent to that company.</li>
+  <li>Photos are sent to Shutterstock only when you press the upload button and confirm.</li>
+  <li>You always press the final Submit on the Shutterstock website yourself.</li>
+</ul>
+
+<h2>If something goes wrong</h2>
+<h3>The AI helper is not running</h3>
+<p>Open Ollama from the Start menu (Windows) or Applications (Mac), leave it open, and try again. If it is not installed, see <a href="/settings#computer">Settings, This computer</a>.</p>
+<h3>There is not enough space</h3>
+<p>AI models are large downloads. Free up space on your drive, or pick a smaller model in <a href="/settings#model">Settings</a>. If another drive has more room, the "For helpers" box below shows how to move the model storage there.</p>
+<h3>The Shutterstock login failed</h3>
+<p>Open <a href="/settings#shutterstock">Settings</a>, save your email and password again, and press Test login.</p>
+<h3>The upload failed</h3>
+<p>Check your internet connection and press Try again. Photos that already went through are not sent twice.</p>
+<h3>The page says it could not find my folder</h3>
+<p>Use the Choose folder button on the <a href="/add">Add photos</a> page instead of typing the location.</p>
+
+<h2 id="for-helpers">Extra steps</h2>
+<details class="helpers" data-helpers>
+  <summary>For helpers</summary>
+  <p>To keep Ollama's models on another drive, set the <code>OLLAMA_MODELS</code> setting to a folder on that drive, then restart Ollama. Replace the example folder with your own.</p>
+  <dl class="facts">
+    <dt>Windows</dt><dd><code>setx OLLAMA_MODELS "D:\ollama\models"</code></dd>
+    <dt>Mac</dt><dd><code>launchctl setenv OLLAMA_MODELS "/Volumes/Photos/ollama/models"</code></dd>
+    <dt>Linux</dt><dd><code>systemctl edit ollama</code>, then add <code>Environment="OLLAMA_MODELS=/mnt/photos/ollama/models"</code></dd>
+  </dl>
+  <p>To save an online AI key from a terminal instead of Settings: <code>shuto secrets set ANTHROPIC_API_KEY</code> (or <code>GEMINI_API_KEY</code>).</p>
+</details>
+
+<h2>Keyboard shortcuts</h2>
+<p>On a single photo page:</p>
+<dl class="facts">
+  <dt><kbd>j</kbd></dt><dd>next photo</dd>
+  <dt><kbd>k</kbd></dt><dd>previous photo</dd>
+  <dt><kbd>a</kbd></dt><dd>approve this photo</dd>
+</dl>
+{% endblock %}

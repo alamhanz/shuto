@@ -1,8 +1,44 @@
-<div class="job {{ job.state }}" id="job-{{ job.id }}"{% if active %} hx-get="/jobs/{{ job.id }}" hx-trigger="every 1s" hx-swap="outerHTML"{% endif %}>
-  <strong>{{ job.kind }}</strong>: {{ job.state }}
-  {% if job.total %}<progress max="{{ job.total }}" value="{{ job.done }}"></progress> {{ job.done }}/{{ job.total }}{% elif active %}<progress></progress>{% endif %}
+{% from "_ui.html" import icon %}
+{%- set bid = (job.batch_id or '')|urlencode -%}
+{%- set titles = {
+  'import': 'Adding your photos', 'pull': 'Downloading the AI model',
+  'benchmark': 'Measuring speed', 'ftps_test': 'Testing the upload login',
+  'check': 'Checking your photos', 'deliver': 'Uploading your photos',
+  'cull': 'Checking photo quality', 'describe': 'Writing titles and keywords',
+  'prepare': 'Getting photos ready', 'upload': 'Uploading your photos',
+  'export': 'Making the Shutterstock info file'} -%}
+{%- set outside = ['import', 'pull', 'benchmark', 'ftps_test'] -%}
+{%- if job.kind in outside -%}
+  {%- set go = next_href|default({'import': '/', 'pull': '/settings', 'benchmark': '/settings', 'ftps_test': '/settings'}[job.kind]) -%}
+  {%- set again = {'import': '/add', 'pull': '/settings', 'benchmark': '/settings', 'ftps_test': '/settings'}[job.kind] -%}
+{%- else -%}
+  {%- set go = next_href|default('/batch/' ~ bid ~ ('/review' if job.kind == 'check' else '/submit' if job.kind == 'deliver' else '')) -%}
+  {%- set again = '/batch/' ~ bid ~ ('/check' if job.kind == 'check' else '/upload' if job.kind == 'deliver' else '') -%}
+{%- endif -%}
+<div class="progress {{ job.state }}" id="job-{{ job.id }}"{% if active %} hx-get="/jobs/{{ job.id }}" hx-trigger="every 1s" hx-swap="outerHTML"{% endif %}>
+  <div class="label">
+    {%- if job.state == 'done' %}{{ icon('check') }}{% elif job.state == 'failed' %}{{ icon('alert') }}{% elif job.state == 'cancelled' %}{{ icon('stop') }}{% else %}<span class="spin">{{ icon('spinner') }}</span>{% endif %}
+    <span{% if not active %} role="status"{% endif %}>{{ titles.get(job.kind, 'Working') }}{% if job.state == 'done' %}: done{% elif job.state == 'cancelled' %}: stopped{% elif job.state == 'failed' %}: did not finish{% endif %}</span>
+  </div>
+  {% if job.total %}<progress max="{{ job.total }}" value="{{ job.done }}" aria-label="{{ titles.get(job.kind, 'Working') }}">{{ job.done }} of {{ job.total }}</progress>
+  <p class="hint">{{ job.done }} of {{ job.total }}</p>
+  {%- elif active %}<progress aria-label="{{ titles.get(job.kind, 'Working') }}"></progress>{% endif %}
   {% if job.state == 'done' and result %}<p>{{ result }}</p>{% endif %}
-  {% if job.state == 'failed' %}<p class="bad">{{ job.error }}</p>{% endif %}
-  {% if job.state == 'cancelled' %}<p>Cancelled.</p>{% endif %}
-  {% if not active %}<p><a href="">Reload the page</a> to see the new state.</p>{% endif %}
+  {% if job.state == 'failed' %}{% set f = friendly(job.error, job.kind) %}
+  <p class="bad"><strong>{{ f.what }}</strong></p>
+  <p>{{ f.todo }}</p>
+  <p><a class="btn secondary" href="{{ again }}">Try again</a></p>
+  {% endif %}
+  {% if job.state == 'cancelled' %}<p>You stopped this. Nothing was lost.</p>{% endif %}
+  {% if active %}
+  <p><button type="button" class="secondary" hx-post="/jobs/{{ job.id }}/cancel" hx-target="closest .progress" hx-swap="outerHTML">Cancel</button></p>
+  {% elif job.state == 'done' %}
+    {% if job.kind == 'import' and batches %}
+    <ul class="open-batches">
+      {% for name, n in batches %}<li>{{ name }} ({{ n }} photos) <a class="btn primary" href="/batch/{{ name|urlencode }}">Open batch</a></li>{% endfor %}
+    </ul>
+    {% else %}
+    <p class="next-action"><a class="btn primary" href="{{ go }}">Continue {{ icon('arrow') }}</a></p>
+    {% endif %}
+  {% endif %}
 </div>

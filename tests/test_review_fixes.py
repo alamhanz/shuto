@@ -103,9 +103,10 @@ def test_legacy_unsafe_batch_id_is_url_encoded_in_web(cfg, store):
         app.state.web.store.upsert_batch("trip #2", notes="")
         client = TestClient(app, base_url=BASE)
         assert 'href="/batch/trip%20%232"' in client.get("/").text
-        page = client.get("/batch/trip%20%232")
-        assert page.status_code == 200
-        assert "/batch/trip%20%232/cull" in page.text and "/batch/trip #2" not in page.text
+        page = client.get("/batch/trip%20%232", follow_redirects=False)
+        assert page.status_code == 303 and "trip%20%232" in page.headers["location"]
+        page = client.get("/batch/trip%20%232/review")
+        assert page.status_code == 200 and "/batch/trip #2" not in page.text
     finally:
         app.state.web.runner.shutdown()
 

@@ -1,0 +1,14 @@
+{% from "_ui.html" import chip, icon %}
+<h1>You are all set</h1>
+<ul class="stack">
+  <li>AI helper: {% if ollama.running %}{{ chip('ok', 'running') }}{% else %}{{ chip('neutral', 'not running') }}{% endif %}</li>
+  <li>AI model: {% if model_name %}{{ chip('ok', model_name) }}{% else %}{{ chip('neutral', 'not chosen yet') }}{% endif %}</li>
+  <li>Shutterstock login: {% if login.user_set and login.password_set %}{{ chip('ok', 'saved') }}{% else %}{{ chip('neutral', 'not saved') }}{% endif %}</li>
+</ul>
+<p>Anything skipped can be done later in Settings.</p>
+<form method="post" action="/welcome/6" class="row">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <button type="submit" name="then" value="add" class="btn primary">Add your first photos {{ icon('arrow') }}</button>
+  <button type="submit" name="then" value="home" class="secondary">Go to my batches</button>
+</form>
+<p><a href="/welcome?step=5">Back</a></p>

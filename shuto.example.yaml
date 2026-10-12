@@ -26,14 +26,15 @@ llm:
   ollama: {url: "http://127.0.0.1:11434", keep_alive: 10m}
   bedrock: {region: null, profile: null}
 style:
-  theme: "Everyday Japan"
+  theme: ""                        # for example "Street food", "Mountain trails", "Everyday Japan"
+  region_focus: ""                 # "" (none) or "japan": romaji place names, Japan-first rules and shuto's own Japan rules
   tone: "documentary, warm, factual; no hype words"
   language: en
   keywords:
     min: 25
     max: 50
-    always_include: [japan]
-    romaji_place_names: true
+    always_include: []             # for example [japan] for an Everyday Japan portfolio
+    romaji_place_names: false      # true adds "use romaji for Japanese place names"
     seasonal_terms: true
   avoid: [beautiful, amazing, stunning]
   extra_instructions: ""

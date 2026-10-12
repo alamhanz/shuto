@@ -25,7 +25,10 @@ def test_defaults_when_no_file():
 
 def test_example_config_loads():
     cfg = load_config(EXAMPLE)
-    assert cfg.style.theme == "Everyday Japan"
+    assert cfg.style.theme == ""
+    assert cfg.style.region_focus == ""
+    assert cfg.style.keywords.always_include == []
+    assert cfg.style.keywords.romaji_place_names is False
     assert cfg.import_.near_duplicate_distance == 6
     assert cfg.sources[0].recursive is True
     assert "~" not in str(cfg.sources[0].path)

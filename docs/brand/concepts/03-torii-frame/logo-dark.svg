@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 264 96" width="264" height="96" role="img" aria-label="shuto">
+<title>shuto</title>
+<svg x="8" y="8" width="80" height="80" viewBox="0 0 128 128"><rect width="128" height="128" rx="28" fill="#FFFFFF"/><path d="M88 110H110V88 M40 110H18V88 M88 18H110V40 M40 18H18V40 " fill="none" stroke="#3C6E71" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/><path d="M30 40Q64 50 98 40V50Q64 60 30 50Z" fill="#284B63"/><rect x="38" y="60" width="52" height="8" fill="#284B63"/><rect x="42" y="50" width="9" height="46" fill="#284B63"/><rect x="77" y="50" width="9" height="46" fill="#284B63"/></svg>
+<text x="104" y="66" textLength="136" lengthAdjust="spacingAndGlyphs" font-family="Inter, system-ui, sans-serif" font-size="52" font-weight="700" fill="#FFFFFF">shuto</text>
+</svg>

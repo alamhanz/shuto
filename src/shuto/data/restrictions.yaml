@@ -109,6 +109,7 @@ rules:
   - {id: capitol-complex-chandigarh, name: Capitol Complex, aliases: [Chandigarh Capitol Complex], level: prohibited, category: architecture, region: asia, note: "Chandigarh, India (Le Corbusier)."}
 
   # ---- Everyday Japan: shuto's own rules (not on Shutterstock's list) ----
+  # Applied only when the "Region focus" setting is Japan (ids start with "shuto-").
   - {id: shuto-konbini, name: Konbini, aliases: [convenience store, 7-Eleven, FamilyMart, Lawson, Seven Eleven], level: restricted, category: trademark, region: japan, note: "Konbini brand names and signs: editorial, or crop out."}
   - {id: shuto-vending-machine, name: Vending machine, aliases: [vending machines, jihanki], level: restricted, category: trademark, region: japan, note: "Drink brands on vending machines: editorial, or crop out."}
   - {id: shuto-packaging, name: Branded packaging, aliases: [drink packaging, snack packaging, product packaging], level: restricted, category: trademark, region: japan, note: "Drink and snack packaging with brands."}

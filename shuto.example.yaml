@@ -1,0 +1,58 @@
+# Copy to shuto.yaml (gitignored). Secrets never go here: use env vars, .env or the OS keyring.
+# SHUTO_FTPS_USER, SHUTO_FTPS_PASSWORD, ANTHROPIC_API_KEY, GEMINI_API_KEY
+# Bedrock uses the normal AWS profile chain.
+workspace: null                    # null = per-user data dir (platformdirs)
+sources:
+  - {path: ~/Pictures/exports, recursive: true}
+import:
+  batch_by: iso_week
+  near_duplicate_distance: 6
+  extensions: [.jpg, .jpeg, .heic, .png]
+cull:
+  min_megapixels: 4.0
+  min_sharpness: 80.0
+  mean_luma_range: [35, 220]
+  max_clipped_shadows_pct: 8.0
+  max_clipped_highlights_pct: 5.0
+llm:
+  provider: ollama                 # ollama | anthropic | gemini | bedrock | fake
+  model: auto                      # auto = the model you chose with `shuto models use` / Settings (never picked for you)
+  image_max_side: null             # null = per-provider default (local 1024, API 1568)
+  concurrency: null                # null = 1 for ollama, 4 for APIs
+  max_tokens: 1500
+  temperature: 0.2
+  json_retries: 1
+  timeout_s: 300
+  ollama: {url: "http://127.0.0.1:11434", keep_alive: 10m}
+  bedrock: {region: null, profile: null}
+style:
+  theme: "Everyday Japan"
+  tone: "documentary, warm, factual; no hype words"
+  language: en
+  keywords:
+    min: 25
+    max: 50
+    always_include: [japan]
+    romaji_place_names: true
+    seasonal_terms: true
+  avoid: [beautiful, amazing, stunning]
+  extra_instructions: ""
+restrictions:
+  builtin: true
+  extra_files: []
+  disabled_rules: []
+review:
+  auto_approve_clean: false
+prepare:
+  filename_pattern: "{date:%Y%m%d}-{slug}-{n:03d}"
+  slug_words: 5
+  jpeg_quality: 95
+releases:
+  dir: null
+deliver:
+  ftps_host: ftps.shutterstock.com
+  upload_enabled: false
+web:
+  host: 127.0.0.1
+  port: 8765
+  open_browser: true

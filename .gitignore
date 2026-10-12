@@ -7,19 +7,25 @@ venv/
 .ruff_cache/
 *.egg-info/
 
-# CDK
-cdk.out/
-
 # Local data / secrets
 .env
 *.env
+.env*
+!shuto.example.yaml
+shuto.yaml
+shuto-data/
+*.db
 photos/
 *.jpg
 *.jpeg
 !tests/fixtures/*.jpg
+!src/shuto/data/*.jpg
 
 # OS / editors
 .DS_Store
 Thumbs.db
 .vscode/
 .idea/
+
+# guyb
+.claude/

@@ -1,17 +1,49 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "shuto"
 version = "0.1.0"
-description = "Weekly photo batches -> AI metadata (Bedrock) -> Shutterstock"
+description = "Local-first pipeline for Shutterstock contributors"
+readme = "README.md"
 requires-python = ">=3.12"
+license = "MIT"
+authors = [{ name = "Alamsyah Hanza" }]
+dependencies = [
+  "pillow>=11",
+  "pyyaml>=6",
+  "pydantic>=2.7",
+  "fastapi>=0.115",
+  "uvicorn>=0.30",
+  "jinja2>=3.1",
+  "python-multipart",
+  "platformdirs>=4",
+]
+
+[project.optional-dependencies]
+anthropic = ["anthropic"]
+gemini = ["google-genai"]
+bedrock = ["boto3"]
+keyring = ["keyring"]
+heic = ["pillow-heif"]
+all = ["anthropic", "google-genai", "boto3", "keyring", "pillow-heif"]
+dev = ["pytest>=8", "ruff>=0.6", "httpx"]
+
+[project.scripts]
+shuto = "shuto.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/shuto"]
+include = ["src/shuto/data/*", "src/shuto/web/templates/**", "src/shuto/web/static/**"]
 
 [tool.pytest.ini_options]
-pythonpath = ["src", "."]
+pythonpath = ["src"]
 testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-extend-exclude = ["cdk.out"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]

@@ -7,7 +7,6 @@ Mark: a hanko (seal) - a white square stamp with a stylised "shu" glyph on a rou
 | `icon.svg` | Square app icon (128x128), favicon, avatars. |
 | `logo-light.svg` | Icon + wordmark for light backgrounds (README, docs). |
 | `logo-dark.svg` | Icon + wordmark for dark backgrounds. |
-| `concepts/` | Explored alternatives, not used. |
 
 Colours: navy `#284B63` (primary mark), teal `#3C6E71` (accent), charcoal `#353535` (wordmark on light), white `#FFFFFF`, grey `#D9D9D9`.
 

@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}shuto - {{ batch.id }}{% endblock %}
+{% block content %}
+<h1>Batch {{ batch.id }}</h1>
+{% if batch.notes %}<p>{{ batch.notes }}</p>{% endif %}
+<p>
+  <a href="/batch/{{ batch.id|urlencode }}"{% if not filter %} class="current"{% endif %}>all {{ total }}</a>
+  {% for s in statuses %}{% if counts.get(s) %}
+  <a href="/batch/{{ batch.id|urlencode }}?status={{ s }}" class="badge s-{{ s }}{% if filter == s %} current{% endif %}">{{ s }} {{ counts[s] }}</a>
+  {% endif %}{% endfor %}
+</p>
+{% include "_help.html" %}
+
+<section class="actions">
+  <h2>Steps</h2>
+  <div class="step">
+    <form hx-post="/batch/{{ batch.id|urlencode }}/cull" hx-target="#job-area" hx-swap="innerHTML">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <button type="submit"{% if not counts.get('imported') %} disabled{% endif %}>1. Cull ({{ counts.get('imported', 0) }} new)</button>
+    </form>
+    <span class="snip">Checks size, sharpness and exposure. Rejected photos never reach the AI.</span>
+  </div>
+  <div class="step">
+    <form hx-post="/batch/{{ batch.id|urlencode }}/describe" hx-target="#job-area" hx-swap="innerHTML"
+          {% if estimate_text %}hx-confirm="Describe {{ ready }} photo(s)? Estimate: {{ estimate_text }}"{% endif %}>
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <button type="submit"{% if not ready or estimate_problem or problems %} disabled{% endif %}>2. Describe ({{ ready }} ready)</button>
+    </form>
+    <span class="estimate">
+      {% if estimate_text %}Estimate: <strong>{{ estimate_text }}</strong> using {{ selection }}.{% endif %}
+      {% if estimate_problem %}<span class="bad">{{ estimate_problem }} <a href="/settings">Settings</a></span>{% endif %}
+      {% for p in problems %}<span class="bad">{{ p }}</span>{% endfor %}
+      {% if not ready %}Nothing is ready to describe yet.{% endif %}
+    </span>
+  </div>
+  <div class="step"><span>3. Review and approve below (open a photo to edit).</span></div>
+  <div class="step">
+    <form hx-post="/batch/{{ batch.id|urlencode }}/prepare" hx-target="#job-area" hx-swap="innerHTML">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <button type="submit"{% if not counts.get('approved') %} disabled{% endif %}>4. Prepare ({{ counts.get('approved', 0) }} approved)</button>
+    </form>
+    <span class="snip">Makes safe file names and embeds the title/keywords in copies.</span>
+  </div>
+  <div class="step">
+    <form hx-post="/batch/{{ batch.id|urlencode }}/upload" hx-target="#job-area" hx-swap="innerHTML"
+          hx-confirm="Upload {{ counts.get('prepared', 0) }} prepared photo(s) to Shutterstock over FTPS now?">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <label><input type="checkbox" name="confirm" value="yes"> Yes, upload to Shutterstock</label>
+      <button type="submit"{% if not counts.get('prepared') %} disabled{% endif %}>5. Upload ({{ counts.get('prepared', 0) }} prepared)</button>
+    </form>
+    <span class="snip">Needs FTPS login in your env/.env/keyring (never in the config).</span>
+  </div>
+  <div class="step">
+    <form hx-post="/batch/{{ batch.id|urlencode }}/export" hx-target="#job-area" hx-swap="innerHTML">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <button type="submit"{% if not (counts.get('uploaded') or counts.get('exported')) %} disabled{% endif %}>6. Export CSV</button>
+    </form>
+    {% for f in export_files %}<a href="/batch/{{ batch.id|urlencode }}/exports/{{ f|urlencode }}">{{ f }}</a> {% endfor %}
+  </div>
+  <p class="hint"><strong>Next:</strong> upload the CSV and press Submit on
+  <a href="https://submit.shutterstock.com" rel="noopener noreferrer" target="_blank">submit.shutterstock.com</a>.
+  shuto never submits for you. Afterwards:</p>
+  <form method="post" action="/batch/{{ batch.id|urlencode }}/submitted">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <button type="submit"{% if not counts.get('exported') %} disabled{% endif %}>I submitted this batch</button>
+  </form>
+  <div id="job-area">{% if job %}{% with active=job_active, result=None %}{% include "_job.html" %}{% endwith %}{% endif %}</div>
+  {% if usage.calls %}<p class="snip">AI usage so far: {{ usage.calls }} calls, {{ usage.input_tokens }} in / {{ usage.output_tokens }} out tokens.</p>{% endif %}
+</section>
+
+<h2>Photos{% if filter %} ({{ filter }}){% endif %}</h2>
+<form id="bulk-form" method="post" action="/batch/{{ batch.id|urlencode }}/bulk" class="bulk">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <button name="action" value="approve">Approve selected</button>
+  <button name="action" value="approve_all">Approve all clean (described)</button>
+  <button name="action" value="ready" title="Culled, duplicate or described photos: send back to be (re)described">Mark selected ready to describe</button>
+</form>
+<div class="grid">
+{% for c in cards %}{% include "_photo_card.html" %}{% else %}<p>No photos here.</p>{% endfor %}
+</div>
+{% endblock %}

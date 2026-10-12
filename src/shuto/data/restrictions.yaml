@@ -1,0 +1,267 @@
+# Shutterstock restrictions for shuto's guardrails.
+# Machine-readable copy of docs/shutterstock-restrictions.md - keep both in sync.
+# Lists are non-exhaustive; Shutterstock reviews case by case. Re-check the sources every few months.
+#
+# Rule fields: id, name, aliases (default []), level, category, region (default global),
+# condition (default null; a rule with a condition sends the photo to review instead of acting
+# on the level, because shuto cannot verify it), note (default "").
+version: 1
+compiled: 2026-10-12
+source_doc: docs/shutterstock-restrictions.md
+source_page_date: 2026-03-25
+
+# restricted: commercial rejected, editorial OK -> force editorial
+# prohibited: rejected everywhere -> block
+# no_upload:  Shutterstock's own editorial team covers it -> block
+levels:
+  restricted: force_editorial
+  prohibited: block
+  no_upload: block
+
+# Brand and trademarked names. Never allowed in titles or keywords (commercial or editorial);
+# shuto strips them from keywords and flags them in the description.
+trademark_terms:
+  - 7-Eleven
+  - Seven Eleven
+  - FamilyMart
+  - Lawson
+  - Kikkoman
+  - Pokemon
+  - Pikachu
+  - Gotta Catch 'Em All
+  - Tachikara
+  - Space Invaders
+  - Lego
+  - Rubik's Cube
+  - Coca-Cola
+  - Coca Cola
+  - Crocs
+  - Volkswagen
+  - Polaroid
+  - Lindt
+  - Chanel
+  - Christian Louboutin
+  - Louis Vuitton
+  - NBA
+  - WNBA
+  - G League
+  - Little League
+  - Pink Lady
+  - Smileyworld
+  - World Surf League
+  - Hello Kitty
+  - Sanrio
+  - Disney
+  - Nintendo
+  - Suica
+  - Pasmo
+  - Tokyo Metro
+  - Starbucks
+  - McDonald's
+  - Uniqlo
+  - Pocari Sweat
+  - Asahi
+  - Kirin
+  - Sapporo
+  - Suntory
+  - Calpis
+  - Yakult
+  - Nike
+  - Adidas
+
+rules:
+  # General rules (people without release, logos, short titles, caption format) are code-level
+  # checks in guardrails.py, not listed here.
+
+  # ---- Japan and Asia (Shutterstock list) ----
+  - {id: tokyo-skytree, name: Tokyo Skytree, aliases: [Skytree, Tokyo Sky Tree], level: restricted, category: architecture, region: japan, note: "Sumida, Tokyo."}
+  - {id: ice-village-hokkaido, name: Ice Village, aliases: [Hokkaido Ice Village, Ice Village Hokkaido], level: restricted, category: architecture, region: japan, note: "Hokkaido."}
+  - {id: national-museum-western-art, name: National Museum of Western Art, aliases: [Le Corbusier Ueno], level: prohibited, category: architecture, region: japan, note: "Ueno, Tokyo (Le Corbusier)."}
+  - {id: shinkansen, name: Shinkansen, aliases: [bullet train], level: restricted, category: trade_dress, region: japan, note: "Bullet train design is trade dress."}
+  - {id: kikkoman-bottle, name: Kikkoman bottle, aliases: [Kikkoman bottles, Kikkoman soy sauce bottle], level: restricted, category: trade_dress, region: japan}
+  - {id: tachikara-volleyball, name: Tachikara volleyball, aliases: [Tachikara volleyballs], level: restricted, category: trade_dress, region: japan}
+  - {id: pokemon-slogan, name: Gotta Catch 'Em All, aliases: [Pokemon slogan], level: restricted, category: trademark, region: japan}
+  - {id: olympic-mascots, name: Olympic mascots, aliases: [Paralympic mascots, Olympic torch, Paralympic torch, Olympic medal, Olympic award], level: restricted, category: copyright, region: japan, note: "Olympic/Paralympic mascots, torches, awards."}
+  - {id: space-invaders, name: Space Invaders, aliases: [Space Invaders characters], level: prohibited, category: copyright, region: japan}
+  - {id: postcards, name: Postcards, aliases: [postcard], level: prohibited, category: copyright, note: "Front and back of postcards."}
+  - {id: lego-minifigure, name: Lego minifigure, aliases: [Lego minifigures, Lego], level: restricted, category: trade_dress}
+  - {id: rubiks-cube, name: Rubik's Cube, aliases: [Rubiks Cube], level: restricted, category: trade_dress}
+  - {id: coca-cola-contour-bottle, name: Coca-Cola contour bottle, aliases: [Coca Cola bottle, Coca-Cola bottle], level: restricted, category: trade_dress}
+  - {id: crocs, name: Crocs, aliases: [Crocs shoes], level: restricted, category: trade_dress}
+  - {id: volkswagen-beetle-camper, name: Volkswagen Beetle, aliases: [VW Beetle, Volkswagen Camper Van, VW Camper Van, Volkswagen Type 2], level: restricted, category: trade_dress, note: "Beetle and Camper Van."}
+  - {id: polaroid, name: Polaroid, aliases: [Polaroid camera, Polaroid film, instant film border], level: prohibited, category: trade_dress, note: "Cameras and instant film border."}
+  - {id: lindt-bunny, name: Lindt chocolate bunny, aliases: [Lindt bunny, Lindt bunnies, Lindt], level: prohibited, category: trade_dress}
+  - {id: n-seoul-tower, name: N Seoul Tower, aliases: [Namsan Tower, Seoul Tower], level: restricted, category: architecture, region: asia, note: "Seoul."}
+  - {id: taipei-101, name: Taipei 101, aliases: [Taipei101], level: restricted, category: architecture, region: asia, note: "Taipei."}
+  - {id: petronas-towers, name: Petronas Twin Towers, aliases: [Petronas Towers, Petronas], level: restricted, category: architecture, region: asia, note: "Kuala Lumpur."}
+  - {id: canton-tower, name: Canton Tower, aliases: [Guangzhou TV Tower], level: restricted, category: architecture, region: asia, note: "China."}
+  - {id: birds-nest, name: Bird's Nest, aliases: [Beijing National Stadium, Birds Nest stadium], level: restricted, category: architecture, region: asia, note: "China."}
+  - {id: ncpa, name: National Centre for the Performing Arts, aliases: [NCPA, Beijing National Centre for the Performing Arts], level: restricted, category: architecture, region: asia, note: "China (NCPA)."}
+  - {id: burj-khalifa, name: Burj Khalifa, level: restricted, category: architecture, region: middle_east}
+  - {id: burj-al-arab, name: Burj Al Arab, level: restricted, category: architecture, region: middle_east}
+  - {id: louvre-abu-dhabi, name: Louvre Abu Dhabi, level: restricted, category: architecture, region: middle_east}
+  - {id: bahrain-wtc, name: Bahrain World Trade Center, aliases: [Bahrain WTC], level: restricted, category: architecture, region: middle_east}
+  - {id: merlion, name: Merlion, aliases: [Merlion statue], level: restricted, category: artwork, region: asia, note: "Singapore."}
+  - {id: bruce-lee-statue, name: Bruce Lee statue, aliases: [Bruce Lee statue Hong Kong], level: restricted, category: artwork, region: asia, note: "Hong Kong."}
+  - {id: terracotta-army, name: Terracotta Army, aliases: [Terracotta Warriors], level: restricted, category: artwork, region: asia}
+  - {id: singapore-zoo, name: Singapore Zoo, aliases: [Night Safari, River Safari, Jurong Bird Park], level: prohibited, category: private_land, region: asia, note: "Incl. Night Safari, River Safari, Jurong Bird Park."}
+  - {id: singapore-macau-stamps, name: Singapore and Macau postage stamps, aliases: [Singapore postage stamp, Macau postage stamp, Singapore stamps, Macau stamps], level: prohibited, category: artwork, region: asia}
+  - {id: capitol-complex-chandigarh, name: Capitol Complex, aliases: [Chandigarh Capitol Complex], level: prohibited, category: architecture, region: asia, note: "Chandigarh, India (Le Corbusier)."}
+
+  # ---- Everyday Japan: shuto's own rules (not on Shutterstock's list) ----
+  - {id: shuto-konbini, name: Konbini, aliases: [convenience store, 7-Eleven, FamilyMart, Lawson, Seven Eleven], level: restricted, category: trademark, region: japan, note: "Konbini brand names and signs: editorial, or crop out."}
+  - {id: shuto-vending-machine, name: Vending machine, aliases: [vending machines, jihanki], level: restricted, category: trademark, region: japan, note: "Drink brands on vending machines: editorial, or crop out."}
+  - {id: shuto-packaging, name: Branded packaging, aliases: [drink packaging, snack packaging, product packaging], level: restricted, category: trademark, region: japan, note: "Drink and snack packaging with brands."}
+  - {id: shuto-shop-signs, name: Shop signs, aliases: [shop sign, noren, store sign, signboard], level: restricted, category: trademark, region: japan, note: "Shop signs and noren with names."}
+  - {id: shuto-railway-logos, name: Railway company logos and liveries, aliases: [JR East, JR logo, Tokyo Metro, railway livery, train livery, station sign, station name sign], level: restricted, category: trademark, region: japan, note: "Train company logos, liveries and station name signs. The Shinkansen is restricted outright."}
+  - {id: shuto-anime-characters, name: Anime and game characters, aliases: [anime character, manga character, game character, character poster, anime poster, manga poster, anime billboard], level: restricted, category: copyright, region: japan, note: "Editorial at best. Prohibited if the character is on the prohibited list."}
+  - {id: shuto-no-photography-sites, name: Photography-restricted sites, aliases: [temple interior, shrine interior], level: prohibited, category: private_land, region: japan, condition: "check the site's photography rules; never upload photos taken where photography is forbidden", note: "Temple and shrine interiors, and grounds that forbid photography."}
+  - {id: shuto-drone, name: Drone shot, aliases: [drone, aerial drone, drone footage], level: prohibited, category: other, region: japan, condition: "Japan requires MLIT permits for drones in urban areas", note: "Confirm the permit."}
+
+  # ---- Prohibited elsewhere: architecture ----
+  - {id: arsenal-library, name: Arsenal Library, level: prohibited, category: architecture}
+  - {id: bayreuth-eremitage, name: Bayreuth Eremitage, aliases: [Bayreuth Hermitage], level: prohibited, category: architecture}
+  - {id: biltmore-estate, name: Biltmore Estate, level: prohibited, category: architecture}
+  - {id: blenheim-palace, name: Blenheim Palace, level: prohibited, category: architecture}
+  - {id: busch-gardens, name: Busch Gardens, level: prohibited, category: architecture}
+  - {id: casa-batllo, name: Casa Batllo, level: prohibited, category: architecture}
+  - {id: casa-mila, name: Casa Mila, aliases: [La Pedrera], level: prohibited, category: architecture}
+  - {id: castel-meur, name: Castel Meur, level: prohibited, category: architecture}
+  - {id: charles-de-gaulle-airport, name: Charles de Gaulle Airport, aliases: [Roissy airport, CDG airport], level: prohibited, category: architecture}
+  - {id: chateau-de-chenonceau, name: Chateau de Chenonceau, aliases: [Chenonceau], level: prohibited, category: architecture}
+  - {id: chateau-de-vauvenargues, name: Chateau de Vauvenargues, level: prohibited, category: architecture}
+  - {id: vaux-le-vicomte, name: Vaux-le-Vicomte, aliases: [Vaux le Vicomte], level: prohibited, category: architecture}
+  - {id: chatsworth-house, name: Chatsworth House, level: prohibited, category: architecture}
+  - {id: chillon-castle, name: Chillon Castle, aliases: [Chateau de Chillon], level: prohibited, category: architecture}
+  - {id: city-of-arts-and-sciences, name: City of Arts and Sciences, aliases: [Ciudad de las Artes y las Ciencias], level: prohibited, category: architecture, note: "Valencia."}
+  - {id: cite-du-vin, name: Cite du Vin, level: prohibited, category: architecture}
+  - {id: cutty-sark, name: Cutty Sark, level: prohibited, category: architecture}
+  - {id: disney-resort-buildings, name: Disney resort and park buildings, aliases: [Disneyland, Disney World, Walt Disney World, Disney castle, Tokyo Disney Resort, Tokyo Disneyland, Tokyo DisneySea], level: prohibited, category: architecture}
+  - {id: eiffel-tower-night, name: Eiffel Tower at night, aliases: [Eiffel Tower, Tour Eiffel], level: prohibited, category: architecture, condition: "only the Eiffel Tower at night is prohibited; the daytime tower is fine", note: "Night illumination is protected."}
+  - {id: fnb-stadium, name: FNB Stadium, aliases: [Soccer City], level: prohibited, category: architecture}
+  - {id: francois-mitterrand-library, name: Francois-Mitterrand Library, aliases: [Bibliotheque nationale de France], level: prohibited, category: architecture}
+  - {id: graceland, name: Graceland, level: prohibited, category: architecture}
+  - {id: guggenheim-bilbao, name: Guggenheim Bilbao, aliases: [Guggenheim Museum Bilbao], level: prohibited, category: architecture}
+  - {id: guggenheim-nyc, name: Guggenheim New York, aliases: [Guggenheim NYC, Guggenheim Museum New York], level: prohibited, category: architecture}
+  - {id: herrenchiemsee, name: Herrenchiemsee, level: prohibited, category: architecture}
+  - {id: ile-de-re-bridge, name: Ile de Re Bridge, level: prohibited, category: architecture}
+  - {id: chaban-delmas-bridge, name: Chaban-Delmas Bridge, aliases: [Pont Chaban-Delmas], level: prohibited, category: architecture}
+  - {id: jean-vilar-library, name: Jean-Vilar Library, level: prohibited, category: architecture}
+  - {id: st-pierre-avignon, name: St-Pierre Avignon, aliases: [Saint-Pierre Avignon], level: prohibited, category: architecture}
+  - {id: notre-dame-du-haut, name: Notre Dame du Haut, aliases: [Ronchamp chapel], level: prohibited, category: architecture, note: "Le Corbusier."}
+  - {id: cite-radieuse, name: Cite Radieuse, level: prohibited, category: architecture, note: "Le Corbusier."}
+  - {id: grande-arche, name: Grande Arche, aliases: [Grande Arche de la Defense], level: prohibited, category: architecture}
+  - {id: curutchet-house, name: Curutchet House, level: prohibited, category: architecture, note: "Le Corbusier."}
+  - {id: maison-guiette, name: Maison Guiette, level: prohibited, category: architecture, note: "Le Corbusier."}
+  - {id: villa-le-lac, name: Villa Le Lac, level: prohibited, category: architecture, note: "Le Corbusier."}
+  - {id: villa-jeanneret-perret, name: Villa Jeanneret-Perret, level: prohibited, category: architecture, note: "Le Corbusier."}
+  - {id: villa-savoye, name: Villa Savoye, level: prohibited, category: architecture, note: "Le Corbusier."}
+  - {id: centrosoyuz, name: Centrosoyuz, level: prohibited, category: architecture, note: "Le Corbusier."}
+  - {id: sainte-marie-de-la-tourette, name: Sainte Marie de la Tourette, aliases: [La Tourette], level: prohibited, category: architecture, note: "Le Corbusier."}
+  - {id: pavillon-le-corbusier, name: Pavillon Le Corbusier, level: prohibited, category: architecture, note: "Le Corbusier."}
+  - {id: weissenhof-houses, name: Weissenhof houses, aliases: [Weissenhof Estate], level: prohibited, category: architecture, note: "Le Corbusier."}
+  - {id: linderhof, name: Linderhof, aliases: [Linderhof Palace], level: prohibited, category: architecture}
+  - {id: louise-weiss-building, name: Louise Weiss Building, level: prohibited, category: architecture}
+  - {id: louvre-museum, name: Louvre Museum, aliases: [Louvre, Louvre Pyramid, Musee du Louvre], level: prohibited, category: architecture, note: "Paris."}
+  - {id: lyon-saint-exupery-airport, name: Lyon-Saint Exupery Airport, aliases: [Lyon Saint-Exupery Airport], level: prohibited, category: architecture}
+  - {id: margravial-opera-house, name: Margravial Opera House, level: prohibited, category: architecture}
+  - {id: middleport-pottery, name: Middleport Pottery, level: prohibited, category: architecture}
+  - {id: millau-viaduct, name: Millau Viaduct, aliases: [Viaduc de Millau], level: prohibited, category: architecture}
+  - {id: mont-saint-michel-jetty-bridge, name: Mont Saint-Michel jetty bridge, aliases: [Mont Saint-Michel bridge], level: prohibited, category: architecture}
+  - {id: monticello, name: Monticello, level: prohibited, category: architecture}
+  - {id: moulin-rouge, name: Moulin Rouge, level: prohibited, category: architecture}
+  - {id: munich-residence, name: Munich Residence, aliases: [Residenz Munich, Munchner Residenz], level: prohibited, category: architecture}
+  - {id: mucem, name: MuCEM, level: prohibited, category: architecture}
+  - {id: national-maritime-museum, name: National Maritime Museum, level: prohibited, category: architecture}
+  - {id: national-trust-properties, name: National Trust properties, aliases: [National Trust], level: prohibited, category: architecture, note: "England, Wales and Northern Ireland."}
+  - {id: neuschwanstein, name: Neuschwanstein, aliases: [Neuschwanstein Castle], level: prohibited, category: architecture}
+  - {id: nuremberg-castle, name: Nuremberg Castle, aliases: [Kaiserburg Nuremberg], level: prohibited, category: architecture}
+  - {id: nymphenburg, name: Nymphenburg, aliases: [Nymphenburg Palace], level: prohibited, category: architecture}
+  - {id: opera-library-museum, name: Opera Library-Museum, aliases: [Bibliotheque-Musee de l'Opera], level: prohibited, category: architecture}
+  - {id: palace-of-europe, name: Palace of Europe, level: prohibited, category: architecture}
+  - {id: pompidou-center, name: Pompidou Center, aliases: [Centre Pompidou, Pompidou Centre], level: prohibited, category: architecture}
+  - {id: richelieu-louvois-library, name: Richelieu-Louvois Library, level: prohibited, category: architecture}
+  - {id: rio-botanical-garden, name: Rio Botanical Garden, aliases: [Jardim Botanico Rio], level: prohibited, category: architecture}
+  - {id: royal-observatory-greenwich, name: Royal Observatory Greenwich, level: prohibited, category: architecture}
+  - {id: sacre-coeur, name: Sacre-Coeur, aliases: [Sacre Coeur, Sacre-Coeur Basilica], level: prohibited, category: architecture}
+  - {id: shrine-of-remembrance, name: Shrine of Remembrance, level: prohibited, category: architecture, note: "Melbourne."}
+  - {id: sistine-chapel, name: Sistine Chapel, level: prohibited, category: architecture}
+  - {id: stanford-university, name: Stanford University, level: prohibited, category: architecture}
+  - {id: atomium, name: Atomium, level: prohibited, category: architecture, note: "Brussels."}
+  - {id: bellagio-centre, name: Bellagio Centre, aliases: [Bellagio Center], level: prohibited, category: architecture}
+  - {id: queens-house, name: Queen's House, aliases: [Queens House Greenwich], level: prohibited, category: architecture, note: "Greenwich."}
+  - {id: unite-d-habitation, name: Unite d'Habitation, aliases: [Unite d Habitation], level: prohibited, category: architecture, note: "Firminy, Berlin."}
+  - {id: walhalla, name: Walhalla, level: prohibited, category: architecture}
+  - {id: wrigley-building, name: Wrigley Building, level: prohibited, category: architecture}
+  - {id: wurzburg-residence, name: Wurzburg Residence, aliases: [Residenz Wurzburg], level: prohibited, category: architecture}
+
+  # ---- Prohibited elsewhere: private land ----
+  - {id: brompton-cemetery, name: Brompton Cemetery, level: prohibited, category: private_land}
+  - {id: burning-man, name: Burning Man, level: prohibited, category: private_land}
+  - {id: bushy-park, name: Bushy Park, level: prohibited, category: private_land}
+  - {id: englischer-garten, name: Englischer Garten, aliases: [English Garden Munich], level: prohibited, category: private_land}
+  - {id: greenwich-park, name: Greenwich Park, level: prohibited, category: private_land}
+  - {id: grosvenor-square, name: Grosvenor Square, level: prohibited, category: private_land}
+  - {id: hyde-park, name: Hyde Park, level: prohibited, category: private_land, note: "London."}
+  - {id: munich-hofgarten, name: Munich Hofgarten, aliases: [Hofgarten Munich], level: prohibited, category: private_land}
+  - {id: primrose-hill, name: Primrose Hill, level: prohibited, category: private_land}
+  - {id: richmond-park, name: Richmond Park, level: prohibited, category: private_land}
+  - {id: sovereign-hill, name: Sovereign Hill, level: prohibited, category: private_land}
+  - {id: st-jamess-park, name: St James's Park, aliases: [St Jamess Park, Saint James's Park], level: prohibited, category: private_land}
+  - {id: surf-ranch, name: Surf Ranch, aliases: [Kelly Slater Surf Ranch], level: prohibited, category: private_land}
+  - {id: the-green-park, name: The Green Park, aliases: [Green Park London], level: prohibited, category: private_land}
+  - {id: top-of-the-rock, name: Top of the Rock, level: prohibited, category: private_land}
+  - {id: victoria-tower-gardens, name: Victoria Tower Gardens, level: prohibited, category: private_land}
+
+  # ---- Prohibited elsewhere: trademarks and products ----
+  - {id: bounty, name: Bounty, aliases: [Bounty chocolate bar], level: prohibited, category: trademark}
+  - {id: chanel, name: Chanel, level: prohibited, category: trademark}
+  - {id: christian-louboutin, name: Christian Louboutin, aliases: [Louboutin, red soles, red sole shoes], level: prohibited, category: trademark, note: "Including red soles."}
+  - {id: louis-vuitton, name: Louis Vuitton, level: prohibited, category: trademark}
+  - {id: nba, name: NBA, aliases: [WNBA, G League, NBA logo, NBA mascot, NBA trophy], level: prohibited, category: trademark, note: "NBA/WNBA/G League logos, mascots, trophies."}
+  - {id: icc-cricket-world-cup, name: ICC Cricket World Cup, aliases: [Cricket World Cup], level: prohibited, category: trademark}
+  - {id: little-league, name: Little League, level: prohibited, category: trademark}
+  - {id: harvard-veritas-shield, name: Harvard Veritas shield, aliases: [Harvard shield, Harvard Veritas], level: prohibited, category: trademark}
+  - {id: pink-lady-apples, name: Pink Lady apples, aliases: [Pink Lady apple, Pink Lady], level: prohibited, category: trademark}
+  - {id: smileyworld-smiley, name: Smileyworld smiley, aliases: [Smileyworld], level: prohibited, category: trademark}
+  - {id: world-surf-league, name: World Surf League, aliases: [WSL], level: prohibited, category: trademark}
+  - {id: tgv-trains, name: TGV trains, aliases: [TGV], level: prohibited, category: trademark}
+  - {id: le-corbusier-furniture, name: Le Corbusier furniture, level: prohibited, category: trademark}
+  - {id: neocube, name: NeoCube, aliases: [Neo Cube], level: prohibited, category: trademark}
+  - {id: ordnance-survey-maps, name: UK Ordnance Survey maps, aliases: [Ordnance Survey map, Ordnance Survey maps, Ordnance Survey], level: prohibited, category: trademark}
+
+  # ---- Prohibited elsewhere: artwork ----
+  - {id: astor-place-cube, name: Astor Place Cube, aliases: [Alamo cube], level: prohibited, category: artwork}
+  - {id: szukalski-last-supper, name: Szukalski's Last Supper, aliases: [Szukalski Last Supper], level: prohibited, category: artwork}
+  - {id: crazy-horse-memorial, name: Crazy Horse Memorial, level: prohibited, category: artwork}
+  - {id: gzhel, name: Gzhel, level: prohibited, category: artwork}
+  - {id: khokhloma, name: Khokhloma, level: prohibited, category: artwork}
+  - {id: zhostovo, name: Zhostovo, aliases: [Zhostovo designs, Zhostovo trays], level: prohibited, category: artwork}
+  - {id: minneapolis-sculpture-garden, name: Minneapolis Sculpture Garden, level: prohibited, category: artwork}
+  - {id: miroir-d-eau, name: Miroir d'eau, aliases: [Miroir d eau, Bordeaux water mirror], level: prohibited, category: artwork, note: "Bordeaux."}
+  - {id: 9-11-memorial, name: 9/11 Memorial, aliases: [September 11 Memorial, National September 11 Memorial], level: prohibited, category: artwork}
+
+  # ---- Events not accepted (Shutterstock's editorial team covers them) ----
+  - {id: event-oscars, name: Oscars, aliases: [Academy Awards], level: no_upload, category: event}
+  - {id: event-golden-globes, name: Golden Globes, aliases: [Golden Globe Awards], level: no_upload, category: event}
+  - {id: event-grammys, name: Grammys, aliases: [Grammy Awards], level: no_upload, category: event}
+  - {id: event-emmys, name: Emmys, aliases: [Emmy Awards], level: no_upload, category: event}
+  - {id: event-tonys, name: Tonys, aliases: [Tony Awards], level: no_upload, category: event}
+  - {id: event-sag-awards, name: SAG Awards, aliases: [Screen Actors Guild Awards], level: no_upload, category: event}
+  - {id: event-cannes, name: Cannes Film Festival, aliases: [Cannes], level: no_upload, category: event}
+  - {id: event-venice, name: Venice Film Festival, aliases: [Venice International Film Festival], level: no_upload, category: event}
+  - {id: event-toronto, name: Toronto International Film Festival, aliases: [TIFF], level: no_upload, category: event}
+  - {id: event-sundance, name: Sundance Film Festival, aliases: [Sundance], level: no_upload, category: event}
+  - {id: event-ny-fashion-week, name: New York Fashion Week, aliases: [NYFW], level: no_upload, category: event}
+  - {id: event-london-fashion-week, name: London Fashion Week, level: no_upload, category: event}
+  - {id: event-milan-fashion-week, name: Milan Fashion Week, level: no_upload, category: event}
+  - {id: event-paris-fashion-week, name: Paris Fashion Week, level: no_upload, category: event}
+  - {id: event-us-open-tennis, name: US Open tennis, aliases: [US Open], level: no_upload, category: event}
+  - {id: event-wimbledon, name: Wimbledon, level: no_upload, category: event}
+  - {id: event-met-gala, name: Met Gala, level: no_upload, category: event}
+  - {id: event-fifa-world-cup, name: FIFA World Cup, level: no_upload, category: event}
+  - {id: event-us-music-awards, name: Major US music awards, aliases: [American Music Awards, Billboard Music Awards, MTV Video Music Awards, MTV VMAs], level: no_upload, category: event}
+  - {id: airshow-blue-angels, name: Blue Angels, level: prohibited, category: event, condition: "airshow teams need press credentials"}
+  - {id: airshow-thunderbirds, name: Thunderbirds, level: prohibited, category: event, condition: "airshow teams need press credentials"}
+  - {id: airshow-red-arrows, name: Red Arrows, level: prohibited, category: event, condition: "airshow teams need press credentials"}
+  - {id: airshow-snowbirds, name: Snowbirds, level: prohibited, category: event, condition: "airshow teams need press credentials"}

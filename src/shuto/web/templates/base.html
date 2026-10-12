@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="htmx-config" content='{"includeIndicatorStyles": false, "allowEval": false}'>
+<title>{% block title %}shuto{% endblock %}</title>
+<link rel="stylesheet" href="/static/shuto.css">
+<script src="/static/htmx.min.js" defer></script>
+<script src="/static/shuto.js" defer></script>
+</head>
+<body hx-headers='{"X-CSRF-Token": "{{ csrf }}"}'>
+<header class="top">
+  <a class="brand" href="/">shuto</a>
+  <nav><a href="/">Batches</a> <a href="/settings">Settings</a></nav>
+</header>
+<main>
+{% if notice %}<p class="flash ok" role="status">{{ notice }}</p>{% endif %}
+{% if error %}<p class="flash bad" role="alert">{{ error }}</p>{% endif %}
+{% block content %}{% endblock %}
+</main>
+<footer>Everything runs on this computer. The final Submit on Shutterstock is always done by you.</footer>
+</body>
+</html>

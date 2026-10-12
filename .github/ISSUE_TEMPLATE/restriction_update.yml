@@ -1,0 +1,43 @@
+name: Restriction update
+description: A Shutterstock rule is missing, wrong or changed
+labels: ["restrictions"]
+body:
+  - type: input
+    id: subject
+    attributes:
+      label: Subject
+      description: What the restriction is about.
+      placeholder: Recognizable landmarks, brand logos, tattoos
+    validations:
+      required: true
+  - type: input
+    id: location
+    attributes:
+      label: Location or scope
+      description: Country, venue or context where it applies, or "global".
+      placeholder: Japan, Tokyo Skytree interior, global
+    validations:
+      required: true
+  - type: dropdown
+    id: level
+    attributes:
+      label: Restriction level
+      options:
+        - Prohibited
+        - Needs release (model or property)
+        - Editorial only
+        - Allowed (currently flagged wrongly)
+    validations:
+      required: true
+  - type: input
+    id: source
+    attributes:
+      label: Shutterstock source URL
+      description: Link to the official Shutterstock page that states this.
+      placeholder: https://support.submit.shutterstock.com/...
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes

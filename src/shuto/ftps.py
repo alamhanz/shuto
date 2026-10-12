@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import ftplib
 import io
+from collections.abc import Callable, Iterable
+from pathlib import Path
 
 DEFAULT_HOST = "ftps.shutterstock.com"
 
@@ -45,7 +47,66 @@ def upload_file(
     try:
         ftp.storbinary(f"STOR {filename}", io.BytesIO(data))
     finally:
+        close(ftp)
+
+
+def close(ftp) -> None:
+    """Close politely, never raising."""
+    try:
+        ftp.quit()
+    except Exception:  # noqa: BLE001
         try:
-            ftp.quit()
-        except Exception:  # noqa: BLE001
             ftp.close()
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def _is_dropped(exc: BaseException) -> bool:
+    """Connection-level failures (worth a reconnect), as opposed to server refusals."""
+    if isinstance(exc, ftplib.error_perm):
+        return False
+    return isinstance(exc, (ftplib.error_temp, EOFError, OSError))
+
+
+def upload_many(
+    ftp,
+    items: Iterable[tuple[str, Path]],
+    on_result: Callable[[str, Exception | None], None],
+    reconnect: Callable[[], ftplib.FTP] | None = None,
+):
+    """Upload (remote_name, local_path) pairs; a failure never stops the batch.
+
+    on_result(remote_name, None) on success or on_result(remote_name, exc) on failure.
+    If the connection drops, `reconnect` is called once for that file and the file is retried.
+    Returns the connection in use at the end (it may differ from `ftp`); the caller closes it.
+    """
+    broken = False
+    for name, path in items:
+        if broken:
+            on_result(name, ConnectionError("FTPS connection lost and could not be re-established"))
+            continue
+        error: Exception | None = None
+        for attempt in (1, 2):
+            try:
+                fh = open(path, "rb")  # noqa: SIM115 - a local read error is not a dropped link
+            except OSError as exc:
+                error = exc
+                break
+            try:
+                with fh:
+                    ftp.storbinary(f"STOR {name}", fh)
+                error = None
+                break
+            except Exception as exc:  # noqa: BLE001
+                error = exc
+                if attempt == 2 or reconnect is None or not _is_dropped(exc):
+                    break
+                close(ftp)
+                try:
+                    ftp = reconnect()
+                except Exception as rexc:  # noqa: BLE001
+                    error = rexc
+                    broken = True
+                    break
+        on_result(name, error)
+    return ftp

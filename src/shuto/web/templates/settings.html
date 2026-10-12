@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}shuto - settings{% endblock %}
+{% block content %}
+<h1>Settings</h1>
+<p>Current AI choice: <strong>{{ report.selected or "none chosen yet" }}</strong>
+{% if not report.selected %}<span class="hint"> - pick one below. shuto never chooses a model for you.</span>{% endif %}</p>
+
+<h2>This computer</h2>
+<dl class="facts">
+  <dt>System</dt><dd>{{ hw.os }} {{ hw.arch }}</dd>
+  <dt>CPU</dt><dd>{{ hw.cpu }} ({{ hw.cores }} cores)</dd>
+  <dt>Memory</dt><dd>{{ "%.0f"|format(hw.ram_gb) }} GB</dd>
+  <dt>GPU</dt><dd>{% for g in hw.gpus %}{{ g.name }}{% if g.vram_total_gb %} ({{ "%.0f"|format(g.vram_total_gb) }} GB){% endif %}{% if not loop.last %}, {% endif %}{% else %}none detected (CPU only){% endfor %}</dd>
+  <dt>Usable for models</dt><dd>{{ "%.0f"|format(hw.usable_gpu_gb) }} GB GPU memory, hardware tier <code>{{ hw.tier }}</code></dd>
+  <dt>Ollama</dt><dd>{% if ollama.running %}running, version {{ ollama.version }}, {{ ollama.pulled|length }} model(s) downloaded{% elif ollama.installed %}installed but not running (start it){% else %}not installed{% endif %}</dd>
+  <dt>Model folder</dt><dd><code>{{ report.models_dir }}</code>{% if report.disk_free_gb is not none %}, {{ "%.0f"|format(report.disk_free_gb) }} GB free{% endif %}</dd>
+</dl>
+{% for n in hw.notes or [] %}<p class="snip">{{ n }}</p>{% endfor %}
+{% if not ollama.running %}<p class="hint">{{ guidance }}</p>{% endif %}
+
+<h2>Top local models for this computer</h2>
+<p class="snip">Time per image is a rough guess ("heuristic") until you run a benchmark on your machine.</p>
+<table>
+  <thead><tr><th>#</th><th>Model</th><th>Download</th><th>Seconds / image</th><th>Quality / speed</th><th>Fits hardware</th><th>Fits disk</th><th>Downloaded</th><th>Actions</th></tr></thead>
+  <tbody>
+  {% for r in rows %}
+  <tr id="row-{{ loop.index }}">
+    <td>{{ r.rank }}</td>
+    <td><strong>{{ r.tag }}</strong>{% if r.recommended %} <span class="badge">recommended</span>{% endif %}<div class="snip">{{ r.notes }}</div></td>
+    <td>{{ "%.1f"|format(r.size_gb) }} GB</td>
+    <td>~{{ "%.0f"|format(r.est_seconds_per_image) }} s <span class="snip">({{ r.basis }}, {{ r.mode }})</span></td>
+    <td>{{ r.tier_label }}</td>
+    <td>{{ "yes" if r.fits_hardware else "no" }}</td>
+    <td>{{ "yes" if r.fits_disk else "no" }}</td>
+    <td>{{ "yes" if r.pulled else "no" }}</td>
+    <td class="acts">
+      <form method="post" action="/settings/use">
+        <input type="hidden" name="csrf_token" value="{{ csrf }}">
+        <input type="hidden" name="spec" value="{{ r.tag }}">
+        <button type="submit"{% if not r.fits_hardware %} disabled{% endif %}>Use this model</button>
+      </form>
+      {% if not r.pulled %}
+      <button type="button" hx-get="/settings/advice" hx-vals='{"tag": "{{ r.tag }}"}' hx-target="#advice-{{ r.rank }}" hx-swap="innerHTML">Download...</button>
+      {% else %}
+      <form hx-post="/settings/benchmark" hx-target="#job-area" hx-swap="innerHTML"
+            hx-confirm="Run {{ r.tag }} twice on a sample image to measure speed? This can take a minute.">
+        <input type="hidden" name="csrf_token" value="{{ csrf }}">
+        <input type="hidden" name="tag" value="{{ r.tag }}">
+        <button type="submit">Benchmark</button>
+      </form>
+      {% endif %}
+      <div id="advice-{{ r.rank }}"></div>
+    </td>
+  </tr>
+  {% else %}
+  <tr><td colspan="9">No local model fits this computer. Use an online provider below.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+<div id="job-area">{% if job %}{% with active=job_active, result=None %}{% include "_job.html" %}{% endwith %}{% endif %}</div>
+
+<h2>Online providers (optional)</h2>
+<p class="snip">Photos are sent to the provider only if you choose it here. Keys are read from environment variables, a <code>.env</code> file or the OS keyring (<code>shuto secrets set NAME</code>). They are never shown.</p>
+<table>
+  <thead><tr><th>Provider</th><th>Default model</th><th>~ cost / image</th><th>Key</th><th></th></tr></thead>
+  <tbody>
+  {% for p in providers %}
+  <tr>
+    <td>{{ p.name }}{% if p.selected %} <span class="badge">in use</span>{% endif %}</td>
+    <td>{{ p.model or "-" }}</td>
+    <td>{% if p.usd_per_image is not none %}${{ "%.4f"|format(p.usd_per_image) }}{% else %}-{% endif %}</td>
+    <td>{% if p.key_env %}{{ p.key_env }}: <strong>{{ "set" if p.key_set else "not set" }}</strong>{% else %}uses your AWS profile{% if p.profile %} ({{ p.profile }}){% endif %}{% if p.region %}, region {{ p.region }}{% endif %}{% endif %}</td>
+    <td>
+      <form method="post" action="/settings/use">
+        <input type="hidden" name="csrf_token" value="{{ csrf }}">
+        <input type="hidden" name="spec" value="{{ p.name }}:">
+        <button type="submit"{% if not p.model %} disabled{% endif %}>Use {{ p.name }}</button>
+      </form>
+    </td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+<p class="snip">Config file: {{ report.config_path or "none (defaults)" }}. Workspace: {{ report.workspace }}.</p>
+{% endblock %}

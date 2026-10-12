@@ -1,0 +1,177 @@
+# Model catalog for shuto. Editable; user overrides can be merged via load_catalog(extra=...).
+# Sizes, tags, speeds and prices are APPROXIMATE and dated: re-verify before each release
+# (ollama.com/library for tags and sizes; provider pricing pages for API prices).
+# Entries with `verify: true` have a tag or numbers that were not confirmed at writing time.
+# est_s = heuristic seconds/image (warm model, ~1024 px image, ~600 output tokens), replaced by a
+# measured value once `shuto models bench` has run. Missing tier keys fall back (gpu_8 -> gpu_6,
+# gpu_24 -> gpu_12, apple_64 -> apple_32, then cpu).
+# Sample image: src/shuto/data/sample.jpg is a CC0 street photo from Wikimedia Commons
+# (credit in SAMPLE_CREDIT.md); swap in any public-domain photo with the same name.
+version: 1
+updated: 2026-10-12
+
+local:
+  - tag: moondream
+    params_b: 1.9
+    size_gb: 1.7
+    min_ram_gb: 4
+    min_vram_gb: 0
+    quality: 1
+    json_reliability: low
+    est_s: {cpu: 15, gpu_6: 2, gpu_12: 1.5, apple_16: 3, apple_32: 2}
+    notes: Fastest; weak keywords, drafts only
+  - tag: llava-phi3
+    params_b: 3.8
+    size_gb: 2.9
+    min_ram_gb: 6
+    min_vram_gb: 4
+    quality: 2
+    json_reliability: low
+    est_s: {cpu: 40, gpu_6: 4, gpu_12: 3, apple_16: 6, apple_32: 4}
+    notes: Small and quick; generic captions
+    verify: true
+  - tag: granite3.2-vision
+    params_b: 2.0
+    size_gb: 2.4
+    min_ram_gb: 6
+    min_vram_gb: 4
+    quality: 2
+    json_reliability: medium
+    est_s: {cpu: 40, gpu_6: 4, gpu_12: 3, apple_16: 6, apple_32: 4}
+    notes: Document-oriented; fine for simple scenes
+  - tag: qwen2.5vl:3b
+    params_b: 3.8
+    size_gb: 3.2
+    min_ram_gb: 8
+    min_vram_gb: 4
+    quality: 3
+    json_reliability: medium
+    est_s: {cpu: 55, gpu_6: 5, gpu_12: 3.5, apple_16: 8, apple_32: 5}
+    notes: Good for its size
+  - tag: gemma3:4b
+    params_b: 4.3
+    size_gb: 3.3
+    min_ram_gb: 8
+    min_vram_gb: 4
+    quality: 3
+    json_reliability: medium
+    est_s: {cpu: 60, gpu_6: 6, gpu_12: 4, apple_16: 9, apple_32: 6}
+    notes: Solid small default for CPU or 6 GB GPUs
+  - tag: qwen3-vl:4b
+    params_b: 4.0
+    size_gb: 3.3
+    min_ram_gb: 8
+    min_vram_gb: 4
+    quality: 3
+    json_reliability: high
+    est_s: {cpu: 70, gpu_6: 7, gpu_12: 4.5, apple_16: 10, apple_32: 6}
+    notes: Good structured output for its size
+    verify: true
+  - tag: qwen2.5vl:7b
+    params_b: 8.3
+    size_gb: 6.0
+    min_ram_gb: 12
+    min_vram_gb: 6
+    quality: 4
+    json_reliability: high
+    est_s: {cpu: 170, gpu_6: 14, gpu_12: 8, apple_16: 20, apple_32: 11}
+    notes: Strong descriptions and keywords
+  - tag: minicpm-v:8b
+    params_b: 8.0
+    size_gb: 5.5
+    min_ram_gb: 12
+    min_vram_gb: 6
+    quality: 4
+    json_reliability: medium
+    est_s: {cpu: 160, gpu_6: 13, gpu_12: 7, apple_16: 18, apple_32: 10}
+    notes: Good photo understanding
+  - tag: qwen3-vl:8b
+    params_b: 8.0
+    size_gb: 6.1
+    min_ram_gb: 12
+    min_vram_gb: 6
+    quality: 4
+    json_reliability: high
+    est_s: {cpu: 190, gpu_6: 15, gpu_12: 8, apple_16: 22, apple_32: 12}
+    notes: Best default when it fits (8 GB+ GPU or 16 GB+ Apple)
+    verify: true
+  - tag: llama3.2-vision:11b
+    params_b: 10.7
+    size_gb: 7.8
+    min_ram_gb: 16
+    min_vram_gb: 10
+    quality: 4
+    json_reliability: medium
+    est_s: {cpu: 260, gpu_12: 12, apple_16: 35, apple_32: 15}
+    notes: Good general vision, wordy output
+  - tag: gemma3:12b
+    params_b: 12.2
+    size_gb: 8.1
+    min_ram_gb: 16
+    min_vram_gb: 10
+    quality: 4
+    json_reliability: high
+    est_s: {cpu: 280, gpu_12: 12, apple_16: 38, apple_32: 15}
+    notes: Very good captions and keywords
+  - tag: gemma3:27b
+    params_b: 27.4
+    size_gb: 17.0
+    min_ram_gb: 32
+    min_vram_gb: 20
+    quality: 5
+    json_reliability: high
+    est_s: {cpu: 700, gpu_24: 14, apple_32: 45, apple_64: 22}
+    notes: Near-API quality; needs a 24 GB GPU or 32 GB+ Apple
+  - tag: mistral-small3.2:24b
+    params_b: 24.0
+    size_gb: 15.0
+    min_ram_gb: 32
+    min_vram_gb: 18
+    quality: 5
+    json_reliability: high
+    est_s: {cpu: 650, gpu_24: 13, apple_32: 40, apple_64: 20}
+    notes: Strong vision and instruction following
+    verify: true
+  - tag: qwen3-vl:32b
+    params_b: 32.0
+    size_gb: 20.0
+    min_ram_gb: 40
+    min_vram_gb: 24
+    quality: 5
+    json_reliability: high
+    est_s: {cpu: 900, gpu_24: 20, apple_64: 28}
+    notes: Best local quality; needs 24 GB+ GPU or 64 GB Apple
+    verify: true
+
+# Approximate list prices in USD per million tokens, as of `updated`. Editable.
+api:
+  - provider: anthropic
+    model: claude-sonnet-5-5
+    default: true
+    usd_per_mtok_in: 3.0
+    usd_per_mtok_out: 15.0
+    image_tokens: 1600
+    updated: 2026-10-12
+  - provider: anthropic
+    model: claude-haiku-5-5
+    default: false
+    usd_per_mtok_in: 1.0
+    usd_per_mtok_out: 5.0
+    image_tokens: 1600
+    updated: 2026-10-12
+  - provider: gemini
+    model: gemini-2.5-flash
+    default: true
+    usd_per_mtok_in: 0.30
+    usd_per_mtok_out: 2.50
+    image_tokens: 1300
+    updated: 2026-10-12
+    verify: true
+  - provider: bedrock
+    model: us.anthropic.claude-sonnet-5-5-v1:0
+    default: true
+    usd_per_mtok_in: 3.0
+    usd_per_mtok_out: 15.0
+    image_tokens: 1600
+    updated: 2026-10-12
+    verify: true

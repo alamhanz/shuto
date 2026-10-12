@@ -1,1 +1,1 @@
-"""Shuto: S3 -> Lambda -> Bedrock metadata -> Shutterstock upload pipeline."""
+"""Shuto: local-first pipeline for Shutterstock contributors."""

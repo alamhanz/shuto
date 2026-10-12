@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+{% block title %}shuto - {{ photo.orig_name }}{% endblock %}
+{% block content %}
+<p class="pager">
+  {% if photo.batch_id %}<a href="/batch/{{ photo.batch_id|urlencode }}">&larr; batch {{ photo.batch_id }}</a>{% endif %}
+  {% if prev_id %}<a id="prev-link" href="/photo/{{ prev_id }}">&lsaquo; prev (k)</a>{% endif %}
+  {% if next_id %}<a id="next-link" href="/photo/{{ next_id }}">next (j) &rsaquo;</a>{% endif %}
+</p>
+<h1>{{ photo.orig_name }} <span class="badge s-{{ photo.status.value }}">{{ photo.status.value }}</span></h1>
+
+{% if photo.has_gps %}
+<p class="flash warn" role="alert">This photo contains GPS location in its EXIF. shuto does not strip GPS in v1; the prepared copy keeps it. Remove it yourself first if you do not want to publish where this was taken.</p>
+{% endif %}
+
+<div class="photo-layout">
+  <section>
+    <a href="/image/{{ photo.id }}" target="_blank" rel="noopener"><img class="preview" src="/image/{{ photo.id }}" alt="{{ photo.orig_name }}"></a>
+    <dl class="facts">
+      <dt>Size</dt><dd>{{ photo.width }} x {{ photo.height }}{% if cull.megapixels %} ({{ "%.1f"|format(cull.megapixels) }} MP){% endif %}</dd>
+      {% if photo.captured_at %}<dt>Taken</dt><dd>{{ photo.captured_at }}</dd>{% endif %}
+      {% if photo.camera %}<dt>Camera</dt><dd>{{ photo.camera }}</dd>{% endif %}
+      {% if photo.submit_name %}<dt>Upload name</dt><dd>{{ photo.submit_name }}</dd>{% endif %}
+      {% if photo.metadata_source %}<dt>Written by</dt><dd>{{ photo.metadata_source }}</dd>{% endif %}
+    </dl>
+    {% if cull %}
+    <h3>Cull check</h3>
+    <ul>
+      <li>sharpness {{ cull.sharpness|pct }}, brightness {{ cull.mean_luma|pct }}, shadows clipped {{ "%.1f"|format(cull.clipped_shadows_pct or 0) }}%, highlights clipped {{ "%.1f"|format(cull.clipped_highlights_pct or 0) }}%</li>
+      {% for r in cull.reasons or [] %}<li class="bad">{{ r }}</li>{% else %}<li>passed</li>{% endfor %}
+    </ul>
+    {% endif %}
+    {% if detected %}
+    <h3>What the AI saw</h3>
+    <ul>
+      <li>recognizable people: {{ detected.recognizable_people or 0 }}</li>
+      {% if detected.logos_or_brands %}<li>logos/brands: {{ detected.logos_or_brands|join(", ") }}</li>{% endif %}
+      {% if detected.landmarks %}<li>landmarks: {{ detected.landmarks|join(", ") }}</li>{% endif %}
+      {% if detected.artworks_or_characters %}<li>artwork/characters: {{ detected.artworks_or_characters|join(", ") }}</li>{% endif %}
+      {% if detected.private_interior %}<li>private interior</li>{% endif %}
+      {% if location %}<li>place: {{ [location.city, location.region, location.country]|select|join(", ") }}</li>{% endif %}
+    </ul>
+    {% endif %}
+    <h3>Guardrails: <span class="badge g-{{ gr.action or 'ok' }}">{{ gr.action or 'not checked' }}</span></h3>
+    <ul>
+      {% for m in gr.messages or [] %}<li class="bad">{{ m }}</li>{% endfor %}
+      {% for h in gr.hits or [] %}<li>{{ h.name or h.kind }}{% if h.matched %} (matched "{{ h.matched }}"){% endif %} - {{ h.action }}{% if h.where %} in {{ h.where }}{% endif %}</li>{% endfor %}
+      {% if gr.removed_keywords %}<li>keywords removed: {{ gr.removed_keywords|join(", ") }}</li>{% endif %}
+      {% if not gr.messages and not gr.hits %}<li>nothing flagged</li>{% endif %}
+    </ul>
+    {% if meta.warnings %}<h3>Metadata warnings</h3><ul>{% for w in meta.warnings %}<li>{{ w }}</li>{% endfor %}</ul>{% endif %}
+  </section>
+
+  <section>
+    {% include "_help.html" %}
+    <form id="edit-form" method="post" action="/photo/{{ photo.id }}" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <label>Description <small>(max 200 characters; editorial: <code>CITY, COUNTRY - MONTH D, YYYY: sentence</code>)</small>
+        <textarea name="description" rows="3" maxlength="200"{% if not editable %} disabled{% endif %}>{{ meta.description or "" }}</textarea></label>
+      <label>Title (optional, for your own use and embedded metadata)
+        <input name="title" value="{{ meta.title or '' }}"{% if not editable %} disabled{% endif %}></label>
+      <label>Keywords, separated by commas <small>(<span id="kw-count">{{ keyword_count }}</span> of 7-50)</small>
+        <textarea id="keywords" name="keywords" rows="5"{% if not editable %} disabled{% endif %}>{{ keywords_text }}</textarea></label>
+      <fieldset{% if not editable %} disabled{% endif %}>
+        <legend>Categories (choose up to 2)</legend>
+        {% for c in categories %}<label class="inline"><input type="checkbox" name="categories" value="{{ c }}" class="cat"{% if c in (meta.categories or []) %} checked{% endif %}> {{ c }}</label>{% endfor %}
+      </fieldset>
+      <label class="inline"><input type="checkbox" name="editorial" value="yes"{% if meta.editorial %} checked{% endif %}{% if not editable %} disabled{% endif %}> Editorial</label>
+      <label class="inline"><input type="checkbox" name="mature" value="yes"{% if meta.mature %} checked{% endif %}{% if not editable %} disabled{% endif %}> Mature content</label>
+      <label>Release ids, one per line <small>(prefix <code>property:</code> for a property release)</small>
+        <textarea name="release_ids" rows="2"{% if not editable %} disabled{% endif %}>{{ releases_text }}</textarea></label>
+      {% if editable %}<button type="submit">Save (guardrails re-run)</button>{% else %}<p class="hint">This photo is {{ photo.status.value }} and can no longer be edited.</p>{% endif %}
+    </form>
+
+    <div class="row">
+      {% if can_approve %}
+      <form id="approve-form" method="post" action="/photo/{{ photo.id }}/approve">
+        <input type="hidden" name="csrf_token" value="{{ csrf }}">
+        <button type="submit">Approve (a)</button>
+      </form>
+      {% endif %}
+      {% if can_ready %}
+      <form method="post" action="/photo/{{ photo.id }}/ready">
+        <input type="hidden" name="csrf_token" value="{{ csrf }}">
+        <button type="submit">Mark ready to describe</button>
+      </form>
+      {% endif %}
+      {% if photo.batch_id and photo.status.value in ['ready', 'described', 'needs_review', 'blocked', 'approved', 'prepared', 'culled'] %}
+      <form hx-post="/photo/{{ photo.id }}/regenerate" hx-target="#job-area" hx-swap="innerHTML"
+            hx-confirm="Write a new description with the AI? This replaces the current text.">
+        <input type="hidden" name="csrf_token" value="{{ csrf }}">
+        <button type="submit">Regenerate with AI</button>
+      </form>
+      {% endif %}
+    </div>
+    <div id="job-area"></div>
+
+    {% if can_result %}
+    <h3>Shutterstock result</h3>
+    <form method="post" action="/photo/{{ photo.id }}/result" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <label>If rejected, reason
+        <select name="reason"><option value="">-</option>{% for r in reason_codes %}<option>{{ r }}</option>{% endfor %}</select></label>
+      <label>Note <input name="note"></label>
+      <button name="outcome" value="accept">Accepted</button>
+      <button name="outcome" value="reject">Rejected</button>
+    </form>
+    {% endif %}
+    {% if rejections %}<h3>Earlier rejections</h3><ul>{% for r in rejections %}<li>{{ r.at }}: {{ r.reason_code }}{% if r.note %} - {{ r.note }}{% endif %}</li>{% endfor %}</ul>{% endif %}
+  </section>
+</div>
+
+<details>
+  <summary>History ({{ events|length }})</summary>
+  <ul>{% for e in events %}<li>{{ e.at }}: {{ e.kind }}{% if e.detail %} {{ e.detail }}{% endif %}</li>{% endfor %}</ul>
+</details>
+{% endblock %}

@@ -6,13 +6,14 @@
 #
 # Options (when running the downloaded file):
 #   --from <source>   wheel path, PyPI name or URL to install instead of the default
+#                     (when run from a copy of the repository, that copy is installed)
 #   --no-shortcut     do not create launchers
 #   --no-start        do not start shuto at the end
 # The SHUTO_SOURCE environment variable does the same as --from.
 set -eu
 
 DEFAULT_SOURCE="https://github.com/alamhanz/shuto/archive/refs/heads/main.zip"
-SOURCE="${SHUTO_SOURCE:-$DEFAULT_SOURCE}"
+SOURCE="${SHUTO_SOURCE:-}"
 # uv installer pinned to a known release (0.12.22, current when this was written) so a changed
 # "latest" installer cannot alter what runs here. Raise it on purpose after checking.
 UV_INSTALLER="https://astral.sh/uv/0.12.22/install.sh"
@@ -29,12 +30,27 @@ while [ $# -gt 0 ]; do
     shift
 done
 
+# Run from a downloaded or cloned copy of the repository (and no source given)? Then build and
+# install that copy. When piped into sh ("curl | sh") there is no script path, so this is skipped.
+CHECKOUT=""
+case "$0" in
+    *install.sh)
+        ROOT="$(cd "$(dirname "$0")/.." 2>/dev/null && pwd)" || ROOT=""
+        if [ -n "$ROOT" ] && [ -f "$ROOT/pyproject.toml" ] && grep -q '^name *= *"shuto"' "$ROOT/pyproject.toml"; then
+            CHECKOUT="$ROOT"
+        fi
+        ;;
+esac
+
 say() { printf '[shuto] %s\n' "$1"; }
 fail() {
     printf '[shuto] Something went wrong: %s\n' "$1" >&2
     printf '[shuto] See docs/install.md (Troubleshooting) or run the line again.\n' >&2
     exit 1
 }
+
+# --from is parsed above, so decide the final source only now.
+[ -n "$SOURCE" ] || [ -n "$CHECKOUT" ] || SOURCE="$DEFAULT_SOURCE"
 
 say "Step 1 of 5: checking for the uv installer helper..."
 if ! command -v uv >/dev/null 2>&1; then
@@ -49,8 +65,39 @@ if ! command -v uv >/dev/null 2>&1; then
     command -v uv >/dev/null 2>&1 || fail "uv was installed but could not be found. Open a new Terminal and run this line again."
 fi
 
+# Percent-encode a path for a file:// URI (keeps letters, digits, - . _ ~ and /).
+uri_encode() {
+    printf '%s' "$1" | od -An -v -tx1 | tr -s ' 
+' '
+
+' | while read -r h; do
+        [ -n "$h" ] || continue
+        case "$h" in
+            2d|2e|2f|3[0-9]|4[1-9a-f]|5[0-9a]|5f|6[1-9a-f]|7[0-9a]|7e)
+                # shellcheck disable=SC2059
+                o="$(printf '%03o' "0x$h")"
+                printf "\\${o}" ;;
+            *) printf '%%%s' "$(printf '%s' "$h" | tr 'a-f' 'A-F')" ;;
+        esac
+    done
+}
+
+BUILD_DIR=""
+cleanup() { [ -z "$BUILD_DIR" ] || rm -rf "$BUILD_DIR"; }
+trap cleanup EXIT
+trap 'exit 1' INT TERM
+if [ -z "$SOURCE" ]; then
+    say "Preparing shuto from this folder..."
+    BUILD_DIR="$(mktemp -d)"
+    uv build --wheel --python 3.12 --out-dir "$BUILD_DIR" "$CHECKOUT" || fail "could not prepare shuto from this folder. Check your internet connection."
+    WHEEL="$(ls "$BUILD_DIR"/shuto-*.whl 2>/dev/null | head -n 1)"
+    [ -n "$WHEEL" ] || fail "could not prepare shuto from this folder."
+    SOURCE="shuto[heic] @ file://$(uri_encode "$WHEEL")"
+fi
+
 say "Step 2 of 5: installing shuto (this can take a few minutes the first time)..."
 uv tool install --force --python 3.12 "$SOURCE" || fail "the shuto install did not finish. Check your internet connection."
+cleanup
 
 say "Step 3 of 5: making the shuto command available..."
 uv tool update-shell >/dev/null 2>&1 || true

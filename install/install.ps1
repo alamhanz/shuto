@@ -6,6 +6,7 @@
 
   Options (when running the downloaded file):
     -From <source>    wheel path, PyPI name or URL to install instead of the default
+                      (when run from a copy of the repository, that copy is installed)
     -NoShortcut       do not create Desktop / Start menu shortcuts
     -NoStart          do not start shuto at the end
   The SHUTO_SOURCE environment variable does the same as -From.
@@ -19,7 +20,18 @@ param(
 & {
     $ErrorActionPreference = 'Stop'
     $DefaultSource = 'https://github.com/alamhanz/shuto/archive/refs/heads/main.zip'
-    if (-not $From) { $From = $DefaultSource }
+
+    # Run from a downloaded or cloned copy of the repository (and no source given)? Then build and
+    # install that copy. $PSScriptRoot is empty when the script is piped in with "irm | iex".
+    $Checkout = $null
+    if (-not $From -and $PSScriptRoot) {
+        $root = Split-Path -Parent $PSScriptRoot
+        $toml = Join-Path $root 'pyproject.toml'
+        if ((Test-Path $toml) -and (Select-String -Path $toml -Pattern '^name\s*=\s*"shuto"' -Quiet)) {
+            $Checkout = $root
+        }
+    }
+    if (-not $From -and -not $Checkout) { $From = $DefaultSource }
 
     # uv installer pinned to a known release (0.12.22, current when this was written) so a
     # changed "latest" installer cannot alter what runs here. Raise it on purpose after checking.
@@ -56,9 +68,25 @@ param(
         }
         $env:Path = "$(Split-Path $uv);$env:Path"
 
-        Say 'Step 2 of 5: installing shuto (this can take a few minutes the first time)...'
-        Native { & $uv tool install --force --python 3.12 $From }
-        if ($LASTEXITCODE -ne 0) { throw 'The shuto install did not finish. Check your internet connection and run this line again.' }
+        $buildDir = $null
+        $installCode = 1
+        try {
+            if ($Checkout) {
+                Say 'Preparing shuto from this folder...'
+                $buildDir = Join-Path ([System.IO.Path]::GetTempPath()) ('shuto-build-' + [guid]::NewGuid().ToString('N'))
+                Native { & $uv build --wheel --python 3.12 --out-dir $buildDir $Checkout }
+                $wheel = Get-ChildItem -Path $buildDir -Filter 'shuto-*.whl' -ErrorAction SilentlyContinue | Select-Object -First 1
+                if ($LASTEXITCODE -ne 0 -or -not $wheel) { throw 'Could not prepare shuto from this folder. Check your internet connection and run this again.' }
+                $From = 'shuto[heic] @ ' + ([Uri]$wheel.FullName).AbsoluteUri
+            }
+
+            Say 'Step 2 of 5: installing shuto (this can take a few minutes the first time)...'
+            Native { & $uv tool install --force --python 3.12 $From }
+            $installCode = $LASTEXITCODE
+        } finally {
+            if ($buildDir -and (Test-Path $buildDir)) { Remove-Item -Recurse -Force $buildDir -ErrorAction SilentlyContinue }
+        }
+        if ($installCode -ne 0) { throw 'The shuto install did not finish. Check your internet connection and run this line again.' }
 
         Say 'Step 3 of 5: making the shuto command available...'
         Native { & $uv tool update-shell *> $null }

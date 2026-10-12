@@ -94,28 +94,22 @@ The `uv` helper is left in place because other programs may use it. To remove it
 
 ## Try it before the repo is public
 
-The repository is private for now, so the one-line installs above do not work yet. Build a
-wheel on your computer and install from that. You need [uv](https://docs.astral.sh/uv/) and a
-copy of the repository.
+The repository is private for now, so the one-line installs above do not work yet. Install from
+a copy of the repository on your computer instead. No other setup is needed; the installer gets
+what it needs (including iPhone HEIC photo support).
 
-```
-uv build
-```
+1. Get the files: on GitHub choose Code, then Download ZIP, and unzip it. Or clone the repository.
+2. Open the `install` folder and start the installer:
+   - **Windows**: double-click `install.cmd`.
+   - **macOS**: double-click `install.command`. If macOS refuses, right-click it, choose Open,
+     then Open again.
+   - **Linux**: open a terminal in the folder and run `sh install/install.sh`.
+3. Wait for the steps to finish. On Windows and macOS the window waits for a key press at the end
+   so you can read the result. On Linux the terminal you started it from stays as it is.
 
-Windows (PowerShell):
-
-```
-powershell -ExecutionPolicy Bypass -File install\install.ps1 -From dist\shuto-0.2.0-py3-none-any.whl
-```
-
-macOS and Linux:
-
-```
-sh install/install.sh --from dist/shuto-0.2.0-py3-none-any.whl
-```
-
-A bare wheel path installs without the `heic` extra (iPhone HEIC photos). To include it, pass
-the path with the extra: `-From "shuto[heic] @ file:///full/path/to/dist/shuto-0.2.0-py3-none-any.whl"`
+Advanced: to install a wheel you built yourself (`uv build`), pass it explicitly. A bare wheel
+path skips the `heic` extra, so add it like this:
+`install\install.ps1 -From "shuto[heic] @ file:///full/path/to/dist/shuto-0.2.0-py3-none-any.whl"`
 (`--from` on macOS and Linux takes the same text).
 
 ## Troubleshooting

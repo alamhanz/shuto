@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 210" width="720" height="210" role="img" aria-labelledby="t d">
+  <title id="t">How shuto works</title>
+  <desc id="d">Six steps in a loop: your photos, quality check, AI writes titles and keywords, rules check, upload, and you press Submit.</desc>
+  <style>
+    text { font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+    .lbl { font-size: 13px; font-weight: 600; fill: #353535; text-anchor: middle; }
+    .sub { font-size: 12px; fill: #284B63; text-anchor: middle; }
+    .node { fill: #FFFFFF; stroke: #3C6E71; stroke-width: 2.5; }
+    .ic { fill: none; stroke: #284B63; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+    .line { stroke: #D9D9D9; stroke-width: 3; stroke-linecap: round; }
+    .dot { fill: #284B63; opacity: 0; }
+    .node, .ic { animation-duration: 9s; animation-iteration-count: infinite; animation-timing-function: linear; }
+    .node { animation-name: on-node; }
+    .ic { animation-name: on-ic; }
+    .dot { animation: travel 9s linear infinite; }
+    .d1 { animation-delay: 0s; } .d2 { animation-delay: 1.5s; } .d3 { animation-delay: 3s; }
+    .d4 { animation-delay: 4.5s; } .d5 { animation-delay: 6s; } .d6 { animation-delay: 7.5s; }
+    @keyframes on-node {
+      0% { fill: #3C6E71; } 14% { fill: #3C6E71; } 17%, 100% { fill: #FFFFFF; }
+    }
+    @keyframes on-ic {
+      0% { stroke: #FFFFFF; } 14% { stroke: #FFFFFF; } 17%, 100% { stroke: #284B63; }
+    }
+    @keyframes travel {
+      0% { opacity: 1; transform: translateX(0); }
+      83% { opacity: 1; transform: translateX(600px); }
+      90%, 100% { opacity: 0; transform: translateX(600px); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .node, .ic, .dot { animation: none; }
+      .node { fill: #3C6E71; }
+      .ic { stroke: #FFFFFF; }
+      .dot { display: none; }
+    }
+  </style>
+  <rect x="1" y="1" width="718" height="208" rx="16" fill="#FFFFFF" stroke="#D9D9D9" stroke-width="2"/>
+  <g class="line">
+    <line x1="92" y1="85" x2="148" y2="85"/><line x1="212" y1="85" x2="268" y2="85"/>
+    <line x1="332" y1="85" x2="388" y2="85"/><line x1="452" y1="85" x2="508" y2="85"/>
+    <line x1="572" y1="85" x2="628" y2="85"/>
+  </g>
+  <circle class="dot" cx="60" cy="85" r="5"/>
+
+  <g transform="translate(60 85)"><circle class="node d1" r="30"/>
+    <path class="ic d1" d="M-14,-9 h10 l4,4 h14 v18 h-28 z"/></g>
+  <g transform="translate(180 85)"><circle class="node d2" r="30"/>
+    <g class="ic d2"><circle cx="-3" cy="-3" r="9"/><path d="M4,4 L13,13"/></g></g>
+  <g transform="translate(300 85)"><circle class="node d3" r="30"/>
+    <path class="ic d3" d="M-14,-9 h28 M-14,0 h20 M-14,9 h25"/></g>
+  <g transform="translate(420 85)"><circle class="node d4" r="30"/>
+    <path class="ic d4" d="M-12,1 l8,8 l16,-17"/></g>
+  <g transform="translate(540 85)"><circle class="node d5" r="30"/>
+    <path class="ic d5" d="M0,8 V-11 M-10,-1 L0,-11 L10,-1 M-12,15 h24"/></g>
+  <g transform="translate(660 85)"><circle class="node d6" r="30"/>
+    <g class="ic d6"><rect x="-15" y="-8" width="30" height="16" rx="8"/><path d="M-6,0 h12"/></g></g>
+
+  <text class="lbl" x="60" y="140">Your photos</text>
+  <text class="lbl" x="180" y="140">Quality check</text>
+  <text class="lbl" x="300" y="140">AI writes titles</text>
+  <text class="lbl" x="420" y="140">Rules check</text>
+  <text class="lbl" x="540" y="140">Upload</text>
+  <text class="lbl" x="660" y="140">You press Submit</text>
+  <text class="sub" x="300" y="158">&amp; keywords</text>
+  <text class="sub" x="660" y="158">on Shutterstock</text>
+  <text class="sub" x="360" y="193">Your original photos are never changed.</text>
+</svg>

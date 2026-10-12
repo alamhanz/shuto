@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}shuto - batches{% endblock %}
+{% block content %}
+<h1>Batches</h1>
+{% if not batches %}
+<p class="hint">New here? Import a folder of photos below, then open the batch: cull, describe, review, prepare, upload, export. Choose your local AI model on <a href="/settings">Settings</a> first.</p>
+{% endif %}
+<table>
+  <thead><tr><th>Batch</th><th>Photos</th><th>Status</th><th>AI usage</th></tr></thead>
+  <tbody>
+  {% for b in batches %}
+  <tr>
+    <td><a href="/batch/{{ b.id|urlencode }}">{{ b.id }}</a>{% if b.notes %}<div class="snip">{{ b.notes }}</div>{% endif %}</td>
+    <td>{{ b.total }}</td>
+    <td>{% for s, n in b.counts.items() %}<span class="badge s-{{ s }}">{{ s }} {{ n }}</span> {% endfor %}</td>
+    <td>{{ b.usage.calls }} calls, {{ b.usage.input_tokens }} in / {{ b.usage.output_tokens }} out tokens, {{ "%.0f"|format(b.usage.seconds) }} s</td>
+  </tr>
+  {% else %}
+  <tr><td colspan="4">No batches yet.</td></tr>
+  {% endfor %}
+  </tbody>
+</table>
+
+<h2>Import photos</h2>
+<form hx-post="/import" hx-target="#job-area" hx-swap="innerHTML" class="stack">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <label>Folder on this computer <input name="path" required placeholder="C:\Photos\export  or  ~/Pictures/export" size="50"></label>
+  <label>Notes for this batch (optional) <input name="notes" size="50"></label>
+  <label><input type="checkbox" name="recursive" value="yes" checked> Include sub-folders</label>
+  <label><input type="checkbox" name="force" value="yes"> Import anyway (even photos that look already uploaded)</label>
+  <button type="submit">Import</button>
+  <button type="submit" name="mark_uploaded" value="yes" class="secondary" hx-confirm="Register every photo in this folder as already uploaded? This cannot be undone, and photos already being processed are included. Nothing is sent anywhere.">These were uploaded before: just remember them</button>
+</form>
+<div id="job-area">{% if import_job %}{% with job=import_job, active=job_active, result=None %}{% include "_job.html" %}{% endwith %}{% endif %}</div>
+<p class="snip">Workspace: {{ workspace }}. Your original photos are never modified.</p>
+{% endblock %}

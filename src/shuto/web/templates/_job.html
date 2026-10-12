@@ -1,0 +1,8 @@
+<div class="job {{ job.state }}" id="job-{{ job.id }}"{% if active %} hx-get="/jobs/{{ job.id }}" hx-trigger="every 1s" hx-swap="outerHTML"{% endif %}>
+  <strong>{{ job.kind }}</strong>: {{ job.state }}
+  {% if job.total %}<progress max="{{ job.total }}" value="{{ job.done }}"></progress> {{ job.done }}/{{ job.total }}{% elif active %}<progress></progress>{% endif %}
+  {% if job.state == 'done' and result %}<p>{{ result }}</p>{% endif %}
+  {% if job.state == 'failed' %}<p class="bad">{{ job.error }}</p>{% endif %}
+  {% if job.state == 'cancelled' %}<p>Cancelled.</p>{% endif %}
+  {% if not active %}<p><a href="">Reload the page</a> to see the new state.</p>{% endif %}
+</div>

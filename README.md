@@ -1,186 +1,214 @@
-# Shuto
+# shuto
 
-Weekly photo batches → AI-generated metadata (Claude on Amazon Bedrock) → Shutterstock.
+A local-first pipeline for Shutterstock contributors. It takes a folder of photos and carries
+them through a fixed workflow:
 
 ```
-you ──upload_batch──▶ S3 incoming/<batch>/*.jpg
-                         │ ObjectCreated
-                         ▼
-                      SQS (3 retries, then DLQ ──▶ alarm email)
-                         ▼
-                Lambda: ProcessPhotoFn
-                   ├─ < 4 MP? ──▶ skipped, reported in the weekly email
-                   ├─ Bedrock (Claude, vision) ──▶ S3 metadata/<batch>/<photo>.json  (source of truth)
-                   └─ upload_enabled: write title/keywords into the JPEG (IPTC + XMP)
-                                      ──▶ FTPS to Shutterstock ("Not submitted" in your portal)
-
-EventBridge (weekly) ──▶ Lambda: ExportCsvFn ──▶ S3 exports/<batch>/shutterstock[-editorial]-<ts>.csv
-                                              └─▶ SNS email (CSV paths + anything needing attention)
+collect -> cull -> describe -> guardrails -> prepare -> FTPS + CSV -> track
 ```
 
-## How it works with Shutterstock
+- **collect**: find photos, skip exact duplicates, group near duplicates, split into weekly batches.
+- **cull**: drop photos that are too small, blurry or badly exposed, with the reason recorded.
+- **describe**: a vision model writes the title, description and keywords in your style.
+- **guardrails**: check the result against known Shutterstock restrictions.
+- **prepare**: write upload-ready JPEG copies with the metadata embedded (IPTC/XMP). Originals are never modified.
+- **FTPS + CSV**: upload the copies and write the metadata CSV files.
+- **track**: keep per-photo status, acceptances and rejection reasons in a local SQLite database. Rejection reasons are fed back into later prompts.
 
-Shutterstock has **no API for contributor uploads**: its public API is for buyers. The only
-official ways in are the web uploader and FTPS. So:
+shuto is an independent project and is not affiliated with or endorsed by Shutterstock.
 
-| Step | Who | What |
-|---|---|---|
-| 1 | you (1 min) | `upload_batch.ps1` → photos into S3 |
-| 2 | automatic | Claude writes title, keywords, categories and flags. The photo is uploaded over FTPS with title and keywords **embedded** (IPTC/XMP), so it already shows them in the portal |
-| 3 | automatic | Monday email: "CSV ready" |
-| 4 | you (~5 min) | submit.shutterstock.com → **CSV** button → upload the CSV (adds categories + editorial/mature flags, matched by filename) → check → **Submit** |
+## Why it works this way
 
-The final Submit stays manual on purpose. It's your quality gate. Don't automate the portal
-with scraped cookies or browser bots; it's captcha-protected and risks your account.
+Shutterstock has no upload API for contributors. The official paths are the web uploader,
+FTPS upload and metadata CSV import, and shuto uses FTPS and CSV. The last step, **Submit on
+the contributor portal, stays manual on purpose**. shuto never automates the portal: you
+review and submit yourself.
 
-## Repo layout
+## Privacy
 
-| Path | What |
-|---|---|
-| `app.py`, `cdk.json` | CDK app entry + config (model ID, schedule, flags) |
-| `infra/shuto_stack.py` | All pipeline AWS resources |
-| `infra/github_oidc_stack.py` | One-time GitHub Actions deploy role (OIDC) |
-| `infra/bundling.py` | Builds the Lambda package with pip (no Docker needed) |
-| `src/shuto/handlers.py` | Lambda entry points (process + export) |
-| `src/shuto/metadata.py` | Bedrock prompt, validation, image checks |
-| `src/shuto/embed.py` | Lossless IPTC/XMP writer for JPEGs |
-| `src/shuto/ftps.py` | FTPS upload (explicit TLS, session reuse) |
-| `src/shuto/csv_export.py`, `categories.py` | Shutterstock CSV + category list |
-| `scripts/upload_batch.{ps1,sh}` | Upload a local folder as a batch |
-| `scripts/check_ftps.py` | Test your Shutterstock FTPS login locally |
-| `tests/` | Unit tests, handler tests (moto), CDK assertions |
+Everything runs on your machine by default. The default AI provider is a local model served
+by [Ollama](https://ollama.com). The only network calls are to Ollama on `127.0.0.1` and to
+Shutterstock's FTPS host when you upload. If you choose an API provider (Anthropic,
+Gemini, Bedrock), the images you describe are sent to that vendor. The web UI listens on
+`127.0.0.1` only.
 
-## One-time setup
+## Install
 
-Prerequisites: Python 3.12+, Node 20+, AWS CLI v2, an AWS account.
+Requires Python 3.12 or newer. Works on Linux, macOS and Windows.
 
-```powershell
-# 1. Tooling
-npm install -g aws-cdk
+```
+git clone https://github.com/alamhanz/shuto.git
+cd shuto
 python -m venv .venv
-.venv\Scripts\activate          # macOS/Linux: source .venv/bin/activate
-pip install -r requirements-dev.txt
-
-# 2. AWS credentials: sign in with your console login (AWS CLI >= 2.32, browser opens)
-#    Use an IAM user (not root) with AdministratorAccess + SignInLocalDevelopmentAccess.
-aws login --profile shuto        # region: ap-northeast-1; valid up to 12 h, then run again
-$env:AWS_PROFILE = "shuto"       # bash: export AWS_PROFILE=shuto
-
-# 3. Bootstrap CDK once per account/region
-cdk bootstrap aws://<ACCOUNT_ID>/ap-northeast-1
-
-# 4. Deploy in dry-run mode (generates metadata, does NOT upload to Shutterstock)
-cdk deploy ShutoStack -c notify_email=you@example.com
-
-# 5. Optional, once: role that lets GitHub Actions deploy (see "CI deploy")
-cdk deploy ShutoGithubOidc
 ```
 
-Then:
+Activate the environment (`source .venv/bin/activate` on Linux/macOS, `.venv\Scripts\activate`
+on Windows), then:
 
-1. **Confirm the SNS subscription email** (and the AWS Budgets email, if you get one).
-2. **Bedrock model access**: in the Bedrock console (Tokyo), make sure Anthropic Claude models
-   are enabled (first use asks for a short use-case form). Default model:
-   `jp.anthropic.claude-sonnet-4-6` (JP cross-region profile: inference stays in Tokyo/Osaka).
-   Change `bedrock_model_id` in `cdk.json`, e.g. `global.anthropic.claude-sonnet-5-5`
-   (Sonnet 5.5 is only available in Tokyo via the global profile).
-3. **Test your FTPS login locally** (uploads nothing):
-   ```powershell
-   python scripts\check_ftps.py --user you@example.com
-   ```
-4. **Store the FTPS login in AWS.** Shutterstock FTPS uses your **account** email + password.
-   Write it to a file (keeps PowerShell quoting out of it), store it, delete the file:
-   ```powershell
-   '{"host":"ftps.shutterstock.com","username":"you@example.com","password":"..."}' |
-     Set-Content -Encoding ascii ftps.json
-   aws secretsmanager put-secret-value --secret-id <FtpsSecretName> --secret-string file://ftps.json
-   Remove-Item ftps.json
-   ```
-   If you change your Shutterstock password, update the secret too (running Lambdas cache it
-   until their next cold start).
-5. When the metadata looks good, turn on real uploads: set `"upload_enabled": "true"` in
-   `cdk.json` and deploy (`cdk deploy ShutoStack`, or push to `main` once CI deploy is set up).
-
-## Weekly use
-
-```powershell
-# optional context for Claude: D:\Photos\week40\notes.txt
-#   e.g. "Kyoto, Tofuku-ji temple, autumn foliage. Shot Nov 2026."
-.\scripts\upload_batch.ps1 -Folder D:\Photos\week40      # batch = current ISO week, e.g. 2026-W40
+```
+pip install -e .
 ```
 
-- `metadata/<batch>/<photo>.json` is the **source of truth**. Edit it to fix a title or keyword
-  and the next export uses your edit. Delete it and re-upload the photo to make Claude regenerate.
-- Every Monday 09:00 JST (`export_schedule_cron`, in UTC) the exporter writes per batch:
-  - `shutterstock-<ts>.csv`: commercial photos
-  - `shutterstock-editorial-<ts>.csv`: editorial photos. Check the captions follow
-    `CITY, COUNTRY - Month D, YYYY: …` before submitting.
+Optional extras, combined as needed, for example `pip install -e ".[anthropic,keyring]"`:
 
-  The email also lists anything needing attention: under 4 MP, too few keywords, broken JSON.
-- Export one batch on demand:
-  ```powershell
-  '{"batch":"2026-W40"}' | Set-Content -Encoding ascii payload.json
-  aws lambda invoke --function-name <ExportFunctionName> --payload file://payload.json `
-    --cli-binary-format raw-in-base64-out out.json
-  ```
+| Extra | Adds |
+|---|---|
+| `anthropic` | Anthropic API provider |
+| `gemini` | Google Gemini API provider |
+| `bedrock` | Amazon Bedrock provider (uses your normal AWS credentials) |
+| `keyring` | store secrets in the OS keyring |
+| `heic` | read HEIC/HEIF photos |
+| `all` | everything above |
 
-In **dry-run** mode (`upload_enabled=false`) the CSVs are a preview. When you switch uploads on,
-photos you upload again are sent over FTPS and show up in the next CSV.
+### Local model (default): install Ollama
 
-Photo state (DynamoDB): `status` = `described` | `uploaded` | `too_small`, plus `uploaded_at`
-and `exported_at`. Photos that fail 3 times go to the DLQ (`DeadLetterQueueUrl`) and you get
-an alarm email.
+Download Ollama from <https://ollama.com/download> (installers for Windows and macOS; an
+install script for Linux). shuto never installs software for you. Run `shuto doctor` to see
+whether Ollama is installed and running, and which models are pulled.
 
-## CI deploy (GitHub Actions)
+## Quickstart
 
-`.github/workflows/ci.yml` runs lint, tests and `cdk synth` on every push and PR. Its
-`deploy` job runs `cdk deploy ShutoStack` on pushes to `main` after tests pass. It authenticates
-with GitHub OIDC (short-lived credentials, no AWS keys stored in GitHub), and stays inactive
-until you set it up:
-
-1. `cdk deploy ShutoGithubOidc` (once, from your machine) and copy the `DeployRoleArn` output.
-   It creates the GitHub OIDC provider and a role `shuto-github-deploy` that can only assume the
-   CDK bootstrap roles, and only from this repo's `production` environment.
-   If the account already has a GitHub OIDC provider, add
-   `-c github_oidc_provider_arn=arn:aws:iam::<ACCOUNT_ID>:oidc-provider/token.actions.githubusercontent.com`.
-2. GitHub → repo **Settings → Environments → New environment** `production`.
-   Optional: add yourself as **Required reviewer** to approve each deploy.
-3. **Settings → Secrets and variables → Actions → Variables**:
-   - `AWS_DEPLOY_ROLE_ARN` = the `DeployRoleArn` output
-   - `NOTIFY_EMAIL` = your email (otherwise CI deploys would remove the email subscription)
-
-Config otherwise comes from `cdk.json`, so change `upload_enabled` there, not with `-c`, or
-the next CI deploy will undo it.
-
-## Config (`cdk.json` → `context`, or `-c key=value`)
-
-| Key | Default | Meaning |
-|---|---|---|
-| `bedrock_model_id` | `jp.anthropic.claude-sonnet-4-6` | Bedrock model / inference profile |
-| `upload_enabled` | `false` | FTPS-upload photos to Shutterstock |
-| `notify_email` | `""` | Email for CSV-ready, DLQ alarm and budget alerts |
-| `export_schedule_cron` | `cron(0 0 ? * MON *)` | Weekly export (UTC) |
-| `monthly_budget_usd` | `20` | Account-wide AWS budget alert (80% actual / 100% forecast); `0` disables |
-
-## Dev
-
-```powershell
-pytest -q
-ruff check . ; ruff format .
-cdk synth            # cdk diff before deploy
+```
+shuto init                 # creates the workspace, shows hardware and a top-8 model table
+shuto run ./my-photos      # import + cull + describe (shows an estimate first)
+shuto                      # opens the web UI at http://127.0.0.1:8765 for review
 ```
 
-## Shutterstock rules baked in
+1. `shuto init` detects your hardware and lists up to eight models that fit, with an estimated
+   time per image. Pick one; shuto asks before downloading anything. See
+   [docs/local-models.md](docs/local-models.md).
+2. `shuto run ./folder` imports the photos, culls them and describes the rest. Before
+   describing, it prints the estimated time (local) or cost (API) and asks to continue.
+3. Review in the web UI (`shuto` or `shuto ui`): edit text, set release ids, approve. The CLI
+   equivalents are `shuto review BATCH`, `shuto edit ID` and `shuto approve BATCH`.
+4. `shuto prepare BATCH` writes the upload-ready copies.
+5. `shuto upload BATCH` sends them over FTPS. Upload is off by default: set
+   `deliver.upload_enabled` in the config, or pass `--yes`.
+6. `shuto export BATCH` writes the CSV files (`--dry-run` shows what would be written).
+7. Import the CSV and press **Submit** on the Shutterstock contributor portal yourself.
+8. `shuto submitted BATCH` marks the batch. Later, record outcomes with `shuto accept FILE` or
+   `shuto reject FILE --reason CODE`.
 
-- JPEG only, ≥ 4 MP (smaller photos are skipped and reported).
-- 7–50 keywords, most relevant first; 1–2 categories from the list in `categories.py`.
-- Editorial: Claude flags recognizable people (no model release), logos/brands and news events,
-  and writes the caption in editorial format using the EXIF capture date + your `notes.txt`.
-- Filenames are case-sensitive and must match between the FTPS upload and the CSV.
-- Before the first real batch, compare the CSV headers with the sample CSV on the Submit page.
+Batch ids are listed by `shuto status`.
 
-## Ideas / next
+### Commands
 
-- Japan-specific keyword enrichment (place names in romaji, seasonal terms like *koyo*, *sakura*).
-- Reject-reason feedback loop: store Shutterstock rejection reasons and feed them to the prompt.
-- Cost tracking per batch (Bedrock tokens).
+| Command | Purpose |
+|---|---|
+| `ui` | start the web UI (the default when no command is given) |
+| `init`, `doctor` | set up the workspace and model; report hardware, Ollama and model status |
+| `models` | `list`, `pull TAG`, `use SPEC`, `bench [MODEL]` |
+| `import`, `cull`, `describe`, `run` | the early stages, or all three with `run` |
+| `ledger export [PATH]`, `ledger import PATH` | back up / restore the list of uploaded photos |
+| `review`, `edit`, `approve` | inspect and change metadata, approve photos |
+| `prepare`, `upload`, `export`, `submitted` | delivery |
+| `status`, `accept`, `reject` | tracking |
+| `secrets set NAME`, `check-ftps` | store a secret; test the FTPS login |
+| `restrictions` | `list` rules or `check TEXT` against them |
+
+Use `shuto COMMAND --help` for flags. Global options: `--config FILE`, `-v`.
+
+## Already-uploaded memory
+
+shuto remembers what you have sent to Shutterstock, offline, so you do not pay to process
+(or upload) the same picture twice.
+
+- **What is remembered:** every photo that reached `uploaded`, `exported`, `submitted`,
+  `accepted` or `rejected`, with its checksum and a small visual fingerprint (dHash).
+- **On import:** an exact copy of such a photo, or an edited / re-saved / resized copy of it
+  (fingerprint within `import.near_duplicate_distance`, default 6), is not processed again.
+  It is recorded as `already_uploaded` and reported, for example
+  `IMG_1.jpg: already uploaded on 2025-03-04 as 20250304-station-001.jpg`.
+  Use `shuto import FOLDER --force` (web: "Import anyway") to bring such photos in regardless;
+  `already_uploaded` photos can also be sent back to `ready` by hand.
+- **Photos uploaded before shuto:** `shuto import FOLDER --mark-uploaded` (web: "These were
+  uploaded before") only registers them as uploaded; no thumbnails, no describing, no upload.
+  It asks for confirmation (CLI: `--yes` skips it) because it cannot be undone, and it cannot be
+  combined with `--force`. `shuto run` has no `--force`; use `shuto import --force` instead.
+  Rejected photos are remembered too and reported as "previously submitted and rejected".
+- **The ledger:** `<workspace>/uploaded.csv` (UTF-8: sha256, dhash, orig_name, submit_name,
+  uploaded_at, batch_id) is rewritten after each upload and after `--mark-uploaded`. Rows
+  already in the file are never dropped. Copy it somewhere safe as your backup.
+  `shuto ledger export [PATH]` writes it from the database on demand.
+- **New machine or workspace:** copy `uploaded.csv` over and run `shuto ledger import PATH`.
+  It is safe to repeat; photos are matched by sha256.
+
+## Web UI
+
+`shuto` (or `shuto ui`) opens <http://127.0.0.1:8765>. It has a batch overview, a batch page
+with thumbnails and bulk actions, a photo page for review and editing, and a settings page
+with hardware info, the model picker and provider key status. Everything the UI does is also
+available from the CLI.
+
+## Commercial vs Editorial
+
+Shutterstock accepts photos under two licences, and the rules differ. If you are new to it:
+
+**Commercial** is for ads, products and packaging.
+- No visible logos, brand names or shop signs.
+- Recognizable people need a model release.
+- Restricted buildings need a property release.
+
+**Editorial** is for news, blogs and articles.
+- Logos, brands and recognizable people are fine.
+- The caption must be strict and factual: `CITY, COUNTRY - MONTH D, YYYY: Factual sentence.`
+- No manipulation of the image.
+
+Many street photos contain a sign or a face and can only be sold as editorial. shuto handles
+this through its guardrails: when a rule says a photo is restricted for commercial use, the
+photo is switched to editorial automatically and the caption is built in the editorial
+format. Photos that Shutterstock does not accept at all are blocked and reported.
+
+## Guardrails
+
+Guardrails apply a rule set both in the prompt and as a deterministic check on the model's
+output (for example, brand names in keywords). The rules and their sources are in
+[docs/shutterstock-restrictions.md](docs/shutterstock-restrictions.md). The lists are
+**non-exhaustive**, Shutterstock reviews case by case, and its policies change, so re-check
+them periodically. Guardrails reduce rejections; they do not guarantee acceptance.
+
+## Configuration
+
+Copy [shuto.example.yaml](shuto.example.yaml) to `shuto.yaml` and edit it, then pass it with
+`--config` or let shuto find it. Settings cover sources, batching, cull thresholds, the LLM
+provider and model, your style (theme, tone, keyword counts), review and the FTPS host. The
+theme in the example, "Everyday Japan", is only an example style; set your own.
+
+Model choice precedence: CLI flag, then the choice made in the UI or with `shuto models use`,
+then the config file, then `auto`.
+
+## Secrets
+
+Secrets never go in the config file. shuto reads them from environment variables, a `.env`
+file, or the OS keyring (`pip install -e ".[keyring]"`, then `shuto secrets set NAME`).
+
+| Name | Used for |
+|---|---|
+| `SHUTO_FTPS_USER`, `SHUTO_FTPS_PASSWORD` | Shutterstock FTPS login |
+| `ANTHROPIC_API_KEY`, `GEMINI_API_KEY` | API providers |
+
+Bedrock uses the standard AWS credential chain. `shuto check-ftps` tests the FTPS login
+without uploading anything.
+
+## Status and roadmap
+
+Early version (0.1). The pipeline, CLI and local web app work end to end, and tests run on
+Linux, macOS and Windows. Known limits: GPS data in photos is not stripped in v1 (the review
+page warns when it is present), and the model catalog's sizes, speeds and prices are
+approximate and need periodic re-checking. Ideas for later: GPS stripping, an OpenAI provider (planned), more providers,
+richer rejection analytics. Issues and suggestions are welcome.
+
+The earlier AWS version (S3, SQS, Lambda, Bedrock) is preserved at the git tag `aws-legacy`.
+
+## Credits
+
+The benchmark image `src/shuto/data/sample.jpg` is CC0 from Wikimedia Commons; see
+[src/shuto/data/SAMPLE_CREDIT.md](src/shuto/data/SAMPLE_CREDIT.md).
+
+## Contributing and security
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md).
+
+## License
+
+[MIT](LICENSE), copyright 2026 Alamsyah Hanza.

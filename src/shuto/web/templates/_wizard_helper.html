@@ -1,0 +1,21 @@
+{% from "_ui.html" import chip, icon %}
+<h1>The AI helper</h1>
+<p>shuto uses a free program called Ollama to run the AI on this computer, so your photos stay here.</p>
+<p>
+  {% if ollama.running %}{{ chip('ok', 'Ollama is running') }}
+  {% elif ollama.installed %}{{ chip('review', 'Ollama is installed but not running') }}
+  {% else %}{{ chip('review', 'Ollama is not installed') }}{% endif %}
+</p>
+{% if ollama.running %}
+<p>The AI helper is ready. You can continue.</p>
+{% else %}
+<h2>How to set it up</h2>
+<ol>
+  {% for s in helper_steps %}<li>{{ s }}</li>{% endfor %}
+</ol>
+<p><a class="btn secondary" href="{{ ollama_url }}" target="_blank" rel="noopener">Open the Ollama website</a>
+   <a class="btn secondary" href="/welcome?step=2">Check again</a></p>
+<p>No wish to install anything? <a href="/welcome?step=3&online=1">Use an online AI instead</a>.</p>
+{% endif %}
+<p class="next-action"><a class="btn primary" href="/welcome?step=3">Continue {{ icon('arrow') }}</a></p>
+<p><a href="/welcome?step=1">Back</a> &middot; <a href="/welcome?step=3">Skip this step</a></p>

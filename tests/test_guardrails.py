@@ -221,3 +221,20 @@ def test_shared_caption_rule(r, caption, ok):
     assert is_editorial_caption(caption) is ok
     _, res = run(r, Meta(description=caption, editorial=True))
     assert (res.action == "ok") is ok
+
+
+def test_house_rules_only_with_japan_focus():
+    on = g.load_restrictions(house_rules=True)
+    off = g.load_restrictions(house_rules=False)
+    assert any(x.id.startswith("shuto-") for x in on.rules)
+    assert not any(x.id.startswith("shuto-") for x in off.rules)
+    # Shutterstock's own Japan rules stay for everyone
+    assert any(x.id == "tokyo-skytree" for x in off.rules)
+
+
+def test_prompt_summary_ranks_by_hint_only(r):
+    first = r.rules[0].name
+    assert first in g.prompt_summary(r, max_items=1)  # no hint: file order, nothing promoted
+    assert "Seoul Tower" in g.prompt_summary(r, region_hint="asia", max_items=1)
+    assert "Seoul Tower" not in g.prompt_summary(r, max_items=1)
+    assert "Skytree" in g.prompt_summary(r, region_hint="japan", max_items=1)

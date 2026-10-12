@@ -1,0 +1,3 @@
+{% from "_ui.html" import stepper with context %}
+<p class="hint batch-name">Batch: <strong>{{ batch.id }}</strong>{% if batch.notes %} &middot; {{ batch.notes }}{% endif %}</p>
+{{ stepper(steps, step_current) }}

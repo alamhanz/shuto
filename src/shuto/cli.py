@@ -4,18 +4,22 @@ from __future__ import annotations
 
 import argparse
 import getpass
+import os
+import shutil
+import subprocess
 import sys
 import traceback
+import webbrowser
 from collections.abc import Sequence
 from pathlib import Path
 
-from . import deliver, ftps, guardrails, local_models, pipeline
-from .config import Config, ConfigError, find_config_path, load_config
+from . import deliver, ftps, guardrails, launcher, local_models, pipeline
+from .config import Config, ConfigError, default_config_dir, find_config_path, load_config
 from .llm.base import LLMError
 from .metadata import PhotoMetadata
 from .models import REASON_CODES, Status
 from .pipeline import PipelineError
-from .secrets import KNOWN_SECRETS, set_secret
+from .secrets import KNOWN_SECRETS, delete_secret, keyring_available, set_secret
 from .store import Store
 
 OLLAMA_URL = "https://ollama.com/download"
@@ -140,7 +144,12 @@ class Ctx:
     def __init__(self, args: argparse.Namespace):
         self.args = args
         self.config_path = find_config_path(getattr(args, "config", None))
-        self.cfg = load_config(getattr(args, "config", None))
+        try:
+            self.cfg = load_config(getattr(args, "config", None))
+        except ConfigError:
+            if getattr(args, "command", None) != "uninstall":
+                raise
+            self.cfg = Config()  # a broken config must not block uninstalling
         self._store: Store | None = None
 
     @property
@@ -172,13 +181,161 @@ def cmd_ui(ctx: Ctx) -> int:
         return 1
     a = ctx.args
     web = ctx.cfg.web
+    host = getattr(a, "host", None) or web.host
+    port = getattr(a, "port", None) or web.port
+    no_browser = getattr(a, "no_browser", False)
+    if launcher.is_running(host, port):
+        out("shuto is already running.")
+        if not no_browser:
+            webbrowser.open(f"http://{host}:{port}/")
+        return 0
     serve(
         ctx.cfg,
-        host=getattr(a, "host", None) or web.host,
-        port=getattr(a, "port", None) or web.port,
-        open_browser=web.open_browser and not getattr(a, "no_browser", False),
+        host=host,
+        port=port,
+        open_browser=web.open_browser and not no_browser,
         config_path=str(ctx.config_path) if ctx.config_path else None,
     )
+    return 0
+
+
+def cmd_shortcut(ctx: Ctx) -> int:
+    a = ctx.args
+    if a.remove:
+        removed = launcher.remove_shortcuts()
+        for path in removed:
+            out(f"Removed {path}")
+        if not removed:
+            out("No shuto shortcuts found.")
+        return 0
+    try:
+        made = launcher.create_shortcuts(desktop=not a.no_desktop, menu=not a.no_menu)
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise RuntimeError(f"could not create the shortcut ({exc})") from exc
+    for path in made:
+        out(f"Created {path}")
+    return 0
+
+
+_WORKSPACE_ENTRIES = (
+    "shuto.db",
+    "shuto.db-wal",
+    "shuto.db-shm",
+    "shuto.db-journal",
+    "thumbs",
+    "previews",
+    "prepared",
+    "exports",
+    "logs",
+    "uploaded.csv",
+)
+_LOGIN_SECRETS = ("SHUTO_FTPS_USER", "SHUTO_FTPS_PASSWORD")
+
+
+def data_targets(cfg: Config) -> list[Path]:
+    """What `--delete-data` removes. Only shuto's own files: in the workspace just the known
+    entries (a custom workspace may be a folder the user also keeps other things in)."""
+    found = [p for p in (cfg.workspace_dir / n for n in _WORKSPACE_ENTRIES) if p.exists()]
+    found += [
+        d for d in (default_config_dir(), pipeline.benchmark_cache_path().parent) if d.is_dir()
+    ]
+    return _drop_nested(found)
+
+
+def _drop_nested(paths: list[Path]) -> list[Path]:
+    """Remove duplicates and entries that live inside another entry (it goes away with its
+    parent). Symlinks are compared by their own location, never followed."""
+    keys = [Path(os.path.abspath(p)) for p in paths]
+    kept: list[Path] = []
+    for path, key in zip(paths, keys, strict=True):
+        nested = any(other != key and other in key.parents for other in keys)
+        if not nested and path not in kept:
+            kept.append(path)
+    return kept
+
+
+def _remove_path(path: Path) -> None:
+    if path.is_dir() and not path.is_symlink():
+        shutil.rmtree(path)
+    else:
+        path.unlink()
+
+
+def _delete_data(cfg: Config) -> None:
+    for path in data_targets(cfg):
+        if not (path.exists() or path.is_symlink()):
+            continue
+        try:
+            _remove_path(path)
+            out(f"Removed {path}")
+        except OSError as exc:
+            out(f"Could not remove {path} ({exc}).")
+    workspace = cfg.workspace_dir
+    if workspace.is_dir() and not any(workspace.iterdir()):
+        try:
+            workspace.rmdir()
+        except OSError:
+            pass
+
+
+def cmd_uninstall(ctx: Ctx) -> int:
+    a = ctx.args
+    cfg = ctx.cfg
+    host, port = cfg.web.host, cfg.web.port
+    if launcher.is_running(host, port):
+        out(f"shuto is still open (http://{host}:{port}/). Close it first, then run this again.")
+        return 1
+    out("This will remove shuto from this computer:")
+    out("  - the shuto icons on your Desktop and in your menu")
+    for path in launcher.list_shortcuts():
+        out(f"      {path}")
+    if a.keep_login:
+        out("  - (your saved Shutterstock login stays: --keep-login)")
+    else:
+        out("  - your saved Shutterstock login (stored in this computer's keyring)")
+    out("Kept unless you choose to delete them: shuto's own data (database, thumbnails,")
+    out("settings, saved model choice), in these places:")
+    for path in data_targets(cfg):
+        out(f"      {path}")
+    out("Never touched: your photos, your source folders, Ollama and its downloaded models.")
+    if not a.yes and not _confirm("Remove shuto now?"):
+        out("Cancelled. Nothing was changed.")
+        return 1
+    delete_data = a.delete_data
+    if not delete_data and not a.yes:
+        delete_data = _confirm("Also delete shuto's own data (database, thumbnails, settings)?")
+
+    removed = launcher.remove_shortcuts()
+    for path in removed:
+        out(f"Removed {path}")
+    if not removed:
+        out("No shuto shortcuts found.")
+
+    if not a.keep_login:
+        if not keyring_available():
+            out("No keyring on this computer, so no saved login to remove.")
+        else:
+            failed = False
+            for name in _LOGIN_SECRETS:
+                try:
+                    delete_secret(name)
+                except RuntimeError as exc:
+                    failed = True
+                    out(str(exc))
+            if not failed:
+                out("Removed the saved Shutterstock login.")
+
+    if delete_data:
+        _delete_data(cfg)
+    else:
+        out("Kept shuto's data. Run `shuto uninstall --delete-data` to delete it too.")
+
+    out()
+    out("Last step: remove the shuto program itself (a program cannot delete itself while")
+    out("it is running, so run this yourself):")
+    out("    uv tool uninstall shuto")
+    out("Ollama and its models are not touched. To remove a model: ollama rm <model>.")
+    out("To remove Ollama, use your system's own uninstaller (Settings > Apps on Windows).")
     return 0
 
 
@@ -749,6 +906,8 @@ def cmd_restrictions(ctx: Ctx) -> int:
 
 HANDLERS = {
     "ui": cmd_ui,
+    "shortcut": cmd_shortcut,
+    "uninstall": cmd_uninstall,
     "init": cmd_init,
     "doctor": cmd_doctor,
     "models": cmd_models,
@@ -796,6 +955,18 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--host")
     s.add_argument("--port", type=int)
     s.add_argument("--no-browser", action="store_true")
+
+    s = add("shortcut", "create (or remove) the desktop and menu launchers")
+    s.add_argument("--remove", action="store_true", help="delete the launchers")
+    s.add_argument("--no-desktop", action="store_true", help="skip the Desktop launcher")
+    s.add_argument("--no-menu", action="store_true", help="skip the Start menu / app menu launcher")
+
+    s = add("uninstall", "remove shortcuts and saved login (asks first); optionally shuto's data")
+    s.add_argument("--yes", action="store_true", help="do not ask for confirmation")
+    s.add_argument(
+        "--delete-data", action="store_true", help="also delete shuto's database and settings"
+    )
+    s.add_argument("--keep-login", action="store_true", help="keep the saved Shutterstock login")
 
     add("init", "create the workspace and choose a model (asks before any download)")
     add("doctor", "show hardware, Ollama and model status")

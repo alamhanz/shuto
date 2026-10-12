@@ -1,0 +1,664 @@
+"""Batch-side routes: the Check -> Review -> Upload -> Submit pages, bulk actions and photos."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Annotated, Any
+from urllib.parse import quote
+
+from fastapi import FastAPI, HTTPException, Query, Request
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+
+from .. import imaging, pipeline
+from ..jobs import JobContext
+from ..local_models import ModelChoiceRequired
+from ..models import ALLOWED, Photo, Status
+from ..pipeline import PipelineError
+from . import ux
+from .common import PostForm, WebCtx, short, split_lines
+
+BATCH_JOBS = ("cull", "describe", "prepare", "upload", "export")  # legacy / power-user routes
+PREVIEW_SIDE = 2048  # page preview size; originals can be tens of MB
+FILTERS = ("attention", "good", "aside", "all")
+
+
+def _url(batch_id: str, page: str = "") -> str:
+    return f"/batch/{quote(batch_id, safe='')}" + (f"/{page}" if page else "")
+
+
+def _filter(value: Any) -> str | None:
+    """A review filter from user input, or None when it is not one of the known four."""
+    text = str(value or "")
+    return text if text in FILTERS else None
+
+
+def _counts(photos: list[Photo]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for p in photos:
+        counts[p.status.value] = counts.get(p.status.value, 0) + 1
+    return counts
+
+
+def _in_filter(photo: Photo, show: str | None) -> bool:
+    return show in (None, "all") or ux.bucket(photo.status) == show
+
+
+def _photo_path(photo_id: int, show: str | None) -> str:
+    return f"/photo/{photo_id}" + (f"?back={show}" if show else "")
+
+
+def _mb(n: int) -> str:
+    mb = n / (1024 * 1024)
+    return f"{mb:.0f} MB" if mb >= 10 else f"{mb:.1f} MB"
+
+
+def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
+    def page(request: Request, name: str, batch_id: str, current: str, **extra: Any):
+        """Render a batch-flow page with its stepper."""
+        batch = ctx.get_batch_or_404(batch_id)
+        photos = ctx.store.list_photos(batch_id)
+        counts = _counts(photos)
+        return ctx.render(
+            request,
+            name,
+            batch=batch,
+            counts=counts,
+            total=len(photos),
+            photos=photos,
+            steps=ux.steps(batch_id, counts),
+            step_current=current,
+            active_job=ctx.runner.active_job(batch_id),
+            **extra,
+        )
+
+    @app.get("/batch/{batch_id}")
+    def batch_page(batch_id: str):
+        ctx.get_batch_or_404(batch_id)
+        stage = ux.stage(_counts(ctx.store.list_photos(batch_id)))
+        target = {"empty": "review", "done": "submit"}.get(stage, stage)
+        return RedirectResponse(_url(batch_id, target), status_code=303)
+
+    # ------------------------------------------------------------------ check
+
+    def check_facts(batch_id: str, counts: dict[str, int]) -> dict[str, Any]:
+        """Estimate, model name and plain-words problems for the Check page."""
+        facts: dict[str, Any] = {"estimate": None, "model": None, "problems": []}
+        if not (counts.get("imported", 0) + counts.get("ready", 0)):
+            return facts
+        try:
+            sel = pipeline.resolve_selection(ctx.cfg, ctx.store)
+            facts["model"] = f"{sel.provider} / {sel.model}"
+            facts["estimate"] = pipeline.estimate_check(ctx.cfg, ctx.store, batch_id).text
+            facts["problems"] = pipeline.describe_preflight(ctx.cfg, sel)
+        except ModelChoiceRequired:
+            facts["problems"] = ["No AI model is chosen yet."]
+        except PipelineError as exc:
+            facts["problems"] = [ux.friendly_error(exc)["what"]]
+        return facts
+
+    @app.get("/batch/{batch_id}/check", response_class=HTMLResponse)
+    def check_page(request: Request, batch_id: str):
+        ctx.get_batch_or_404(batch_id)
+        counts = _counts(ctx.store.list_photos(batch_id))
+        facts = check_facts(batch_id, counts)
+        stage = ux.stage(counts)
+        return page(
+            request,
+            "batch_check.html",
+            batch_id,
+            "check",
+            to_check=counts.get("imported", 0) + counts.get("ready", 0),
+            next_step=ux.next_action(batch_id, counts) if stage != "check" else None,
+            review_href=_url(batch_id, "review"),
+            **facts,
+        )
+
+    @app.post("/batch/{batch_id}/check", response_class=HTMLResponse)
+    def check_start(request: Request, batch_id: str, form: PostForm):
+        cfg, store = ctx.cfg, ctx.store
+        ctx.get_batch_or_404(batch_id)
+        n = len(store.list_photos(batch_id, [Status.IMPORTED, Status.READY]))
+        if not n:
+            return ctx.message_fragment(request, "There are no new photos to check.")
+        try:
+            problems = pipeline.describe_preflight(cfg, pipeline.resolve_selection(cfg, store))
+        except ModelChoiceRequired:
+            problems = ["No AI model is ready yet. Open Settings, pick a model and download it."]
+        except PipelineError as exc:
+            problems = [" ".join(ux.friendly_error(exc).values())]
+        if problems:
+            return ctx.message_fragment(request, " ".join(problems))
+
+        def run(job: JobContext) -> str:
+            s = pipeline.check_batch(
+                cfg, store, batch_id, progress=job.progress, cancel=job.cancelled
+            )
+            text = f"Quality check set aside {s.cull.culled} of {s.cull.total} new photos."
+            d = s.describe
+            if d is None:
+                return text + " Stopped before the AI started."
+            if d.aborted:
+                fe = ux.friendly_error(d.aborted)
+                raise PipelineError(f"{fe['what']} {fe['todo']}")
+            text += (
+                f" The AI wrote text for {d.described + d.needs_review + d.blocked} photos: "
+                f"{d.described} look good, {d.needs_review + d.blocked} need a look."
+            )
+            if d.failed:
+                text += f" {d.failed} could not be written; press Check again to retry them."
+            return text
+
+        return ctx.start_job(request, "check", batch_id, run, total=n)
+
+    # ------------------------------------------------------------------ review
+
+    def _card(p: Photo) -> dict[str, Any]:
+        gr = p.guardrail or {}
+        meta = p.metadata or {}
+        reasons: list[str] = []
+        if p.status == Status.CULLED:
+            reasons = list((p.cull or {}).get("reasons") or [])
+        elif p.status in (Status.NEEDS_REVIEW, Status.BLOCKED):
+            reasons = list(gr.get("messages") or [])
+        return {
+            "id": p.id,
+            "name": p.orig_name,
+            "status": p.status.value,
+            "bucket": ux.bucket(p.status),
+            "group": p.near_dup_group,
+            "reason": short(str(reasons[0]), 140) if reasons else "",
+            "snippet": short(str(meta.get("description") or ""), 90),
+            "editorial": bool(meta.get("editorial")),
+            "gps": p.has_gps,
+        }
+
+    @app.get("/batch/{batch_id}/review", response_class=HTMLResponse)
+    def review_page(request: Request, batch_id: str, show: str | None = None):
+        ctx.get_batch_or_404(batch_id)
+        photos = ctx.store.list_photos(batch_id)
+        by_bucket = {"attention": 0, "good": 0, "aside": 0, "all": len(photos)}
+        for p in photos:
+            b = ux.bucket(p.status)
+            if b in by_bucket:
+                by_bucket[b] += 1
+        chosen = _filter(show) or ("attention" if by_bucket["attention"] else "good")
+        shown = [p for p in photos if _in_filter(p, chosen)]
+        # Near-duplicate groups stay together, in order of first appearance.
+        groups: dict[tuple[str, int], list[Photo]] = {}
+        for p in shown:
+            key = ("g", p.near_dup_group) if p.near_dup_group is not None else ("p", p.id or 0)
+            groups.setdefault(key, []).append(p)
+        counts = _counts(photos)
+        return page(
+            request,
+            "batch_review.html",
+            batch_id,
+            "review",
+            cards=[_card(p) for group in groups.values() for p in group],
+            show=chosen,
+            by_bucket=by_bucket,
+            filters=FILTERS,
+            approved=counts.get("approved", 0) + counts.get("prepared", 0),
+            clean=counts.get("described", 0),
+            upload_href=_url(batch_id, "upload"),
+        )
+
+    @app.get("/batch/{batch_id}/bulk-edit", response_class=HTMLResponse)
+    def bulk_edit_form(
+        request: Request,
+        batch_id: str,
+        ids: Annotated[list[str] | None, Query()] = None,
+        show: str = "",
+    ):
+        ctx.get_batch_or_404(batch_id)
+        picked = [int(i) for i in (ids or []) if i.isdigit()]
+        return ctx.render(
+            request, "_bulk_edit.html", batch_id=batch_id, ids=picked, show=_filter(show) or ""
+        )
+
+    def _edit_selected(form: Any, ids: list[int], path: str):
+        add = split_lines(str(form.get("add_keywords") or ""))
+        drop = split_lines(str(form.get("remove_keywords") or ""))
+        categories = (
+            [str(c) for c in form.getlist("categories")]
+            if form.get("categories_mode") == "set"
+            else None
+        )
+        editorial = {"editorial": True, "commercial": False}.get(str(form.get("kind") or ""))
+        if not (add or drop or categories is not None or editorial is not None):
+            return ctx.back(path, error="Choose at least one change first.")
+        try:
+            s = pipeline.bulk_edit(
+                ctx.cfg,
+                ctx.store,
+                ids,
+                add_keywords=add,
+                remove_keywords=drop,
+                categories=categories,
+                editorial=editorial,
+            )
+        except PipelineError as exc:
+            return ctx.back(path, error=str(exc))
+        refused = "; ".join(f"#{i}: {why}" for i, why in list(s.refused.items())[:3])
+        return ctx.back(path, notice=f"Changed {len(s.changed)} photo(s).", error=refused or None)
+
+    @app.post("/batch/{batch_id}/bulk")
+    def batch_bulk(batch_id: str, form: PostForm):
+        cfg = ctx.cfg
+        ctx.get_batch_or_404(batch_id)
+        action = str(form.get("action") or "")
+        ids = ctx.ids_from(form)
+        show = _filter(form.get("show"))
+        path = _url(batch_id, "review") + (f"?show={show}" if show else "")
+        try:
+            if action == "approve_all":
+                s = pipeline.approve(cfg, ctx.store, batch_id=batch_id)
+            elif action in ("approve", "ready", "edit"):
+                if not ids:
+                    return ctx.back(path, error="Select at least one photo first.")
+                if action == "edit":
+                    return _edit_selected(form, ids, path)
+                if action == "approve":
+                    s = pipeline.approve(cfg, ctx.store, photo_ids=ids, include_needs_review=True)
+                else:
+                    changed = 0
+                    refused = []
+                    for pid in ids:
+                        try:
+                            pipeline.override_status(ctx.store, pid, Status.READY)
+                            changed += 1
+                        except PipelineError as exc:
+                            refused.append(str(exc))
+                    return ctx.back(
+                        path,
+                        notice=f"{changed} photo(s) sent back to the AI. Press Check to run it.",
+                        error=refused[0] if refused else None,
+                    )
+            else:
+                raise HTTPException(status_code=400, detail="Unknown bulk action.")
+        except PipelineError as exc:
+            return ctx.back(path, error=str(exc))
+        refused_text = "; ".join(f"#{i}: {why}" for i, why in list(s.refused.items())[:3])
+        return ctx.back(
+            path, notice=f"Approved {len(s.approved)} photo(s).", error=refused_text or None
+        )
+
+    # ------------------------------------------------------------------ upload
+
+    def _export_names(photos: list[Photo]) -> list[str]:
+        return [Path(f).name for f in sorted({p.export_file for p in photos if p.export_file})]
+
+    @app.get("/batch/{batch_id}/upload", response_class=HTMLResponse)
+    def upload_page(request: Request, batch_id: str):
+        ctx.get_batch_or_404(batch_id)
+        summary = pipeline.batch_summary(ctx.store, batch_id)
+        counts = summary["counts"]
+        login = pipeline.ftps_login_status(ctx.cfg)
+        return page(
+            request,
+            "batch_upload.html",
+            batch_id,
+            "upload",
+            n=counts.get("approved", 0) + counts.get("prepared", 0),
+            size=_mb(summary["upload_bytes"]),
+            login_ok=bool(login["user_set"] and login["password_set"]),
+            exports=_export_names(ctx.store.list_photos(batch_id)),
+            sent=counts.get("uploaded", 0) + counts.get("exported", 0),
+            back_path=_url(batch_id, "upload"),
+            submit_href=_url(batch_id, "submit"),
+        )
+
+    @app.post("/batch/{batch_id}/deliver", response_class=HTMLResponse)
+    def deliver(request: Request, batch_id: str, form: PostForm):
+        cfg, store = ctx.cfg, ctx.store
+        ctx.get_batch_or_404(batch_id)
+        if form.get("confirm") != "yes":
+            return ctx.message_fragment(
+                request, "Tick the box to confirm you want to upload to Shutterstock."
+            )
+        n = len(store.list_photos(batch_id, [Status.APPROVED, Status.PREPARED]))
+        if not n:
+            return ctx.message_fragment(request, "No approved photos to upload yet. Review first.")
+
+        def run(job: JobContext) -> str:
+            s = pipeline.deliver_batch(
+                cfg, store, batch_id, confirm=True, progress=job.progress, cancel=job.cancelled
+            )
+            sent = len(s.upload.uploaded) if s.upload else 0
+            if s.prepare.problems and not sent:
+                first = next(iter(s.prepare.problems.values()))[0]
+                raise PipelineError(
+                    f"{len(s.prepare.problems)} photo(s) are not ready to send: {first} "
+                    "Fix them in Review, then press Try again."
+                )
+            if s.upload is None:
+                return "Stopped before uploading."
+            if s.upload.failed and not sent:
+                err = next(iter(s.upload.failed.values()))
+                fe = ux.friendly_error(err, context="upload")
+                raise PipelineError(
+                    f"{len(s.upload.failed)} photo(s) did not upload. {fe['what']} {fe['todo']}"
+                )
+            unfinished = len(s.prepare.problems) + len(s.upload.failed)
+            if unfinished:
+                # Partial success: keep what was sent and still write its CSV.
+                exported = s.export or pipeline.export_batch(cfg, store, batch_id)
+                return (
+                    f"Uploaded {sent}; {unfinished} need a fix in Review. "
+                    f"Wrote {len(exported.files)} Shutterstock info file(s)."
+                )
+            if s.export is None:
+                return f"Uploaded {len(s.upload.uploaded)} photo(s). Stopped before the info file."
+            return (
+                f"Uploaded {len(s.upload.uploaded)} photo(s) and wrote "
+                f"{len(s.export.files)} Shutterstock info file(s)."
+            )
+
+        return ctx.start_job(request, "deliver", batch_id, run, total=2 * n + 1)
+
+    # ------------------------------------------------------------------ submit
+
+    @app.get("/batch/{batch_id}/submit", response_class=HTMLResponse)
+    def submit_page(request: Request, batch_id: str):
+        ctx.get_batch_or_404(batch_id)
+        photos = ctx.store.list_photos(batch_id)
+        counts = _counts(photos)
+        return page(
+            request,
+            "batch_submit.html",
+            batch_id,
+            "submit",
+            exports=_export_names(photos),
+            waiting=counts.get("exported", 0),
+            finished=sum(counts.get(k, 0) for k in ("submitted", "accepted", "rejected")),
+        )
+
+    @app.post("/batch/{batch_id}/submitted")
+    def batch_submitted(batch_id: str, form: PostForm):
+        ctx.get_batch_or_404(batch_id)
+        ids = pipeline.mark_submitted(ctx.store, batch_id)
+        if not ids:
+            return ctx.back(
+                _url(batch_id, "submit"), error="Nothing is waiting to be marked as submitted."
+            )
+        return ctx.back(
+            "/", notice=f"Marked {len(ids)} photo(s) as submitted. Open a photo to note the result."
+        )
+
+    # ------------------------------------------------------------------ legacy job routes
+
+    @app.post("/batch/{batch_id}/{action}", response_class=HTMLResponse)
+    def batch_job(request: Request, batch_id: str, action: str, form: PostForm):
+        cfg = ctx.cfg
+        if action not in BATCH_JOBS:
+            raise HTTPException(status_code=404, detail="Unknown action.")
+        ctx.get_batch_or_404(batch_id)
+        only = ctx.ids_from(form) or None
+        store = ctx.store
+        if action == "cull":
+
+            def run(job: JobContext) -> str:
+                s = pipeline.cull_batch(
+                    cfg, store, batch_id, progress=job.progress, cancel=job.cancelled
+                )
+                return f"Cull done: {s.ready} ready, {s.culled} culled (of {s.total} new)."
+
+        elif action == "describe":
+            try:
+                sel = pipeline.resolve_selection(cfg, store)
+            except ModelChoiceRequired:
+                return ctx.message_fragment(
+                    request, "Choose a local model on the Settings page first."
+                )
+            except PipelineError as exc:
+                return ctx.message_fragment(request, str(exc))
+            problems = pipeline.describe_preflight(cfg, sel)
+            if problems:
+                return ctx.message_fragment(request, " ".join(problems))
+
+            def run(job: JobContext) -> str:
+                s = pipeline.describe_batch(
+                    cfg, store, batch_id, only_ids=only, progress=job.progress, cancel=job.cancelled
+                )
+                text = (
+                    f"Described {s.described + s.needs_review + s.blocked}: {s.described} clean, "
+                    f"{s.needs_review} need review, {s.blocked} blocked, {s.failed} failed."
+                )
+                if s.aborted:
+                    raise PipelineError(f"Stopped early: {s.aborted}. {text}")
+                if s.errors:
+                    text += f" First error: {s.errors[0][1]}"
+                return text
+
+        elif action == "prepare":
+
+            def run(job: JobContext) -> str:
+                s = pipeline.prepare_batch(
+                    cfg, store, batch_id, only_ids=only, progress=job.progress, cancel=job.cancelled
+                )
+                text = f"Prepared {len(s.prepared)} file(s)."
+                if s.problems:
+                    first = next(iter(s.problems.values()))[0]
+                    text += f" {len(s.problems)} photo(s) have problems, e.g. {first}"
+                return text
+
+        elif action == "upload":
+            if form.get("confirm") != "yes":
+                return ctx.message_fragment(
+                    request, "Tick the box to confirm you want to upload to Shutterstock."
+                )
+
+            def run(job: JobContext) -> str:
+                s = pipeline.upload_batch(
+                    cfg, store, batch_id, confirm=True, only_ids=only, progress=job.progress
+                )
+                text = f"Uploaded {len(s.uploaded)} file(s)."
+                if s.failed:
+                    name, err = next(iter(s.failed.items()))
+                    text += f" {len(s.failed)} failed, e.g. {name}: {err}"
+                if s.skipped_blocked:
+                    text += f" Skipped {len(s.skipped_blocked)} blocked."
+                return text
+
+        else:
+
+            def run(job: JobContext) -> str:
+                s = pipeline.export_batch(cfg, store, batch_id)
+                if not s.files:
+                    return "Nothing to export: upload prepared photos first."
+                return f"Wrote {len(s.files)} CSV file(s) for {len(s.rows)} photo(s)."
+
+        return ctx.start_job(request, action, batch_id, run)
+
+    @app.get("/batch/{batch_id}/exports/{filename}")
+    def export_download(batch_id: str, filename: str):
+        ctx.get_batch_or_404(batch_id)
+        for p in ctx.store.list_photos(batch_id):
+            if p.export_file and Path(p.export_file).name == filename:
+                path = Path(p.export_file)
+                if path.is_file():
+                    return FileResponse(path, media_type="text/csv", filename=filename)
+        raise HTTPException(status_code=404, detail="Unknown export file.")
+
+    # ------------------------------------------------------------------ photos
+
+    @app.get("/thumb/{photo_id}")
+    def thumb(photo_id: int):
+        cfg = ctx.cfg
+        photo = ctx.get_photo_or_404(photo_id)
+        path = cfg.workspace_path("thumbs", f"{photo.sha256}.jpg")
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail="No thumbnail.")
+        return FileResponse(path, media_type="image/jpeg")
+
+    @app.get("/image/{photo_id}")
+    def image(photo_id: int):
+        cfg = ctx.cfg
+        photo = ctx.get_photo_or_404(photo_id)
+        src = Path(photo.src_path)
+        dest = cfg.workspace_path("previews", f"{photo.sha256}.jpg")
+        if not dest.is_file() and src.is_file():
+            try:  # cached ~2048 px copy; the original is only read, never served or touched
+                imaging.make_thumbnail(src, dest, max_side=PREVIEW_SIDE)
+            except Exception:  # unreadable or unsupported file: fall back to the thumbnail
+                pass
+        if dest.is_file():
+            return FileResponse(dest, media_type="image/jpeg")
+        return thumb(photo_id)
+
+    @app.get("/photo/{photo_id}", response_class=HTMLResponse)
+    def photo_page(request: Request, photo_id: int, back: str | None = None):
+        photo = ctx.get_photo_or_404(photo_id)
+        show = _filter(back)
+        meta = photo.metadata or {}
+        siblings: list[int] = []
+        if photo.batch_id:
+            siblings = [
+                p.id
+                for p in ctx.store.list_photos(photo.batch_id)
+                if p.id == photo_id or _in_filter(p, show)
+            ]
+        idx = siblings.index(photo_id) if photo_id in siblings else -1
+        prev_id = siblings[idx - 1] if idx > 0 else None
+        next_id = siblings[idx + 1] if 0 <= idx < len(siblings) - 1 else None
+        back_href = (
+            _url(photo.batch_id, "review") + (f"?show={show}" if show else "")
+            if photo.batch_id
+            else "/"
+        )
+        return ctx.render(
+            request,
+            "photo.html",
+            photo=photo,
+            meta=meta,
+            keywords_text=", ".join(meta.get("keywords") or []),
+            keyword_count=len(meta.get("keywords") or []),
+            gr=photo.guardrail or {},
+            cull=photo.cull or {},
+            detected=photo.detected or {},
+            location=meta.get("location") or {},
+            events=ctx.store.events_for(photo_id),
+            rejections=ctx.store.list_rejections(photo_id),
+            show=show or "",
+            back_href=back_href,
+            prev_href=_photo_path(prev_id, show) if prev_id else None,
+            next_href=_photo_path(next_id, show) if next_id else None,
+            next_id=next_id,
+            editable=photo.status in pipeline.PRE_UPLOAD_EDITABLE,
+            can_approve=photo.status in (Status.DESCRIBED, Status.NEEDS_REVIEW),
+            can_ready=photo.status != Status.READY
+            and Status.READY in ALLOWED.get(photo.status, ()),
+            can_result=photo.status in (Status.EXPORTED, Status.SUBMITTED),
+            releases_text="\n".join(photo.release_ids),
+        )
+
+    def _save_edits(photo_id: int, form: Any) -> None:
+        """Save the edit form (guardrails re-run); raises PipelineError with a plain reason."""
+        categories = [str(c) for c in form.getlist("categories")]
+        if len(categories) > 2:
+            raise PipelineError("Choose at most 2 categories.")
+        pipeline.update_metadata(
+            ctx.cfg,
+            ctx.store,
+            photo_id,
+            description=str(form.get("description") or "").strip(),
+            title=str(form.get("title") or "").strip(),
+            keywords=split_lines(str(form.get("keywords") or "")),
+            categories=categories,
+            editorial=form.get("editorial") == "yes",
+            mature=form.get("mature") == "yes",
+            release_ids=split_lines(str(form.get("release_ids") or "")),
+        )
+
+    @app.post("/photo/{photo_id}")
+    def photo_save(photo_id: int, form: PostForm):
+        ctx.get_photo_or_404(photo_id)
+        path = _photo_path(photo_id, _filter(form.get("back")))
+        try:
+            _save_edits(photo_id, form)
+        except PipelineError as exc:
+            return ctx.back(path, error=str(exc))
+        return ctx.back(path, notice="Saved. The Shutterstock rules were checked again.")
+
+    @app.post("/photo/{photo_id}/approve")
+    def photo_approve(photo_id: int, form: PostForm):
+        cfg = ctx.cfg
+        photo = ctx.get_photo_or_404(photo_id)
+        show = _filter(form.get("back"))
+        path = _photo_path(photo_id, show)
+        try:
+            if "keywords" in form:  # the edit form was submitted: save it first, then approve
+                _save_edits(photo_id, form)
+                after = ctx.get_photo_or_404(photo_id)
+                if photo.status == Status.DESCRIBED and after.status != Status.DESCRIBED:
+                    why = " ".join((after.guardrail or {}).get("messages") or [])
+                    raise PipelineError(f"Saved, but not approved. Fix this first: {why}".strip())
+            s = pipeline.approve(cfg, ctx.store, photo_ids=[photo_id], include_needs_review=True)
+        except PipelineError as exc:
+            return ctx.back(path, error=str(exc))
+        if s.refused:
+            return ctx.back(path, error=next(iter(s.refused.values())))
+        # `next` must be a plain photo id from the same batch; anything else is ignored.
+        raw = str(form.get("next") or "")
+        target = ctx.store.get_photo(int(raw)) if raw.isdigit() and len(raw) < 12 else None
+        if target is not None and target.batch_id == photo.batch_id:
+            return ctx.back(_photo_path(int(raw), show), notice="Approved.")
+        if photo.batch_id:
+            review = _url(photo.batch_id, "review") + (f"?show={show}" if show else "")
+            return ctx.back(review, notice="Approved. That was the last photo here.")
+        return ctx.back(path, notice="Approved.")
+
+    @app.post("/photo/{photo_id}/ready")
+    def photo_ready(photo_id: int, form: PostForm):
+        ctx.get_photo_or_404(photo_id)
+        path = _photo_path(photo_id, _filter(form.get("back")))
+        try:
+            pipeline.override_status(ctx.store, photo_id, Status.READY)
+        except PipelineError as exc:
+            return ctx.back(path, error=str(exc))
+        return ctx.back(path, notice="Sent back to the AI. Press Check on the batch to run it.")
+
+    @app.post("/photo/{photo_id}/regenerate", response_class=HTMLResponse)
+    def photo_regenerate(request: Request, photo_id: int, form: PostForm):
+        cfg = ctx.cfg
+        photo = ctx.get_photo_or_404(photo_id)
+        if not photo.batch_id:
+            return ctx.message_fragment(request, "This photo is not part of a batch.")
+        batch_id = photo.batch_id
+        try:
+            sel = pipeline.resolve_selection(cfg, ctx.store)
+        except ModelChoiceRequired:
+            return ctx.message_fragment(
+                request, "No AI model is ready yet. Open Settings, pick a model and download it."
+            )
+        problems = pipeline.describe_preflight(cfg, sel)
+        if problems:
+            return ctx.message_fragment(request, " ".join(problems))
+
+        def run(job: JobContext) -> str:
+            s = pipeline.describe_batch(
+                cfg, ctx.store, batch_id, only_ids=[photo_id], cancel=job.cancelled
+            )
+            if s.aborted or s.errors:
+                fe = ux.friendly_error(s.aborted or s.errors[0][1])
+                raise PipelineError(f"{fe['what']} {fe['todo']}")
+            return "Described again. Reload the page to see the new text."
+
+        return ctx.start_job(request, "describe", batch_id, run, total=1)
+
+    @app.post("/photo/{photo_id}/result")
+    def photo_result(photo_id: int, form: PostForm):
+        ctx.get_photo_or_404(photo_id)
+        path = _photo_path(photo_id, _filter(form.get("back")))
+        accepted = form.get("outcome") == "accept"
+        try:
+            pipeline.record_result(
+                ctx.store,
+                photo_id,
+                accepted,
+                reason_code=str(form.get("reason") or "") or None,
+                note=str(form.get("note") or "").strip() or None,
+            )
+        except PipelineError as exc:
+            return ctx.back(path, error=str(exc))
+        return ctx.back(path, notice="Accepted." if accepted else "Rejection recorded.")

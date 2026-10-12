@@ -7,13 +7,15 @@ Runners (CLI, web) call these functions. Every long operation takes an optional
 from __future__ import annotations
 
 import csv
+import ftplib
 import importlib
 import importlib.util
 import os
+import re
 import threading
 from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime
 from functools import lru_cache
 from pathlib import Path
@@ -22,9 +24,9 @@ from typing import Any
 import platformdirs
 
 from . import cull as cull_mod
-from . import deliver, describe, estimate, guardrails, hardware, imaging, local_models
+from . import deliver, describe, estimate, ftps, guardrails, hardware, imaging, local_models
 from . import ledger as ledger_mod
-from .collect import batch_id_for, group_near_duplicates, scan_folder
+from .collect import _safe_batch_name, batch_id_for, group_near_duplicates, scan_folder
 from .config import APP_NAME, Config, default_config_dir
 from .csv_export import split_by_kind
 from .imaging import hamming
@@ -35,7 +37,7 @@ from .llm.ollama import OllamaClient, OllamaProvider
 from .metadata import PhotoMetadata, normalize
 from .models import REASON_CODES, UPLOADED_STATES, LLMCall, Photo, Status
 from .prepare import prepare_file, release_check, safe_filename
-from .secrets import get_secret
+from .secrets import get_secret, keyring_available
 from .store import InvalidTransition, Store
 
 Progress = Callable[[int, int, str], None]
@@ -143,6 +145,7 @@ def import_folder(
     progress: Progress | None = None,
     force: bool = False,
     mark_uploaded: bool = False,
+    batch_name: str | None = None,
 ) -> ImportSummary:
     """Scan a folder (or cfg.sources), register new photos, thumbnails, exact and near dupes.
 
@@ -152,6 +155,7 @@ def import_folder(
     `already_uploaded` and not processed again unless `force`. With `mark_uploaded` the folder is
     registered as already uploaded instead (no thumbnails; nothing else runs on it). `force` also
     sends look-alikes stored as `already_uploaded` by an earlier import back to `imported`.
+    With `batch_name`, every new photo goes into that one batch (instead of `import.batch_by`).
     """
     if force and mark_uploaded:
         raise PipelineError("--force and --mark-uploaded cannot be combined.")
@@ -230,7 +234,11 @@ def import_folder(
                 summary.already_known += 1
                 continue
             seen.add(item.sha256)
-            batch = batch_id_for(item, cfg.import_.batch_by, root)
+            batch = (
+                _safe_batch_name(batch_name)
+                if batch_name
+                else batch_id_for(item, cfg.import_.batch_by, root)
+            )
             if notes is not None:
                 store.upsert_batch(batch, notes=notes, source=str(root))
             match = None
@@ -734,14 +742,19 @@ class _Defaults:
 
 @lru_cache(maxsize=8)
 def _restrictions(
-    builtin: bool, extra: tuple[str, ...], disabled: tuple[str, ...]
+    builtin: bool, extra: tuple[str, ...], disabled: tuple[str, ...], house: bool
 ) -> guardrails.Restrictions:
-    return guardrails.load_restrictions(builtin, extra, disabled)
+    return guardrails.load_restrictions(builtin, extra, disabled, house_rules=house)
 
 
 def load_restrictions(cfg: Config) -> guardrails.Restrictions:
     r = cfg.restrictions
-    return _restrictions(r.builtin, tuple(str(p) for p in r.extra_files), tuple(r.disabled_rules))
+    return _restrictions(
+        r.builtin,
+        tuple(str(p) for p in r.extra_files),
+        tuple(r.disabled_rules),
+        cfg.style.region_focus == "japan",
+    )
 
 
 def _release_flags(release_ids: list[str]) -> tuple[bool, bool]:
@@ -1407,3 +1420,346 @@ def batch_report(store: Store, batch_id: str | None = None) -> list[dict[str, An
             }
         )
     return out
+
+
+# --------------------------------------------------------------------------- batch services (web)
+
+
+@dataclass
+class CheckSummary:
+    cull: CullSummary
+    describe: DescribeSummary | None = None
+
+
+def check_batch(
+    cfg: Config,
+    store: Store,
+    batch_id: str,
+    *,
+    progress: Progress | None = None,
+    cancel: Cancel | None = None,
+    llm: VisionLLM | None = None,
+) -> CheckSummary:
+    """Quality check, then titles and keywords, with one combined progress.
+
+    Raises ModelChoiceRequired / PipelineError (friendly text) before doing any work when the
+    AI cannot run. `describe` is None when cancelled before the second step.
+    """
+    progress = progress or _noop
+    if llm is None:
+        problems = describe_preflight(cfg, resolve_selection(cfg, store))
+        if problems:
+            raise PipelineError(" ".join(problems))
+        llm = resolve_llm(cfg, store)
+    to_cull = len(store.list_photos(batch_id, [Status.IMPORTED]))
+    total = to_cull + len(store.list_photos(batch_id, [Status.READY]))
+
+    def cull_progress(done: int, _total: int, _message: str = "") -> None:
+        progress(done, total, "Quality check")
+
+    def describe_progress(done: int, _total: int, _message: str = "") -> None:
+        progress(min(to_cull + done, total), total, "Writing titles & keywords")
+
+    culled = cull_batch(cfg, store, batch_id, progress=cull_progress, cancel=cancel)
+    if cancel and cancel():
+        return CheckSummary(culled, None)
+    described = describe_batch(
+        cfg, store, batch_id, llm=llm, progress=describe_progress, cancel=cancel
+    )
+    return CheckSummary(culled, described)
+
+
+def estimate_check(cfg: Config, store: Store, batch_id: str) -> estimate.Estimate:
+    """Like estimate_describe for imported + ready photos (an upper bound: some get culled)."""
+    sel = resolve_selection(cfg, store)
+    n = len(store.list_photos(batch_id, [Status.IMPORTED, Status.READY]))
+    llm_cls = get_provider_class(sel.provider)
+    side = cfg.llm.image_max_side or llm_cls.default_image_side
+    conc = cfg.llm.concurrency or llm_cls.default_concurrency
+    if sel.provider == "ollama":
+        recs = local_models.recommend(
+            hardware_profile(),
+            local_models.load_catalog(),
+            [],
+            local_models.load_benchmarks(benchmark_cache_path()),
+        )
+        rec = next((r for r in recs if r.model.tag == sel.model), None)
+        est = estimate.for_batch(n, "ollama", sel.model, recommendation=rec, concurrency=conc)
+    else:
+        est = estimate.for_batch(
+            n,
+            sel.provider,
+            sel.model,
+            api_model=api_model(sel.provider, sel.model),
+            concurrency=conc,
+            image_side=side,
+        )
+    return replace(est, text=f"up to {est.text}")
+
+
+@dataclass
+class DeliverSummary:
+    prepare: PrepareSummary
+    upload: UploadSummary | None = None
+    export: ExportSummary | None = None
+
+
+def deliver_batch(
+    cfg: Config,
+    store: Store,
+    batch_id: str,
+    *,
+    confirm: bool,
+    progress: Progress | None = None,
+    cancel: Cancel | None = None,
+    creds: deliver.FtpsCreds | None = None,
+    connect: Callable[..., object] | None = None,
+) -> DeliverSummary:
+    """Prepare approved photos, upload them (needs `confirm`), then write the CSV files.
+
+    One progress range of 2n+1 (n = approved + prepared photos). Stops after upload failures
+    or a cancel and returns what was done so far; uploaded photos can be exported later.
+    """
+    if not (cfg.deliver.upload_enabled or confirm):
+        raise UploadRefused(
+            "Uploading is disabled. Set deliver.upload_enabled: true in the config, or confirm "
+            "this upload explicitly."
+        )
+    progress = progress or _noop
+    n = len(store.list_photos(batch_id, [Status.APPROVED, Status.PREPARED]))
+    total = 2 * n + 1
+
+    def prepare_progress(done: int, _total: int, message: str = "") -> None:
+        progress(min(done, n), total, message)
+
+    def upload_progress(done: int, _total: int, message: str = "") -> None:
+        progress(min(n + done, 2 * n), total, message)
+
+    summary = DeliverSummary(
+        prepare_batch(cfg, store, batch_id, progress=prepare_progress, cancel=cancel)
+    )
+    if cancel and cancel():
+        return summary
+    summary.upload = upload_batch(
+        cfg,
+        store,
+        batch_id,
+        confirm=confirm,
+        progress=upload_progress,
+        creds=creds,
+        connect=connect,
+    )
+    if summary.upload.failed or (cancel and cancel()):
+        return summary
+    summary.export = export_batch(cfg, store, batch_id)
+    progress(total, total, "Writing the CSV files")
+    return summary
+
+
+@dataclass
+class BulkEditSummary:
+    changed: list[int] = field(default_factory=list)
+    refused: dict[int, str] = field(default_factory=dict)
+
+
+def _fold(words: Iterable[str]) -> list[str]:
+    seen: set[str] = set()
+    out: list[str] = []
+    for w in words:
+        w = str(w).strip()
+        if w and w.lower() not in seen:
+            seen.add(w.lower())
+            out.append(w)
+    return out
+
+
+def bulk_edit(
+    cfg: Config,
+    store: Store,
+    photo_ids: Iterable[int],
+    *,
+    add_keywords: Iterable[str] = (),
+    remove_keywords: Iterable[str] = (),
+    categories: list[str] | None = None,
+    editorial: bool | None = None,
+) -> BulkEditSummary:
+    """Apply one keyword/category/editorial change to many photos (guardrails re-run on each)."""
+    if categories is not None and len(categories) > 2:
+        raise PipelineError("Pick at most 2 categories.")
+    add = _fold(add_keywords)
+    drop = {w.lower() for w in _fold(remove_keywords)}
+    from .web import ux  # plain-words status names; imported late (web imports this module)
+
+    summary = BulkEditSummary()
+    for pid in photo_ids:
+        photo = store.get_photo(pid)
+        if photo is None:
+            summary.refused[pid] = "photo not found"
+            continue
+        if photo.status not in PRE_UPLOAD_EDITABLE:
+            summary.refused[pid] = (
+                f'it is marked "{ux.label(photo.status)}" and cannot be edited now'
+            )
+            continue
+        current = [str(k) for k in (photo.metadata or {}).get("keywords") or []]
+        keywords = _fold([k for k in current if k.lower() not in drop] + add)
+        try:
+            update_metadata(
+                cfg,
+                store,
+                pid,
+                keywords=keywords if (add or drop) else None,
+                categories=list(categories) if categories is not None else None,
+                editorial=editorial,
+            )
+        except PipelineError as exc:
+            summary.refused[pid] = str(exc)
+            continue
+        summary.changed.append(pid)
+    return summary
+
+
+def batch_summary(store: Store, batch_id: str) -> dict[str, Any]:
+    """Status counts, photo total and bytes that an upload would send (approved + prepared)."""
+    counts: dict[str, int] = {}
+    upload_bytes = 0
+    photos = store.list_photos(batch_id)
+    for p in photos:
+        counts[p.status.value] = counts.get(p.status.value, 0) + 1
+        if p.status in (Status.APPROVED, Status.PREPARED):
+            try:
+                upload_bytes += Path(p.src_path).stat().st_size
+            except OSError:
+                continue
+    return {"counts": counts, "total": len(photos), "upload_bytes": upload_bytes}
+
+
+# --------------------------------------------------------------------------- UI settings
+
+UI_SETTING_KEYS = ("onboarded", "last_folder", "style", "bedrock_profile")
+PROFILE_RE = re.compile(r"^[A-Za-z0-9_.@:+=,-]{1,100}$")
+MAX_STYLE_TEXT = 200
+MAX_EXTRA_INSTRUCTIONS = 2000
+MAX_ALWAYS_INCLUDE = 20
+
+
+def _ui_key(name: str) -> str:
+    short = name.removeprefix("ui.")
+    if short not in UI_SETTING_KEYS:
+        raise PipelineError(f"Unknown setting: {name!r}.")
+    return f"ui.{short}"
+
+
+def get_ui_setting(store: Store, name: str, default: Any = None) -> Any:
+    return store.get_setting(_ui_key(name), default)
+
+
+REGION_FOCUS = ("", "japan")
+
+
+def _clean_style(value: Any) -> dict[str, Any]:
+    """Validate the style settings. A field that was submitted (even empty) is stored, so
+    clearing it overrides the config default; a field that was not submitted stays unset."""
+    if not isinstance(value, dict):
+        raise PipelineError("Style settings must be a set of named values.")
+    out: dict[str, Any] = {}
+    for key in ("theme", "tone"):
+        if key not in value:
+            continue
+        text = str(value.get(key) or "").strip()
+        if len(text) > MAX_STYLE_TEXT:
+            raise PipelineError(f"Keep the {key} under {MAX_STYLE_TEXT} characters.")
+        out[key] = text
+    if "extra_instructions" in value:
+        extra = str(value.get("extra_instructions") or "").strip()
+        if len(extra) > MAX_EXTRA_INSTRUCTIONS:
+            raise PipelineError(f"Keep the extra notes under {MAX_EXTRA_INSTRUCTIONS} characters.")
+        out["extra_instructions"] = extra
+    if "always_include" in value:
+        words = value.get("always_include") or []
+        if isinstance(words, str):
+            words = words.replace("\n", ",").split(",")
+        words = _fold(words)
+        if len(words) > MAX_ALWAYS_INCLUDE:
+            raise PipelineError(f"Use at most {MAX_ALWAYS_INCLUDE} always-include keywords.")
+        out["always_include"] = words
+    if "region_focus" in value:
+        focus = str(value.get("region_focus") or "").strip().casefold()
+        if focus not in REGION_FOCUS:
+            raise PipelineError("Region focus must be None or Japan.")
+        out["region_focus"] = focus
+    return out
+
+
+def set_ui_setting(store: Store, name: str, value: Any) -> Any:
+    """Save a UI setting (validated for `style`); returns the stored value."""
+    key = _ui_key(name)
+    if key == "ui.style":
+        value = _clean_style(value)
+    elif key == "ui.bedrock_profile":
+        value = str(value or "").strip()
+        if value and not PROFILE_RE.match(value):
+            raise PipelineError("That AWS profile name is not valid.")
+    store.set_setting(key, value)
+    return value
+
+
+def apply_style_overrides(cfg: Config, store: Store) -> Config:
+    """Config copy with the style set in the web app (theme, tone, always-include, extras,
+    region focus). A key that is present wins over the config file, even when empty."""
+    profile = store.get_setting("ui.bedrock_profile")
+    if isinstance(profile, str):
+        cfg = cfg.model_copy(
+            update={
+                "llm": cfg.llm.model_copy(
+                    update={"bedrock": cfg.llm.bedrock.model_copy(update={"profile": profile})}
+                )
+            }
+        )
+    style = store.get_setting("ui.style") or {}
+    if not style:
+        return cfg
+    update: dict[str, Any] = {
+        k: style[k]
+        for k in ("theme", "tone", "extra_instructions", "region_focus")
+        if isinstance(style.get(k), str)
+    }
+    if isinstance(style.get("always_include"), list):
+        update["keywords"] = cfg.style.keywords.model_copy(
+            update={"always_include": list(style["always_include"])}
+        )
+    return cfg.model_copy(update={"style": cfg.style.model_copy(update=update)})
+
+
+# --------------------------------------------------------------------------- FTPS login
+
+
+def ftps_login_status(cfg: Config) -> dict[str, bool]:
+    """Which parts of the Shutterstock login are saved (never the values)."""
+    return {
+        "user_set": bool(get_secret("SHUTO_FTPS_USER")),
+        "password_set": bool(get_secret("SHUTO_FTPS_PASSWORD")),
+        "keyring_ok": keyring_available(),
+    }
+
+
+def test_ftps_login(cfg: Config, *, connect: Callable[..., object] | None = None) -> None:
+    """Log in to the upload server and log out again; PipelineError with plain-words advice."""
+    try:
+        creds = deliver.creds_from_secrets(cfg.deliver.ftps_host)
+    except RuntimeError as exc:
+        raise PipelineError(
+            "Your Shutterstock upload login is not saved yet. Enter it in Settings."
+        ) from exc
+    try:
+        ftp = (connect or ftps.connect)(creds.host, creds.username, creds.password)
+    except ftplib.error_perm as exc:
+        raise PipelineError(
+            "The upload server refused this email or password. Check them and try again."
+        ) from exc
+    except Exception as exc:
+        raise PipelineError(
+            f"Could not reach {creds.host}. Check your internet connection and try again "
+            f"({type(exc).__name__})."
+        ) from exc
+    ftps.close(ftp)

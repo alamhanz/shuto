@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block title %}shuto - welcome (step {{ step }} of {{ wizard|length }}){% endblock %}
+{% block content %}
+<ol class="dots" aria-label="Step {{ step }} of {{ wizard|length }}">
+  {% for key, name in wizard %}
+  <li class="{{ 'done' if loop.index < step else 'current' if loop.index == step else '' }}"{% if loop.index == step %} aria-current="step"{% endif %}><span class="sr-only">{{ name }}{% if loop.index < step %} (done){% elif loop.index == step %} (current step){% endif %}</span></li>
+  {% endfor %}
+</ol>
+<p class="hint">Step {{ step }} of {{ wizard|length }}</p>
+{% set part = "_wizard_" ~ wizard[step - 1][0] ~ ".html" %}
+{% include part %}
+{% endblock %}

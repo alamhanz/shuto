@@ -1,36 +1,30 @@
 {% extends "base.html" %}
-{% block title %}shuto - batches{% endblock %}
+{% from "_ui.html" import chip, stepper, empty, icon %}
+{% block title %}shuto - your batches{% endblock %}
 {% block content %}
-<h1>Batches</h1>
-{% if not batches %}
-<p class="hint">New here? Import a folder of photos below, then open the batch: cull, describe, review, prepare, upload, export. Choose your local AI model on <a href="/settings">Settings</a> first.</p>
-{% endif %}
-<table>
-  <thead><tr><th>Batch</th><th>Photos</th><th>Status</th><th>AI usage</th></tr></thead>
-  <tbody>
-  {% for b in batches %}
-  <tr>
-    <td><a href="/batch/{{ b.id|urlencode }}">{{ b.id }}</a>{% if b.notes %}<div class="snip">{{ b.notes }}</div>{% endif %}</td>
-    <td>{{ b.total }}</td>
-    <td>{% for s, n in b.counts.items() %}<span class="badge s-{{ s }}">{{ s }} {{ n }}</span> {% endfor %}</td>
-    <td>{{ b.usage.calls }} calls, {{ b.usage.input_tokens }} in / {{ b.usage.output_tokens }} out tokens, {{ "%.0f"|format(b.usage.seconds) }} s</td>
-  </tr>
-  {% else %}
-  <tr><td colspan="4">No batches yet.</td></tr>
+<h1>Your batches</h1>
+<p class="panel model-strip">
+  {% if model %}AI model in use: <strong>{{ model }}</strong>{% else %}No AI model chosen yet.{% endif %}
+  <a class="btn secondary" href="/settings#model">{% if model %}Change{% else %}Choose one{% endif %}</a>
+</p>
+{% if not cards %}
+{{ empty("Add your first photos", "Pick a folder of photos. shuto checks them, writes a title and keywords for each one, and gets them ready to send. Everything stays on this computer.", "/add", "Add your first photos") }}
+{% else %}
+<p class="next-action"><a class="btn secondary" href="/add">{{ icon('folder') }} Add photos</a></p>
+<div class="cards">
+  {% for c in cards %}
+  <article class="card" aria-labelledby="batch-{{ loop.index }}">
+    <div class="body">
+      <h2 id="batch-{{ loop.index }}"><a href="/batch/{{ c.id|urlencode }}">{{ c.id }}</a></h2>
+      <p class="hint">{{ c.total }} photos{% if c.date %} &middot; added {{ c.date }}{% endif %}</p>
+      {% if c.notes %}<p class="snip">{{ c.notes }}</p>{% endif %}
+      {{ stepper(c.steps, mini=True) }}
+      <p class="chips">{% for kind, text, n in c.chips %}{{ chip(kind, text, n) }}{% endfor %}</p>
+      {% if c.estimate %}<p class="estimate">{{ c.estimate }}</p>{% endif %}
+      <p><a class="btn primary" href="{{ c.action.href }}">Continue: {{ c.action.label }} {{ icon('arrow') }}</a></p>
+    </div>
+  </article>
   {% endfor %}
-  </tbody>
-</table>
-
-<h2>Import photos</h2>
-<form hx-post="/import" hx-target="#job-area" hx-swap="innerHTML" class="stack">
-  <input type="hidden" name="csrf_token" value="{{ csrf }}">
-  <label>Folder on this computer <input name="path" required placeholder="C:\Photos\export  or  ~/Pictures/export" size="50"></label>
-  <label>Notes for this batch (optional) <input name="notes" size="50"></label>
-  <label><input type="checkbox" name="recursive" value="yes" checked> Include sub-folders</label>
-  <label><input type="checkbox" name="force" value="yes"> Import anyway (even photos that look already uploaded)</label>
-  <button type="submit">Import</button>
-  <button type="submit" name="mark_uploaded" value="yes" class="secondary" hx-confirm="Register every photo in this folder as already uploaded? This cannot be undone, and photos already being processed are included. Nothing is sent anywhere.">These were uploaded before: just remember them</button>
-</form>
-<div id="job-area">{% if import_job %}{% with job=import_job, active=job_active, result=None %}{% include "_job.html" %}{% endwith %}{% endif %}</div>
-<p class="snip">Workspace: {{ workspace }}. Your original photos are never modified.</p>
+</div>
+{% endif %}
 {% endblock %}

@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% from "_ui.html" import field, icon %}
+{% block title %}shuto - add photos{% endblock %}
+{% block content %}
+<h1>Add photos</h1>
+<p>Choose the folder that holds your photos. shuto only reads them. Your originals are never changed.</p>
+<form hx-post="/import" hx-target="#job-area" hx-swap="innerHTML" class="stack">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  {% call field('path', 'Folder on this computer', help='Choose a folder with the button, or paste its location.') %}
+  <input id="path" name="path" required value="{{ last_folder }}" size="50" aria-describedby="path-help" placeholder="C:\Photos\export  or  ~/Pictures/export">
+  {% endcall %}
+  <p><button type="button" class="secondary" data-open-dialog="browse-dialog" hx-get="/browse" hx-vals='{"path": ""}' hx-target="#browse-pane" hx-swap="outerHTML">{{ icon('folder') }} Choose folder...</button></p>
+  {% call field('batch_name', 'Name for this batch', help='Leave empty to use the folder name.') %}
+  <input id="batch_name" name="batch_name" maxlength="80" size="40" aria-describedby="batch_name-help">
+  {% endcall %}
+  <p><label><input type="checkbox" name="recursive" value="yes" checked> Look inside sub-folders too</label></p>
+  {% call field('notes', 'Notes (optional)', help='Only for you, for example "Spring trip, day two".') %}
+  <input id="notes" name="notes" size="50" aria-describedby="notes-help">
+  {% endcall %}
+  <details>
+    <summary>Advanced</summary>
+    <p><label><input type="checkbox" name="force" value="yes"> Add even photos I sent before</label></p>
+    <p><label><input type="checkbox" name="mark_uploaded" value="yes"> I already uploaded these photos: just remember them, do not add them as new. Nothing is uploaded and this cannot be undone.</label></p>
+  </details>
+  <p><button type="submit" class="btn primary">Add photos</button></p>
+</form>
+
+<dialog id="browse-dialog" aria-labelledby="browse-title">
+  <h2 id="browse-title">Choose a folder</h2>
+  <div id="browse-pane"><p class="hint">Loading folders...</p></div>
+  <p><button type="button" class="secondary" data-close-dialog>Close</button></p>
+</dialog>
+{% endblock %}

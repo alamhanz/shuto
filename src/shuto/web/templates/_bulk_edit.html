@@ -1,0 +1,42 @@
+<section class="panel" id="bulk-edit-panel" aria-labelledby="bulk-edit-title">
+  <h2 id="bulk-edit-title">{% if ids %}Edit {{ ids|length }} selected photo{{ '' if ids|length == 1 else 's' }}{% else %}Edit selected photos{% endif %}</h2>
+  {% if not ids %}
+  <p>Tick some photos first, then press Edit selected again.</p>
+  {% else %}
+  <form method="post" action="/batch/{{ batch_id|urlencode }}/bulk" class="stack">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <input type="hidden" name="action" value="edit">
+    <input type="hidden" name="show" value="{{ show }}">
+    {% for i in ids %}<input type="hidden" name="ids" value="{{ i }}">{% endfor %}
+    <div class="field">
+      <label for="add_keywords">Add these keywords</label>
+      <textarea id="add_keywords" name="add_keywords" rows="2" aria-describedby="add_keywords-help"></textarea>
+      <p class="field-help" id="add_keywords-help">Separate with commas. Leave empty to add nothing.</p>
+    </div>
+    <div class="field">
+      <label for="remove_keywords">Remove these keywords</label>
+      <textarea id="remove_keywords" name="remove_keywords" rows="2" aria-describedby="remove_keywords-help"></textarea>
+      <p class="field-help" id="remove_keywords-help">Separate with commas. Leave empty to remove nothing.</p>
+    </div>
+    <fieldset>
+      <legend>Categories</legend>
+      <label class="inline"><input type="radio" name="categories_mode" value="keep" checked> Don't change</label>
+      <label class="inline"><input type="radio" name="categories_mode" value="set"> Set to the ones I tick (up to 2)</label>
+      <div>
+        {% for c in categories %}<label class="inline"><input type="checkbox" name="categories" value="{{ c }}" class="cat"> {{ c }}</label>{% endfor %}
+      </div>
+    </fieldset>
+    <fieldset>
+      <legend>Commercial or Editorial</legend>
+      <label class="inline"><input type="radio" name="kind" value="keep" checked> Don't change</label>
+      <label class="inline"><input type="radio" name="kind" value="commercial"> Commercial</label>
+      <label class="inline"><input type="radio" name="kind" value="editorial"> Editorial</label>
+      <p class="hint">{{ HELP.editorial }} Photos switched to Editorial need a caption in the right form, so they may move to Needs a look.</p>
+    </fieldset>
+    <div class="row">
+      <button type="submit">Apply to {{ ids|length }} photo{{ '' if ids|length == 1 else 's' }}</button>
+      <a class="btn quiet" href="">Cancel</a>
+    </div>
+  </form>
+  {% endif %}
+</section>

@@ -200,12 +200,12 @@ def test_web_import_shows_message_and_force(cfg, photos_dir, monkeypatch):
     web = Web(create_app(cfg))
     try:
         job, text = web.run_job("/import", {"path": str(photos_dir), "mark_uploaded": "yes"})
-        assert job.state == "done" and "Registered 5 photo(s) as already uploaded" in text
+        assert job.state == "done" and "5 remembered as already sent" in text
         job, text = web.run_job("/import", {"path": str(photos_dir)})
-        assert "Skipped 5 photo(s) uploaded before" in text and "already uploaded on" in text
-        assert "Import anyway" in web.get("/").text
+        assert "5 look like photos you sent before" in text and "already uploaded on" in text
+        assert "Add even photos I sent before" in web.get("/add").text
         job, text = web.run_job("/import", {"path": str(photos_dir), "force": "yes"})
-        assert "uploaded before" not in text and "Imported 0 photo" in text
+        assert "sent before" not in text and "0 photo(s) added" in text
     finally:
         web.state.runner.shutdown()
 
@@ -234,7 +234,7 @@ def test_force_with_mark_uploaded_is_rejected(cfg, store, photos_dir, monkeypatc
     try:
         r = web.post("/import", {"path": str(photos_dir), "force": "yes", "mark_uploaded": "yes"})
         assert "not both" in r.text
-        assert "hx-confirm" in web.get("/").text
+        assert 'name="mark_uploaded"' in web.get("/add").text
     finally:
         web.state.runner.shutdown()
 

@@ -1,0 +1,24 @@
+{% from "_ui.html" import icon %}
+<div id="browse-pane">
+  {% if problem %}<p class="flash bad" role="alert">{{ icon('alert') }}<span>{{ problem }}</span></p>{% endif %}
+  <p class="chips">
+    {% for r in roots %}<a class="chip" href="/browse?path={{ r.path|urlencode }}" hx-get="/browse?path={{ r.path|urlencode }}" hx-target="#browse-pane" hx-swap="outerHTML">{{ r.label }}</a>{% endfor %}
+  </p>
+  {% if listing %}
+  <nav aria-label="Folder path">
+    <ol class="breadcrumbs">
+      {% for c in listing.crumbs %}<li><a href="/browse?path={{ c.path|urlencode }}" hx-get="/browse?path={{ c.path|urlencode }}" hx-target="#browse-pane" hx-swap="outerHTML">{{ c.name }}</a></li>{% endfor %}
+    </ol>
+  </nav>
+  <p><button type="button" class="btn primary" data-pick-path="{{ listing.path }}">Use this folder</button></p>
+  <ul class="browse">
+    {% for d in listing.dirs %}
+    <li><a href="/browse?path={{ d.path|urlencode }}" hx-get="/browse?path={{ d.path|urlencode }}" hx-target="#browse-pane" hx-swap="outerHTML">{{ icon('folder') }}<span>{{ d.name }}</span>
+      {% if d.unreadable %}<span class="hint">(cannot open)</span>{% elif d.photo_count %}<span class="hint">({{ d.photo_count }} photos)</span>{% endif %}</a></li>
+    {% else %}
+    <li><span class="hint">No folders inside this one.</span></li>
+    {% endfor %}
+  </ul>
+  {% if listing.truncated %}<p class="hint">Only the first folders are shown. Paste the location instead.</p>{% endif %}
+  {% endif %}
+</div>

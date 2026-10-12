@@ -79,15 +79,16 @@ class LLMConfig(_Section):
 class KeywordStyle(_Section):
     min: int = 25
     max: int = 50
-    always_include: list[str] = ["japan"]
-    romaji_place_names: bool = True
+    always_include: list[str] = []
+    romaji_place_names: bool = False
     seasonal_terms: bool = True
 
 
 class StyleConfig(_Section):
-    theme: str = "Everyday Japan"
+    theme: str = ""
     tone: str = "documentary, warm, factual; no hype words"
     language: str = "en"
+    region_focus: Literal["", "japan"] = ""  # "japan": romaji, Japan-first rules, house rules
     keywords: KeywordStyle = Field(default_factory=KeywordStyle)
     avoid: list[str] = ["beautiful", "amazing", "stunning"]
     extra_instructions: str = ""

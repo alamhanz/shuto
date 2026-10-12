@@ -403,8 +403,9 @@ def test_browse_route_is_read_only_and_confined(web, tmp_path, monkeypatch):
     from shuto.web import browse
 
     monkeypatch.setattr(browse, "roots", lambda: [browse.Root("Home", str(tmp_path))])
-    raw = "a&b" if os.name == "nt" else "<b>shots</b>"  # Windows forbids < > in names
-    escaped = "a&amp;b" if os.name == "nt" else "&lt;b&gt;shots&lt;/b&gt;"
+    # Windows forbids < > in names; "/" is a path separator everywhere
+    raw = "a&b" if os.name == "nt" else "<b>shots"
+    escaped = "a&amp;b" if os.name == "nt" else "&lt;b&gt;shots"
     (tmp_path / raw).mkdir()
     ok = web.get("/browse", params={"path": str(tmp_path)})
     assert ok.status_code == 200

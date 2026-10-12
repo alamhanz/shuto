@@ -29,7 +29,7 @@
 <h3>The AI helper is not running</h3>
 <p>Open Ollama from the Start menu (Windows) or Applications (Mac), leave it open, and try again. If it is not installed, see <a href="/settings#computer">Settings, This computer</a>.</p>
 <h3>There is not enough space</h3>
-<p>AI models are large downloads. Free up space on your drive, or pick a smaller model in <a href="/settings#model">Settings</a>. If another drive has more room, the "For helpers" box below shows how to move the model storage there.</p>
+<p>AI models are large downloads. Free up space on your drive, or pick a smaller model in <a href="/settings#model">Settings</a>. If another drive has more room, open <a href="/settings#storage">Settings, Where to keep AI models</a> and choose a folder there. shuto moves your models for you. On Linux, the "For helpers" box below has the steps.</p>
 <h3>The Shutterstock login failed</h3>
 <p>Open <a href="/settings#shutterstock">Settings</a>, save your email and password again, and press Test login.</p>
 <h3>The upload failed</h3>
@@ -40,11 +40,9 @@
 <h2 id="for-helpers">Extra steps</h2>
 <details class="helpers" data-helpers>
   <summary>For helpers</summary>
-  <p>To keep Ollama's models on another drive, set the <code>OLLAMA_MODELS</code> setting to a folder on that drive, then restart Ollama. Replace the example folder with your own.</p>
+  <p>On Windows and Mac, keep Ollama's models on another drive from <a href="/settings#storage">Settings, Where to keep AI models</a>. No commands are needed. On Linux, set the <code>OLLAMA_MODELS</code> setting to a folder on that drive, then restart Ollama. Replace the example folder with your own.</p>
   <dl class="facts">
-    <dt>Windows</dt><dd><code>setx OLLAMA_MODELS "D:\ollama\models"</code></dd>
-    <dt>Mac</dt><dd><code>launchctl setenv OLLAMA_MODELS "/Volumes/Photos/ollama/models"</code></dd>
-    <dt>Linux</dt><dd><code>systemctl edit ollama</code>, then add <code>Environment="OLLAMA_MODELS=/mnt/photos/ollama/models"</code></dd>
+    <dt>Linux</dt><dd><code>sudo systemctl edit ollama</code>, then add <code>[Service]</code> and <code>Environment="OLLAMA_MODELS=/mnt/photos/ollama/models"</code>, then <code>sudo systemctl restart ollama</code>. The <code>ollama</code> user must be allowed to write to that folder.</dd>
   </dl>
   <p>To save an online AI key from a terminal instead of Settings: <code>shuto secrets set ANTHROPIC_API_KEY</code> (or <code>GEMINI_API_KEY</code>).</p>
 </details>

@@ -101,7 +101,9 @@ uses the reasons to do better next time.
 ## Settings and Help
 
 - **Settings:** change the AI model, your Shutterstock login (with **Test login**), your style
-  (including **Region focus**: None or Japan), and see details of
+  (including **Region focus**: None or Japan), where AI models are kept (**Where to keep AI
+  models**: pick another drive and shuto restarts Ollama and can move your downloaded models;
+  Windows and Mac only), and see details of
   this computer. Access keys for online AI (Anthropic, Gemini) and the AWS profile for Bedrock
   go in the **Access key** field; they are saved securely, and **Forget** removes them. **Run setup again** repeats the first-time setup.
 - **Help:** plain explanations of the words used, what happens to your photos, and fixes for

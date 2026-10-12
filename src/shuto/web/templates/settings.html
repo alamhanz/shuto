@@ -4,7 +4,7 @@
 {% block content %}
 <h1>Settings</h1>
 <nav aria-label="Settings sections"><p class="chips">
-  <a class="chip" href="#model">AI model</a><a class="chip" href="#shutterstock">Shutterstock login</a><a class="chip" href="#style">Style</a><a class="chip" href="#computer">This computer</a><a class="chip" href="#advanced">Advanced</a>
+  <a class="chip" href="#model">AI model</a><a class="chip" href="#storage">AI storage</a><a class="chip" href="#shutterstock">Shutterstock login</a><a class="chip" href="#style">Style</a><a class="chip" href="#computer">This computer</a><a class="chip" href="#advanced">Advanced</a>
 </p></nav>
 <p><a href="/welcome">Run setup again</a></p>
 
@@ -17,6 +17,11 @@
 {% include "_model_cards.html" %}
 {% endwith %}
 <div id="job-resume">{% if job %}{% with active=job_active, result=None %}{% include "_job.html" %}{% endwith %}{% endif %}</div>
+</section>
+
+<section id="storage" aria-labelledby="h-storage">
+<h2 id="h-storage">Where to keep AI models</h2>
+{% with return_to="/settings" %}{% include "_models_dir.html" %}{% endwith %}
 </section>
 
 <section id="shutterstock" aria-labelledby="h-login">
@@ -78,7 +83,7 @@
   <dt>Memory</dt><dd>{{ "%.0f"|format(hw.ram_gb) }} GB</dd>
   <dt>Graphics card</dt><dd>{% for g in hw.gpus %}{{ g.name }}{% if g.vram_total_gb %} ({{ "%.0f"|format(g.vram_total_gb) }} GB){% endif %}{% if not loop.last %}, {% endif %}{% else %}none found (the main processor does the work, which is slower){% endfor %}</dd>
   <dt>AI helper (Ollama)</dt><dd>{% if ollama.running %}running, {{ ollama.pulled|length }} model(s) downloaded{% elif ollama.installed %}installed but not running. Open Ollama.{% else %}not installed{% endif %}</dd>
-  <dt>Model folder</dt><dd><code>{{ report.models_dir }}</code>{% if report.disk_free_gb is not none %}, {{ "%.0f"|format(report.disk_free_gb) }} GB free{% endif %}</dd>
+  <dt>Model folder</dt><dd><code>{{ report.models_dir }}</code>{% if report.disk_free_gb is not none %}, {{ "%.0f"|format(report.disk_free_gb) }} GB free{% endif %} (<a href="#storage">change</a>)</dd>
 </dl>
 {% for n in hw.notes or [] %}<p class="snip">{{ n }}</p>{% endfor %}
 {% if not ollama.running %}

@@ -10,7 +10,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from starlette.datastructures import FormData
 
-from .. import estimate, pipeline
+from .. import estimate, hardware, ollama_store, pipeline
 from .. import secrets as shuto_secrets
 from ..jobs import JobContext
 from . import browse, ux
@@ -116,7 +116,7 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
         extra: dict = {}
         if job is not None and job.kind == "import":
             extra["batches"] = import_results.get(job_id, [])
-        if job is not None and job.kind == "pull":
+        if job is not None and job.kind in ("pull", "models_dir"):
             extra["next_href"] = pull_return[0]
         return extra
 
@@ -269,6 +269,26 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             "chosen": report.selected is not None,
         }
 
+    def storage_context() -> dict:
+        """Where Ollama keeps models now, free space, and drives that could hold them."""
+        cur = ollama_store.current_models_dir()
+        size = ollama_store.models_size_bytes(cur)
+        gb = size / 1024**3
+        try:
+            drives = hardware.other_volumes(max(10.0, gb + 2), cur)
+        except Exception:
+            drives = []
+        return {
+            "supported": ollama_store.supported(),
+            "current": str(cur),
+            "free_gb": hardware.free_gb(cur),
+            "custom": ollama_store.is_custom(),
+            "has_models": size > 0,
+            "models_gb": round(gb, 1),
+            "drives": [v.to_dict() for v in drives],
+            "linux_text": ollama_store.LINUX_TEXT,
+        }
+
     def style_values() -> dict:
         cfg = ctx.cfg
         return {
@@ -288,6 +308,8 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             extra["helper_steps"] = _helper_steps(report.hardware.get("os", ""))
             if step in (3, 6):
                 extra.update(model_context(report))
+            if step == 3:
+                extra["ms"] = storage_context()
         if step in (4, 6):
             extra["login"] = pipeline.ftps_login_status(ctx.cfg)
         if step == 5:
@@ -441,6 +463,7 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             usage=usage,
             job=ctx.runner.get(active) if active else None,
             job_active=bool(active),
+            ms=storage_context(),
             **model_context(report),
         )
 
@@ -457,6 +480,12 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             advice=advice.to_dict(),
             tag=tag,
             return_to=return_to if return_to in RETURN_PAGES else "/settings",
+            can_set=ollama_store.supported(),
+            storage_href=(
+                "/welcome?step=3&storage=1#storage"
+                if return_to == "/welcome?step=3"
+                else "/settings#storage"
+            ),
         )
 
     @app.post("/settings/use")
@@ -494,6 +523,42 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             return f"Downloaded {tag}. Go back and press Use this."
 
         return ctx.start_job(request, "pull", MODELS_JOB_KEY, run, next_href=pull_return[0])
+
+    def change_models_dir(request: Request, form: PostForm, reset: bool):
+        if not ollama_store.supported():
+            return ctx.message_fragment(request, ollama_store.LINUX_TEXT)
+        back = str(form.get("return_to") or "")
+        back = back if back in RETURN_PAGES else "/settings"
+        target, warnings = None, []
+        if not reset:
+            try:
+                check = ollama_store.validate_target(str(form.get("path") or ""))
+            except ollama_store.StoreError as exc:
+                return ctx.message_fragment(request, str(exc))
+            target, warnings = check.path, check.warnings
+        move = form.get("move") == "yes"
+        client = pipeline.ollama_client(ctx.cfg)
+        pull_return[0] = back
+
+        def run(job: JobContext) -> str:
+            text = ollama_store.change_models_dir(
+                target,
+                move=move,
+                client=client,
+                progress=job.progress,
+                cancelled=job.cancelled,
+            )
+            return " ".join([text, *warnings])
+
+        return ctx.start_job(request, "models_dir", MODELS_JOB_KEY, run, next_href=back)
+
+    @app.post("/settings/models-dir", response_class=HTMLResponse)
+    def settings_models_dir(request: Request, form: PostForm):
+        return change_models_dir(request, form, reset=False)
+
+    @app.post("/settings/models-dir/reset", response_class=HTMLResponse)
+    def settings_models_dir_reset(request: Request, form: PostForm):
+        return change_models_dir(request, form, reset=True)
 
     @app.post("/settings/benchmark", response_class=HTMLResponse)
     def settings_benchmark(request: Request, form: PostForm):

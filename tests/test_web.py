@@ -7,7 +7,7 @@ import re
 import pytest
 from fastapi.testclient import TestClient
 
-from shuto import pipeline
+from shuto import hardware, ollama_store, pipeline
 from shuto.models import Status
 from shuto.web import create_app
 
@@ -368,7 +368,11 @@ def test_advice_when_model_does_not_fit_disk(web, cfg, monkeypatch):
     )
     text = web.get(f"/settings/advice?tag={tag}").text
     assert "~$0.002 per image" in text and "D:\\ollama" in text
-    assert "setx" not in text and "OLLAMA_MODELS" not in text and "/help#for-helpers" in text
+    assert "setx" not in text and "OLLAMA_MODELS" not in text
+    assert "/settings#storage" in text and "/help#for-helpers" not in text
+    monkeypatch.setattr(ollama_store, "supported", lambda name=None: False)
+    text = web.get(f"/settings/advice?tag={tag}").text
+    assert "/help#for-helpers" in text and "/settings#storage" not in text
     assert "Yes, download" not in text
     r = web.post("/settings/pull", {"tag": tag, "confirm": "yes"})
     assert "Not enough room" in r.text
@@ -763,3 +767,82 @@ def test_ftps_back_is_local_only(web, monkeypatch):
     for bad in ("//evil.example", "http://evil.example", "/" + chr(92) + "evil.example"):
         r = web.post("/settings/ftps", {"username": "a", "password": "b", "back": bad})
         assert r.headers["location"].startswith("/settings?")
+
+
+# ---------------------------------------------------------------- where to keep AI models
+
+
+def test_settings_and_wizard_show_models_folder_section(web, monkeypatch):
+    monkeypatch.setattr(ollama_store, "supported", lambda name=None: True)
+    html = web.get("/settings").text
+    assert 'id="storage"' in html and "Where to keep AI models" in html
+    assert 'hx-post="/settings/models-dir"' in html and "Save and restart Ollama" in html
+    assert "hx-confirm" in html and 'data-open-dialog="browse-dialog"' in html
+    wiz = web.get("/welcome?step=3&storage=1").text
+    assert 'id="storage" open' in wiz and 'name="return_to" value="/welcome?step=3"' in wiz
+
+
+def test_models_folder_section_on_linux_points_to_help(web, monkeypatch):
+    monkeypatch.setattr(ollama_store, "supported", lambda name=None: False)
+    html = web.get("/settings").text
+    assert "/help#for-helpers" in html and "Save and restart Ollama" not in html
+    r = web.post("/settings/models-dir", {"path": "/mnt/x"})
+    assert "administrator" in r.text and 'id="job-' not in r.text
+
+
+def test_models_folder_reset_button_and_move_checkbox(web, monkeypatch, tmp_path):
+    monkeypatch.setattr(ollama_store, "supported", lambda name=None: True)
+    monkeypatch.setattr(hardware, "ollama_models_dir", lambda *a, **k: tmp_path / "m")
+    monkeypatch.setenv("OLLAMA_MODELS", str(tmp_path / "m"))
+    ollama_store_files = tmp_path / "m" / "blobs"
+    ollama_store_files.mkdir(parents=True)
+    (ollama_store_files / "sha256-a").write_bytes(b"x" * 10)
+    html = web.get("/settings").text
+    assert "/settings/models-dir/reset" in html and "Use the standard folder" in html
+    assert 'name="move" value="yes" checked' in html
+
+
+def test_models_dir_posts_need_csrf(web):
+    assert web.post("/settings/models-dir", {"path": "/x"}, token=False).status_code == 403
+    assert web.post("/settings/models-dir/reset", token=False).status_code == 403
+
+
+def test_models_dir_rejects_bad_folder_without_starting_a_job(web, monkeypatch):
+    monkeypatch.setattr(ollama_store, "supported", lambda name=None: True)
+    r = web.post("/settings/models-dir", {"path": "relative/dir"})
+    assert r.status_code == 200 and "full location" in r.text and 'id="job-' not in r.text
+
+
+def test_models_dir_starts_job_and_reports(web, monkeypatch, tmp_path):
+    monkeypatch.setattr(ollama_store, "supported", lambda name=None: True)
+    monkeypatch.setenv("OLLAMA_MODELS", str(tmp_path / "old"))
+    seen = {}
+
+    def fake_change(target, *, move, client, progress, cancelled, os_name=None):
+        seen.update(target=target, move=move)
+        progress(1, 2, "Copying models")
+        return "Ollama now keeps its models in X."
+
+    monkeypatch.setattr(ollama_store, "change_models_dir", fake_change)
+    new = tmp_path / "new"
+    job, text = web.run_job(
+        "/settings/models-dir", {"path": str(new), "move": "yes", "return_to": "/welcome?step=3"}
+    )
+    assert job.state == "done" and job.kind == "models_dir"
+    assert seen == {"target": new, "move": True}
+    assert "keeps its models in X" in text and 'href="/welcome?step=3"' in text
+    job, text = web.run_job("/settings/models-dir/reset", {})
+    assert job.state == "done" and seen["target"] is None and seen["move"] is False
+
+
+def test_models_dir_failure_is_shown_in_plain_words(web, monkeypatch, tmp_path):
+    monkeypatch.setattr(ollama_store, "supported", lambda name=None: True)
+    monkeypatch.setenv("OLLAMA_MODELS", str(tmp_path / "old"))
+
+    def boom(*a, **k):
+        raise ollama_store.StoreError("Ollama would not close. Quit Ollama yourself.")
+
+    monkeypatch.setattr(ollama_store, "change_models_dir", boom)
+    job, text = web.run_job("/settings/models-dir", {"path": str(tmp_path / "new")})
+    assert job.state == "failed"
+    assert "Ollama would not close" in text and "StoreError" not in text

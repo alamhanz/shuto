@@ -5,5 +5,9 @@
 {% with use_action="/welcome/3", return_to="/welcome?step=3", show_bench=false, open_online=request.query_params.get('online') %}
 {% include "_model_cards.html" %}
 {% endwith %}
+<details id="storage"{% if request.query_params.get('storage') %} open{% endif %}>
+  <summary>Where to keep AI models</summary>
+  {% with return_to="/welcome?step=3" %}{% include "_models_dir.html" %}{% endwith %}
+</details>
 <p class="next-action"><a class="btn primary" href="/welcome?step=4">Continue {{ icon('arrow') }}</a></p>
 <p><a href="/welcome?step=2">Back</a> &middot; <a href="/welcome?step=4">Skip this step</a></p>

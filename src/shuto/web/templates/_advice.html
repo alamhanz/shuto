@@ -17,11 +17,19 @@
     <ul>{% for v in advice.volumes %}
       <li>{{ v.mount }} ({{ "%.0f"|format(v.free_gb) }} GB free). Suggested folder: <code>{{ v.suggested_path }}</code></li>
     {% endfor %}</ul>
+    {% if can_set %}
+    <ol>
+      <li>Pick one of these drives.</li>
+      <li>Open <a href="{{ storage_href }}">Where to keep AI models</a> and choose a folder on that drive. shuto restarts Ollama for you.</li>
+      <li>Come back here and download the model.</li>
+    </ol>
+    {% else %}
     <ol>
       <li>Pick one of these drives.</li>
       <li>Ask whoever set up your computer to make Ollama keep its models there. The exact steps are in <a href="/help#for-helpers">Help, under "For helpers"</a>.</li>
       <li>Restart Ollama, then come back to this page.</li>
     </ol>
+    {% endif %}
     {% endif %}
     {% if advice.api_options %}
     <p>Or skip the download and use an online AI (it costs money):</p>

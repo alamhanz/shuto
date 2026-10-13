@@ -6,6 +6,7 @@ import re
 import threading
 from importlib import metadata
 from pathlib import Path
+from urllib.parse import urlparse
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
@@ -495,7 +496,7 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
     def model_banner(request: Request):
         """App-wide 'No AI model set' note. Quiet while the download bar shows, in the setup
         wizard, and when the local AI simply can't be reached (read-only)."""
-        if "/welcome" in request.headers.get("hx-current-url", ""):
+        if urlparse(request.headers.get("hx-current-url", "")).path == "/welcome":
             return HTMLResponse("")
         if ctx.runner.active_job(MODELS_JOB_KEY):
             return HTMLResponse("")
@@ -859,8 +860,15 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
 
     def submit_models_job(request: Request, kind: str, run, back: str, info: dict | None = None):
         """Start a models job; the page to return to is only remembered once it really started."""
+
+        def run_and_forget(job: JobContext) -> str:
+            try:
+                return run(job)
+            finally:
+                ctx.invalidate_model_status()  # models or their folder just changed
+
         try:
-            job_id = ctx.runner.submit(kind, MODELS_JOB_KEY, run)
+            job_id = ctx.runner.submit(kind, MODELS_JOB_KEY, run_and_forget)
         except JobBusy as exc:
             return ctx.message_fragment(request, str(exc))
         pull_return[0] = back

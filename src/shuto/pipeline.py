@@ -642,6 +642,20 @@ def _api_preflight(cfg: Config, sel: Selection) -> list[str]:
     return problems
 
 
+def api_quick_problems(sel: Selection) -> list[str]:
+    """Cheap check for an online AI: SDK importable and access key saved. No network, no
+    credential lookups (used for the app-wide banner; jobs use `describe_preflight`)."""
+    if sel.provider not in API_SDK_MODULES:
+        return []
+    problems: list[str] = []
+    if not _sdk_installed(API_SDK_MODULES[sel.provider]):
+        problems.append("sdk")
+    secret = API_KEY_SECRETS.get(sel.provider)
+    if secret and not get_secret(secret):
+        problems.append("key")
+    return problems
+
+
 def describe_preflight(cfg: Config, sel: Selection, *, client: Any = None) -> list[str]:
     """Problems that would make every describe call fail (Ollama down, model not pulled,
     API key or SDK missing)."""

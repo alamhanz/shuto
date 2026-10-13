@@ -129,3 +129,119 @@ def test_check_is_blocked_and_explained_without_a_model(nomodel, photos_dir):
     assert "No AI model is set" in text and "Fix in Settings" in text and "disabled" in text
     r = nomodel.post(f"/batch/{batch_id}/check")
     assert "No AI model is set" in html.unescape(r.text) and 'id="job-' not in r.text
+
+
+class CountingFactory:
+    def __init__(self, fake):
+        self.fake, self.calls = fake, 0
+
+    def __call__(self, cfg):
+        self.calls += 1
+        return self.fake
+
+
+def test_status_is_cached_and_cleared_by_any_change(cfg, monkeypatch):
+    w = make_web(cfg, monkeypatch, FakeOllama(pulled=["gemma3:4b"]), choose=True)
+    factory = CountingFactory(FakeOllama(pulled=["gemma3:4b"]))
+    monkeypatch.setattr(pipeline, "ollama_client", factory)
+    try:
+        w.get("/model/banner")
+        first = factory.calls
+        assert first == 1
+        w.get("/model/banner")
+        assert factory.calls == first  # reused, no second round trip
+        w.post("/welcome/3", {"later": "yes"})  # any change clears it
+        w.get("/model/banner")
+        assert factory.calls == first + 1
+    finally:
+        w.state.runner.shutdown()
+
+
+def test_cache_is_per_ollama_url(nomodel):
+    from shuto.web.common import WebCtx
+
+    state = nomodel.state
+    helper = WebCtx(state)
+    choose_model(nomodel)
+    assert helper.model_status().ready
+    assert len(state.model_cache) == 1
+    ollama_cfg = state.cfg.llm.ollama.model_copy(update={"url": "http://127.0.0.1:1"})
+    llm = state.cfg.llm.model_copy(update={"ollama": ollama_cfg})
+    state.cfg = state.cfg.model_copy(update={"llm": llm})
+    helper.model_status()
+    assert len(state.model_cache) == 2  # a different URL is a separate entry
+
+
+def test_local_check_really_times_out(cfg, monkeypatch):
+    import socket
+    import time
+
+    from shuto.llm.ollama import OllamaClient
+    from shuto.web import common
+    from shuto.web.common import WebCtx
+
+    srv = socket.socket()
+    srv.bind(("127.0.0.1", 0))
+    srv.listen(5)  # accepts connections but never answers
+    url = f"http://127.0.0.1:{srv.getsockname()[1]}"
+    monkeypatch.setattr(common, "CHECK_TIMEOUT_S", 0.4)
+    w = make_web(cfg, monkeypatch, FakeOllama(), choose=True)
+    monkeypatch.setattr(pipeline, "ollama_client", lambda c: OllamaClient(url, timeout=300))
+    try:
+        start = time.monotonic()
+        status = WebCtx(w.state).model_status()
+        assert time.monotonic() - start < 3  # capped at 0.4 s, not the 5 s Ollama default
+        assert status.state == "unknown" and "can't reach the local AI" in status.message
+    finally:
+        srv.close()
+        w.state.runner.shutdown()
+
+
+def api_web(cfg, monkeypatch, *, sdk, key):
+    monkeypatch.setattr(pipeline, "_sdk_installed", lambda module: sdk)
+    monkeypatch.setattr(pipeline, "get_secret", lambda name: "k" if key else None)
+    w = make_web(cfg, monkeypatch, FakeOllama())
+    w.state.store.set_setting("llm.provider", "anthropic")
+    w.state.store.set_setting("llm.model", "claude-test")
+    return w
+
+
+@pytest.mark.parametrize(
+    ("sdk", "key", "banner"), [(True, True, False), (True, False, True), (False, True, True)]
+)
+def test_online_ai_needs_sdk_and_key(cfg, monkeypatch, sdk, key, banner):
+    w = api_web(cfg, monkeypatch, sdk=sdk, key=key)
+    try:
+        shown = "No AI model set" in page(w, "/model/banner")
+        assert shown is banner
+    finally:
+        w.state.runner.shutdown()
+
+
+def test_banner_check_does_not_touch_cloud_credentials(cfg, monkeypatch):
+    def boom(*a, **k):
+        raise AssertionError("must not look up cloud credentials for the banner")
+
+    monkeypatch.setattr(pipeline, "_api_preflight", boom)
+    w = api_web(cfg, monkeypatch, sdk=True, key=True)
+    try:
+        assert page(w, "/model/banner").strip() == ""
+    finally:
+        w.state.runner.shutdown()
+
+
+def test_unreadable_choice_is_unknown_not_missing(nomodel, monkeypatch):
+    def broken(*a, **k):
+        raise pipeline.PipelineError("settings are unreadable")
+
+    monkeypatch.setattr(pipeline, "resolve_selection", broken)
+    assert page(nomodel, "/model/banner").strip() == ""
+    from shuto.web.common import WebCtx
+
+    status = WebCtx(nomodel.state).model_status()
+    assert status.state == "unknown" and "can't tell which AI model" in status.message
+
+
+def test_banner_only_skips_the_wizard_page_itself(nomodel):
+    url = "http://x/settings?next=/welcome"
+    assert "No AI model set" in page(nomodel, "/model/banner", headers={"hx-current-url": url})

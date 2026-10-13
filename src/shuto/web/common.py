@@ -5,6 +5,7 @@ from __future__ import annotations
 import hmac
 import re
 import secrets as _stdlib_secrets
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -46,6 +47,7 @@ def short(text: str, limit: int = 300) -> str:
 
 
 CHECK_TIMEOUT_S = 3.0  # asking Ollama whether the chosen model is there must stay quick
+CACHE_TTL_S = 10.0  # how long a model check is reused between page loads
 
 
 @dataclass(frozen=True)
@@ -63,6 +65,7 @@ class ModelStatus:
 NO_MODEL = (
     "No AI model is set. shuto can't write titles and keywords until you choose one in Settings."
 )
+CANT_TELL = "shuto can't tell which AI model is set right now. Open Settings to check."
 LOCAL_AI_UNREACHABLE = (
     "shuto can't reach the local AI right now. Open the Ollama app, wait a moment and try again."
 )
@@ -77,6 +80,8 @@ class WebState:
         self.store = pipeline.open_store(cfg)
         self.runner = JobRunner(self.store)
         self.csrf = _stdlib_secrets.token_urlsafe(32)
+        # (provider, model, ollama url) -> (when, ModelStatus); cleared by any change
+        self.model_cache: dict[tuple[str, str, str], tuple[float, Any]] = {}
         self.allowed_hosts = LOOPBACK_HOSTS | {h.lower() for h in extra_hosts}
         if cfg.web.host not in ("0.0.0.0", "::"):
             self.allowed_hosts.add(hostname(cfg.web.host))
@@ -99,6 +104,7 @@ class WebState:
 async def post_form(request: Request) -> FormData:
     """Parse a POST form and enforce the CSRF token (header or hidden field)."""
     form = await request.form()
+    request.app.state.web.model_cache.clear()  # any change may alter which model is usable
     sent = request.headers.get("x-csrf-token") or str(form.get("csrf_token") or "")
     if not sent or not hmac.compare_digest(sent, request.app.state.web.csrf):
         raise HTTPException(status_code=403, detail="Missing or invalid CSRF token.")
@@ -126,27 +132,43 @@ class WebCtx:
     def runner(self) -> JobRunner:
         return self.state.runner
 
-    def model_status(self, request: Request | None = None) -> ModelStatus:
-        """Is a usable AI model chosen? Looked up once per request, with a short timeout.
+    def invalidate_model_status(self) -> None:
+        """Forget cached model checks (a model was chosen, downloaded or removed, a key changed)."""
+        self.state.model_cache.clear()
 
-        An unreachable local AI is `unknown`, not `missing`: the app-wide banner stays quiet.
+    def model_status(self, request: Request | None = None) -> ModelStatus:
+        """Is a usable AI model chosen? Cheap: short timeout, reused for a few seconds.
+
+        Only a missing choice is `missing`. Anything we cannot tell (local AI not reachable,
+        unreadable settings) is `unknown`: the app-wide banner stays quiet.
         """
         cached = getattr(request.state, "model_status", None) if request else None
         if cached is not None:
             return cached
-        status = self._model_status()
+        status = self._model_status(full=False, cache=True)
         if request is not None:
             request.state.model_status = status
         return status
 
-    def _model_status(self) -> ModelStatus:
+    def _model_status(self, *, full: bool, cache: bool) -> ModelStatus:
         cfg = self.cfg
         try:
             sel = pipeline.resolve_selection(cfg, self.store)
         except local_models.ModelChoiceRequired:
             return ModelStatus("missing", NO_MODEL)
         except Exception:
-            return ModelStatus("missing", NO_MODEL)
+            return ModelStatus("unknown", CANT_TELL)
+        key = (sel.provider, sel.model, cfg.llm.ollama.url)
+        hit = self.state.model_cache.get(key) if cache else None
+        if hit is not None and time.monotonic() - hit[0] < CACHE_TTL_S:
+            return hit[1]
+        status = self._check(sel, full)
+        if cache:
+            self.state.model_cache[key] = (time.monotonic(), status)
+        return status
+
+    def _check(self, sel: pipeline.Selection, full: bool) -> ModelStatus:
+        cfg = self.cfg
         if sel.provider == "ollama":
             client = pipeline.ollama_client(cfg)
             if hasattr(client, "timeout"):
@@ -160,7 +182,10 @@ class WebCtx:
                     "missing", f"The AI model {sel.model} is not downloaded yet. Open Settings."
                 )
             return ModelStatus("ready")
-        if pipeline.describe_preflight(cfg, sel):
+        problems = (
+            pipeline.describe_preflight(cfg, sel) if full else pipeline.api_quick_problems(sel)
+        )
+        if problems:
             return ModelStatus(
                 "missing",
                 f"The online AI {sel.provider} is not ready yet. "
@@ -169,9 +194,15 @@ class WebCtx:
         return ModelStatus("ready")
 
     def model_block(self, request: Request) -> str | None:
-        """Plain-words reason not to start an AI job now, or None when it can go ahead."""
-        status = self.model_status(request)
-        return None if status.ready else status.message
+        """Plain-words reason not to start an AI job now, or None when it can go ahead.
+
+        Always a fresh, full check (never the cached one): a job must not start on stale news.
+        """
+        cached = getattr(request.state, "model_block", None)
+        if cached is None:
+            status = self._model_status(full=True, cache=False)
+            cached = request.state.model_block = (None if status.ready else status.message,)
+        return cached[0]
 
     def render(
         self, request: Request, name: str, status_code: int = 200, **ctx: Any

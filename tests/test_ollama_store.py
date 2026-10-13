@@ -3,8 +3,10 @@ registry, launchctl, processes or Ollama are touched."""
 
 from __future__ import annotations
 
+import json
 import os
 import plistlib
+import subprocess
 import sys
 import types
 from pathlib import Path
@@ -70,6 +72,10 @@ def sysfake(monkeypatch, tmp_path):
 
     monkeypatch.setattr(store.time, "monotonic", tick)
     monkeypatch.delenv("OLLAMA_MODELS", raising=False)
+    # never read the real registry: the "saved" user value is what the test put in the env
+    monkeypatch.setattr(
+        store, "_win_read", lambda machine: None if machine else os.environ.get("OLLAMA_MODELS")
+    )
     return fake
 
 
@@ -112,19 +118,74 @@ def test_validate_rejects_bad_folders(tmp_path):
         store.validate_target(str(f), cur)
 
 
-def test_validate_creates_folder_and_checks_writable(tmp_path, monkeypatch):
+def test_validate_creates_nothing(tmp_path):
     cur = tmp_path / "old"
     new = tmp_path / "d" / "ollama" / "models"
     check = store.validate_target(f'"{new}"', cur)
-    assert check.path == new and new.is_dir() and check.warnings == []
-    assert not list(new.iterdir())  # the write test leaves nothing behind
+    assert check.path == new and not new.exists() and check.warnings == []
+
+
+def test_prepare_folder_makes_and_tests_the_folder(tmp_path, monkeypatch):
+    new = tmp_path / "d" / "ollama" / "models"
+    created = store.Created()
+    store.prepare_folder(new, created)
+    assert new.is_dir() and not list(new.iterdir())  # the write test leaves nothing behind
+    assert created.dirs == [tmp_path / "d", tmp_path / "d" / "ollama", new]
+    assert created.remove() == 0 and not (tmp_path / "d").exists()
 
     def boom(self, *a, **k):
         raise PermissionError("no")
 
     monkeypatch.setattr(Path, "write_bytes", boom)
     with pytest.raises(store.StoreError, match="cannot save files"):
-        store.validate_target(str(tmp_path / "other"), cur)
+        store.prepare_folder(tmp_path / "other", store.Created())
+
+
+def _alias(link: Path, target: Path) -> None:
+    """Make `link` another way to reach `target`: a junction on Windows, else a symlink."""
+    if sys.platform == "win32":
+        done = subprocess.run(
+            ["cmd", "/c", "mklink", "/J", str(link), str(target)], capture_output=True
+        )
+        if done.returncode != 0:
+            pytest.skip("cannot create a junction here")
+        return
+    try:
+        os.symlink(target, link, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("cannot create a symlink here")
+
+
+def test_same_folder_under_another_name_is_rejected(tmp_path):
+    cur = tmp_path / "old"
+    cur.mkdir()
+    link = tmp_path / "alias"
+    _alias(link, cur)
+    with pytest.raises(store.StoreError, match="already"):
+        store.validate_target(str(link), cur)
+    with pytest.raises(store.StoreError, match="not inside"):
+        store.validate_target(str(link / "sub"), cur)  # inside the old folder, via the alias
+
+
+def test_folder_containing_the_old_one_via_alias_is_rejected(tmp_path):
+    parent = tmp_path / "parent"
+    cur = parent / "old"
+    cur.mkdir(parents=True)
+    link = tmp_path / "alias"
+    _alias(link, parent)
+    with pytest.raises(store.StoreError, match="not inside"):
+        store.validate_target(str(link), cur)
+
+
+def test_case_variant_of_the_old_folder_is_the_same_folder(tmp_path):
+    cur = tmp_path / "OldModels"
+    cur.mkdir()
+    other = tmp_path / "oldmodels"
+    if not other.exists():
+        pytest.skip("case-sensitive file system")
+    assert store.same_dir(cur, other)
+    with pytest.raises(store.StoreError, match="already"):
+        store.validate_target(str(other), cur)
 
 
 # ---------------------------------------------------------------- saving the setting
@@ -151,6 +212,14 @@ class FakeWinreg:
                 return False
 
         return Key()
+
+    HKEY_LOCAL_MACHINE = "HKLM"
+    KEY_READ = 1
+
+    def QueryValueEx(self, key, name):  # noqa: N802
+        if name not in self.values:
+            raise FileNotFoundError(name)
+        return self.values[name], self.REG_SZ
 
     def SetValueEx(self, key, name, res, kind, value):  # noqa: N802
         assert kind == self.REG_SZ
@@ -327,12 +396,40 @@ def test_identical_files_are_skipped(sysfake, envlog, folders, monkeypatch):
     assert "sha256-aaa" not in copied and "sha256-bbb" in copied
 
 
-def test_a_same_name_file_of_other_size_is_copied_again(folders):
+def test_a_same_name_file_of_other_size_is_a_conflict(sysfake, envlog, folders):
     old, new = folders
     (new / "blobs").mkdir()
     (new / "blobs" / "sha256-aaa").write_bytes(b"A" * 10)
     plan = store.plan_move(old, new)
-    assert plan.todo_bytes == plan.total_bytes
+    assert plan.conflicts == [str(Path("blobs") / "sha256-aaa")]
+    with pytest.raises(store.StoreError, match="will not overwrite"):
+        store.change_models_dir(new, move=True, client=sysfake, os_name="windows")
+    assert sysfake.cmds == [] and envlog == []  # stopped before anything was changed
+    assert (new / "blobs" / "sha256-aaa").read_bytes() == b"A" * 10
+    assert (old / "blobs" / "sha256-aaa").stat().st_size == 2_000_000
+
+
+def test_a_differing_manifest_in_the_target_is_never_overwritten(sysfake, envlog, folders):
+    old, new = folders
+    manifest = new / "manifests" / "registry" / "library" / "gemma3" / "4b"
+    manifest.parent.mkdir(parents=True)
+    manifest.write_text('{"v": 2}')
+    with pytest.raises(store.StoreError, match="will not overwrite"):
+        store.change_models_dir(new, move=True, client=sysfake, os_name="windows")
+    assert manifest.read_text() == '{"v": 2}' and not (new / "blobs").exists()
+    assert (old / "manifests").exists()
+
+
+def test_a_target_with_other_models_is_merged(sysfake, envlog, folders):
+    old, new = folders
+    other = new / "manifests" / "registry" / "library" / "llava" / "7b"
+    other.parent.mkdir(parents=True)
+    other.write_text("mine")
+    (new / "blobs").mkdir()
+    (new / "blobs" / "sha256-zzz").write_bytes(b"Z" * 5)
+    store.change_models_dir(new, move=True, client=sysfake, os_name="windows")
+    assert other.read_text() == "mine" and (new / "blobs" / "sha256-zzz").exists()
+    assert (new / "blobs" / "sha256-aaa").exists() and not (old / "blobs" / "sha256-aaa").exists()
 
 
 def test_not_enough_space_changes_nothing(sysfake, envlog, folders, monkeypatch):
@@ -391,6 +488,216 @@ def test_models_missing_after_restart_keeps_old_files(sysfake, envlog, folders):
         store.change_models_dir(new, move=True, client=sysfake, os_name="windows")
     assert (old / "blobs" / "sha256-aaa").exists()
     assert envlog[-1] == str(old)
+    # Ollama was running on the new folder, so recovery stopped it and started it again
+    assert len(sysfake.spawned) == 2
+    assert sum(1 for c in sysfake.cmds if c[:3] == ["taskkill", "/IM", "ollama app.exe"]) == 2
+    assert not (new / "blobs").exists()  # the copies this run made were removed
+
+
+def test_recover_restarts_even_when_ollama_is_up(sysfake, envlog):
+    store._recover(sysfake, "windows", None, True)
+    assert sysfake.cmds and sysfake.spawned and sysfake.up
+    sysfake.cmds.clear()
+    sysfake.spawned.clear()
+    store._recover(sysfake, "windows", None, False)
+    assert sysfake.cmds == [] and sysfake.spawned == []
+
+
+def test_unexpected_error_still_recovers(sysfake, envlog, folders, monkeypatch):
+    old, new = folders
+
+    def boom(*a, **k):
+        raise RuntimeError("odd")
+
+    monkeypatch.setattr(store, "copy_models", boom)
+    with pytest.raises(store.StoreError, match="unexpected"):
+        store.change_models_dir(new, move=True, client=sysfake, os_name="windows")
+    assert envlog[-1:] == [str(old)] and sysfake.up
+    assert (old / "blobs" / "sha256-aaa").exists()
+
+
+def test_failure_removes_only_files_this_run_created(sysfake, envlog, folders, monkeypatch):
+    old, new = folders
+    (new / "blobs").mkdir()
+    keep = new / "blobs" / "sha256-keep"
+    keep.write_bytes(b"mine")
+    real = store._copy_file
+    calls = []
+
+    def flaky(src, dst, *a):
+        calls.append(dst.name)
+        if len(calls) == 2:
+            raise OSError(28, "No space left on device")
+        return real(src, dst, *a)
+
+    monkeypatch.setattr(store, "_copy_file", flaky)
+    with pytest.raises(store.StoreError, match="models were not changed"):
+        store.change_models_dir(new, move=True, client=sysfake, os_name="windows")
+    assert keep.read_bytes() == b"mine"
+    assert [p.name for p in new.rglob("*") if p.is_file()] == ["sha256-keep"]
+    assert not (new / "manifests").exists()
+
+
+def test_target_folder_is_created_in_the_job_and_removed_on_failure(
+    sysfake, envlog, folders, tmp_path, monkeypatch
+):
+    old, _ = folders
+    target = tmp_path / "x" / "y" / "models"
+    assert not target.exists()
+    sysfake.start_works = False
+    with pytest.raises(store.StoreError, match="did not start again"):
+        store.change_models_dir(target, move=True, client=sysfake, os_name="windows")
+    assert not (tmp_path / "x").exists()
+
+
+def test_ollama_is_stopped_before_the_move_is_planned(sysfake, envlog, folders, monkeypatch):
+    old, new = folders
+    seen = []
+    real = store.plan_move
+
+    def spy(o, n):
+        seen.append(sysfake.up)
+        return real(o, n)
+
+    monkeypatch.setattr(store, "plan_move", spy)
+    store.change_models_dir(new, move=True, client=sysfake, os_name="windows")
+    assert seen == [True, False]  # a first look while running, the real plan once stopped
+
+
+def test_move_is_refused_when_ollama_cannot_be_asked_for_its_models(
+    sysfake, envlog, folders, monkeypatch
+):
+    old, new = folders
+    monkeypatch.setattr(store, "_names", lambda client: None)
+    with pytest.raises(store.StoreError, match="could not ask"):
+        store.change_models_dir(new, move=True, client=sysfake, os_name="windows")
+    assert (old / "blobs" / "sha256-aaa").exists()
+
+
+def test_old_files_are_kept_when_there_is_no_manifest_to_check_against(
+    sysfake, envlog, tmp_path, monkeypatch
+):
+    old, new = tmp_path / "old", tmp_path / "new"
+    (old / "blobs").mkdir(parents=True)
+    (old / "blobs" / "sha256-aaa").write_bytes(b"A" * 100)
+    monkeypatch.setenv("OLLAMA_MODELS", str(old))
+    msg = store.change_models_dir(new, move=True, client=sysfake, os_name="windows")
+    assert (old / "blobs" / "sha256-aaa").exists() and "left in place" in msg
+
+
+def test_machine_wide_setting_is_refused_with_a_plain_message(
+    sysfake, envlog, folders, monkeypatch
+):
+    _, new = folders
+    monkeypatch.setattr(store, "_win_read", lambda machine: "E:\\models" if machine else None)
+    assert store.machine_wide_value("windows") == "E:\\models"
+    assert store.machine_wide_value("macos") is None
+    with pytest.raises(store.StoreError, match="whole computer"):
+        store.change_models_dir(new, move=False, client=sysfake, os_name="windows")
+    with pytest.raises(store.StoreError, match="whole computer"):
+        store.change_models_dir(None, move=False, client=sysfake, os_name="windows")
+    assert envlog == [] and sysfake.cmds == []
+    # a value of the user's own wins over the machine-wide one
+    monkeypatch.setattr(store, "_win_read", lambda machine: "E:\\m" if machine else "D:\\m")
+    assert store.machine_wide_value("windows") is None
+
+
+def test_login_order_warning_on_mac(sysfake, folders):
+    old, _ = folders
+    sysfake.models = []
+    assert "Quit Ollama" in store.login_order_warning(sysfake, "macos")
+    assert store.login_order_warning(sysfake, "windows") is None
+    sysfake.models = ["gemma3:4b"]
+    assert store.login_order_warning(sysfake, "macos") is None
+
+
+def test_manifest_names():
+    files = [
+        (str(Path("manifests/registry.ollama.ai/library/gemma3/4b")), 1),
+        (str(Path("manifests/registry.ollama.ai/someone/tool/latest")), 1),
+        (str(Path("manifests/example.com/lib/m/x")), 1),
+        (str(Path("blobs/sha256-a")), 1),
+    ]
+    assert store.manifest_names(files) == {
+        "gemma3:4b",
+        "someone/tool:latest",
+        "example.com/lib/m:x",
+    }
+
+
+# ---------------------------------------------------------------- deleting the old copies
+
+
+def _plan(old: Path, new: Path):
+    return store.plan_move(old, new)
+
+
+def test_delete_removes_manifests_before_blobs(folders, monkeypatch):
+    old, new = folders
+    plan = _plan(old, new)
+    store.copy_models(plan)
+    order = []
+    real = Path.unlink
+
+    def spy(self, *a, **k):
+        order.append("manifests" if "manifests" in self.parts else "blobs")
+        return real(self, *a, **k)
+
+    monkeypatch.setattr(Path, "unlink", spy)
+    store.delete_old_models(plan)
+    assert order == ["manifests", "blobs", "blobs"]
+
+
+def test_delete_refuses_when_a_copy_is_missing_or_a_different_size(folders):
+    old, new = folders
+    plan = _plan(old, new)
+    store.copy_models(plan)
+    (new / "blobs" / "sha256-bbb").write_bytes(b"short")
+    with pytest.raises(store.StoreError, match="missing or incomplete"):
+        store.delete_old_models(plan)
+    (new / "blobs" / "sha256-bbb").unlink()
+    with pytest.raises(store.StoreError, match="missing or incomplete"):
+        store.delete_old_models(plan)
+    assert (old / "blobs" / "sha256-aaa").exists() and (old / "manifests").exists()
+
+
+def test_delete_refuses_when_the_copy_is_the_same_file(tmp_path):
+    old, new = tmp_path / "old", tmp_path / "new"
+    make_models(old, {"sha256-aaa": b"A" * 100})
+    (new / "blobs").mkdir(parents=True)
+    try:
+        os.link(old / "blobs" / "sha256-aaa", new / "blobs" / "sha256-aaa")
+    except (OSError, NotImplementedError):
+        pytest.skip("hard links not allowed here")
+    plan = store.MovePlan(old, new, store._model_files(old), 0)
+    with pytest.raises(store.StoreError, match="same file"):
+        store.delete_old_models(plan)
+    assert (old / "blobs" / "sha256-aaa").read_bytes() == b"A" * 100
+
+
+def test_delete_refuses_when_both_folders_are_one_place(tmp_path):
+    old = tmp_path / "old"
+    make_models(old, {"sha256-aaa": b"A" * 100})
+    link = tmp_path / "alias"
+    _alias(link, old)
+    plan = store.MovePlan(old, link, store._model_files(old), 0)
+    with pytest.raises(store.StoreError, match="same place"):
+        store.delete_old_models(plan)
+    assert (old / "blobs" / "sha256-aaa").exists()
+
+
+def test_a_move_into_an_alias_of_the_old_folder_deletes_nothing(
+    sysfake, envlog, tmp_path, monkeypatch
+):
+    old = tmp_path / "old"
+    make_models(old, {"sha256-aaa": b"A" * 100})
+    monkeypatch.setenv("OLLAMA_MODELS", str(old))
+    link = tmp_path / "alias"
+    _alias(link, old)
+    with pytest.raises(store.StoreError, match="already"):
+        store.change_models_dir(link, move=True, client=sysfake, os_name="windows")
+    assert (old / "blobs" / "sha256-aaa").read_bytes() == b"A" * 100
+    assert sysfake.cmds == [] and envlog == []
 
 
 def test_ollama_not_coming_back_rolls_back(sysfake, envlog, folders):
@@ -438,7 +745,11 @@ def test_ollama_not_installed_only_saves(sysfake, envlog, folders, monkeypatch):
     sysfake.up = False
     monkeypatch.setattr(store, "can_start", lambda os_name=None: False)
     msg = store.change_models_dir(new, move=True, client=sysfake, os_name="macos")
-    assert envlog == [str(new)] and "once it is installed" in msg and sysfake.cmds == []
+    assert (
+        envlog == [str(new)]
+        and "once it is installed" in msg
+        and all(c[0] == "launchctl" for c in sysfake.cmds)
+    )
 
 
 def test_model_files_ignore_symlinks(tmp_path):
@@ -466,3 +777,113 @@ def test_real_winreg_module_has_what_we_use():
 
     for name in ("OpenKey", "SetValueEx", "DeleteValue", "HKEY_CURRENT_USER", "REG_SZ"):
         assert hasattr(winreg, name)
+
+
+# ---------------------------------------------------------------- shuto-52 fixes
+
+
+def _blob(root: Path, data: bytes) -> str:
+    import hashlib
+
+    name = "sha256-" + hashlib.sha256(data).hexdigest()
+    (root / "blobs").mkdir(parents=True, exist_ok=True)
+    (root / "blobs" / name).write_bytes(data)
+    return name
+
+
+def test_a_big_blob_already_in_the_target_must_match_its_name(
+    sysfake, envlog, tmp_path, monkeypatch
+):
+    old, new = tmp_path / "old", tmp_path / "new"
+    good = b"G" * 1_200_000
+    name = _blob(old, good)
+    (old / "manifests" / "registry" / "library" / "gemma3").mkdir(parents=True)
+    (old / "manifests" / "registry" / "library" / "gemma3" / "4b").write_text("{}")
+    (new / "blobs").mkdir(parents=True)
+    (new / "blobs" / name).write_bytes(b"D" * len(good))  # same size, damaged
+    monkeypatch.setenv("OLLAMA_MODELS", str(old))
+    plan = store.plan_move(old, new)
+    assert plan.conflicts == [str(Path("blobs") / name)]
+    with pytest.raises(store.StoreError, match="will not overwrite"):
+        store.change_models_dir(new, move=True, client=sysfake, os_name="windows")
+    assert (old / "blobs" / name).read_bytes() == good  # the only good copy is still there
+    assert (new / "blobs" / name).read_bytes() == b"D" * len(good)
+
+
+def test_an_intact_big_blob_already_in_the_target_is_accepted(
+    sysfake, envlog, tmp_path, monkeypatch
+):
+    old, new = tmp_path / "old", tmp_path / "new"
+    data = b"G" * 1_200_000
+    _blob(old, data)
+    _blob(new, data)
+    monkeypatch.setenv("OLLAMA_MODELS", str(old))
+    plan = store.plan_move(old, new)
+    assert plan.conflicts == [] and plan.todo_bytes == 0
+
+
+def test_the_saved_value_not_the_process_env_decides(sysfake, envlog, tmp_path, monkeypatch):
+    saved = tmp_path / "saved"
+    make_models(saved, {"sha256-aaa": b"A" * 100})
+    monkeypatch.delenv("OLLAMA_MODELS", raising=False)  # a stale shell that never saw the setting
+    monkeypatch.setattr(store, "_win_read", lambda machine: None if machine else str(saved))
+    assert store.current_models_dir() == saved and store.is_custom()
+    sysfake.start_works = False
+    new = tmp_path / "new"
+    new.mkdir()
+    with pytest.raises(store.StoreError, match="did not start again"):
+        store.change_models_dir(new, move=False, client=sysfake, os_name="windows")
+    assert envlog[-1] == str(saved)  # the owner's earlier choice is put back, not erased
+    assert (saved / "blobs" / "sha256-aaa").exists()
+
+
+def test_saved_value_on_mac_reads_launchctl_then_the_login_item(monkeypatch, tmp_path):
+    plist = tmp_path / "p.plist"
+    monkeypatch.setattr(store, "_plist_path", lambda: plist)
+    monkeypatch.setattr(
+        store,
+        "_run",
+        lambda cmd, timeout=20: types.SimpleNamespace(returncode=0, stdout="/Vol/m\n"),
+    )
+    assert store.saved_value("macos") == "/Vol/m"
+    monkeypatch.setattr(
+        store, "_run", lambda cmd, timeout=20: types.SimpleNamespace(returncode=1, stdout="")
+    )
+    assert store.saved_value("macos") is None
+    plist.write_bytes(
+        plistlib.dumps(
+            {"ProgramArguments": ["/bin/launchctl", "setenv", "OLLAMA_MODELS", "/Vol/n"]}
+        )
+    )
+    assert store.saved_value("macos") == "/Vol/n"
+
+
+def test_reset_is_refused_when_a_machine_wide_value_exists_even_with_a_user_value(
+    sysfake, envlog, folders, monkeypatch
+):
+    old, _ = folders
+    monkeypatch.setattr(store, "_win_read", lambda machine: "E:\admin" if machine else str(old))
+    assert store.machine_wide_value("windows") is None  # the user's own value wins for Ollama
+    assert store.machine_any_value("windows") == "E:\admin"
+    with pytest.raises(store.StoreError, match="administrator"):
+        store.change_models_dir(None, move=True, client=sysfake, os_name="windows")
+    assert envlog == [] and sysfake.cmds == [] and (old / "blobs" / "sha256-aaa").exists()
+
+
+def test_freeable_bytes_ignores_layers_shared_with_other_models(tmp_path):
+    root = tmp_path / "m"
+    for name, digests in (("a", ["x", "shared"]), ("b", ["y", "shared"])):
+        mf = root / "manifests" / "registry.ollama.ai" / "library" / name / "latest"
+        mf.parent.mkdir(parents=True)
+        cfg, layer = digests
+        mf.write_text(
+            json.dumps(
+                {"config": {"digest": f"sha256:{cfg}"}, "layers": [{"digest": f"sha256:{layer}"}]}
+            )
+        )
+    (root / "blobs").mkdir()
+    for d, size in (("x", 10), ("y", 20), ("shared", 1000)):
+        (root / "blobs" / f"sha256-{d}").write_bytes(b"0" * size)
+    assert store.freeable_bytes(root, "a") == 10
+    assert store.freeable_bytes(root, "b:latest") == 20
+    assert store.freeable_bytes(root, "missing") is None

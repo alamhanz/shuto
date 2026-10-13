@@ -12,9 +12,13 @@ the old `blobs/` and `manifests/` files removed. Any failure leaves the old file
 
 from __future__ import annotations
 
+import errno
 import filecmp
+import hashlib
+import json
 import os
 import plistlib
+import re
 import shutil
 import subprocess
 import sys
@@ -65,6 +69,7 @@ class MovePlan:
     new: Path
     files: list[tuple[str, int]]  # (path relative to old, size) of every model file
     todo_bytes: int  # bytes still to copy (identical files already in the new folder are skipped)
+    conflicts: list[str] = field(default_factory=list)  # files that exist there but differ
 
     @property
     def total_bytes(self) -> int:
@@ -80,6 +85,13 @@ def supported(name: str | None = None) -> bool:
 
 
 def current_models_dir() -> Path:
+    """Where Ollama keeps its models, from the saved setting rather than this process's copy."""
+    os_ = hardware._os_name()
+    if supported(os_):
+        value = saved_value(os_) or machine_any_value(os_)
+        if value:
+            return Path(value).expanduser()
+        return hardware.ollama_models_dir(env={})
     return hardware.ollama_models_dir()
 
 
@@ -88,39 +100,189 @@ def default_models_dir(home: Path | None = None) -> Path:
 
 
 def is_custom() -> bool:
+    os_ = hardware._os_name()
+    if supported(os_):
+        return bool(saved_value(os_) or machine_any_value(os_))
     return bool(os.environ.get(ENV_NAME))
 
 
-def _norm(p: Path | str) -> str:
-    return os.path.normcase(os.path.abspath(os.path.expanduser(str(p))))
+MACHINE_KEY = r"SYSTEM\CurrentControlSet\Control\Session Manager\Environment"
+MACHINE_TEXT = (
+    "The models folder is set for the whole computer by an administrator, so shuto cannot "
+    "change it. Ask someone with administrator rights, or a helper, to change it "
+    "(see the Help page, under For helpers)."
+)
+MACHINE_RESET_TEXT = (
+    "The whole computer is set up by an administrator to keep models in another folder, so "
+    "going back to the standard folder would not work: Ollama would use the administrator's "
+    "folder again after the next sign-in. Ask someone with administrator rights, or a helper, "
+    "to change it (see the Help page, under For helpers)."
+)
 
 
-def _inside(child: str, parent: str) -> bool:
-    return child == parent or child.startswith(parent.rstrip(os.sep) + os.sep)
+def _win_read(machine: bool) -> str | None:
+    """OLLAMA_MODELS as stored in Windows for this user (machine=False) or for everyone."""
+    reg = _winreg()
+    root, sub = (
+        (reg.HKEY_LOCAL_MACHINE, MACHINE_KEY) if machine else (reg.HKEY_CURRENT_USER, "Environment")
+    )
+    try:
+        with reg.OpenKey(root, sub, 0, reg.KEY_READ) as key:
+            value, _kind = reg.QueryValueEx(key, ENV_NAME)
+    except OSError:
+        return None
+    return str(value) if value else None
+
+
+def machine_any_value(os_name: str | None = None) -> str | None:
+    """The whole-computer OLLAMA_MODELS on Windows, whether or not this user also has one."""
+    if (os_name or hardware._os_name()) != "windows":
+        return None
+    try:
+        return _win_read(True)
+    except Exception:
+        return None
+
+
+def machine_wide_value(os_name: str | None = None) -> str | None:
+    """The whole-computer OLLAMA_MODELS on Windows when this user has no value of their own
+    (a user value would win over it). shuto cannot change it without administrator rights."""
+    if (os_name or hardware._os_name()) != "windows":
+        return None
+    try:
+        if _win_read(False):
+            return None
+    except Exception:
+        return None
+    return machine_any_value(os_name)
+
+
+def saved_value(os_name: str | None = None) -> str | None:
+    """OLLAMA_MODELS as saved for this user (registry / launchctl), not as this process
+    happened to inherit it. Where nothing is saved (or on Linux) None, or the process value."""
+    os_ = os_name or hardware._os_name()
+    if os_ == "windows":
+        try:
+            return _win_read(False)
+        except Exception:
+            return None
+    if os_ == "macos":
+        value = str(getattr(_run(["launchctl", "getenv", ENV_NAME]), "stdout", "") or "").strip()
+        if value:
+            return value
+        try:
+            args = plistlib.loads(_plist_path().read_bytes()).get("ProgramArguments", [])
+            return str(args[3]) if len(args) > 3 else None
+        except Exception:
+            return None
+    return os.environ.get(ENV_NAME) or None
+
+
+def _real(p: Path | str) -> Path:
+    """The folder as the file system sees it: links, junctions, subst drives and short names
+    resolved (as far as the folder exists)."""
+    return Path(os.path.abspath(os.path.expanduser(str(p)))).resolve(strict=False)
+
+
+def same_dir(a: Path | str, b: Path | str) -> bool:
+    """Are these two spellings the same folder? Compares real identity, not text."""
+    ra, rb = _real(a), _real(b)
+    if os.path.normcase(str(ra)) == os.path.normcase(str(rb)):
+        return True
+    try:
+        return os.path.samefile(ra, rb)
+    except OSError:
+        return False  # one of them does not exist, so they cannot be the same folder
+
+
+def is_inside(child: Path | str, parent: Path | str) -> bool:
+    """Is `child` the folder `parent` or somewhere below it (by real identity)?"""
+    cur = _real(child)
+    while True:
+        if same_dir(cur, parent):
+            return True
+        if cur.parent == cur:
+            return False
+        cur = cur.parent
+
+
+def check_distinct(old: Path | str, new: Path | str) -> None:
+    """Raise a plain-language StoreError unless the two folders are really different places."""
+    if same_dir(new, old):
+        raise StoreError("Ollama already keeps its models in that folder.")
+    if is_inside(new, old) or is_inside(old, new):
+        raise StoreError(
+            "Choose a folder that is not inside the current models folder, and does not contain it."
+        )
 
 
 # ---------------------------------------------------------------- the folder you pick
 
 
 def validate_target(raw: str, current: Path | None = None) -> Check:
-    """Check a folder chosen by the user; creates it if needed. Raises StoreError in plain words."""
+    """Check a folder chosen by the user. Raises StoreError in plain words.
+
+    Nothing is created here; the folder is made (and tested) when the change runs.
+    """
     raw = (raw or "").strip().strip('"')
     if not raw or "\x00" in raw:
         raise StoreError("Choose a folder first.")
     path = Path(raw).expanduser()
     if not path.is_absolute():
         raise StoreError("Use the full location of the folder, for example D:\\ollama\\models.")
-    current = current or current_models_dir()
-    new, old = _norm(path), _norm(current)
-    if new == old:
-        raise StoreError("Ollama already keeps its models in that folder.")
-    if _inside(new, old) or _inside(old, new):
-        raise StoreError(
-            "Choose a folder that is not inside the current models folder, and does not contain it."
-        )
+    path = Path(os.path.abspath(path))
+    check_distinct(current or current_models_dir(), path)
     if path.exists() and not path.is_dir():
         raise StoreError("That location is a file, not a folder.")
+    warnings = []
+    if path.parent == path:
+        warnings.append(
+            "That is the top of a drive. A folder inside it, such as ollama\\models, is tidier."
+        )
+    return Check(path, warnings)
+
+
+@dataclass
+class Created:
+    """What one run created in the new folder, so a failed or stopped run can undo exactly that."""
+
+    files: list[Path] = field(default_factory=list)
+    dirs: list[Path] = field(default_factory=list)
+
+    def remove(self) -> int:
+        """Delete only what this run created. Returns how many items could not be removed."""
+        left = 0
+        for f in reversed(self.files):
+            try:
+                f.unlink()
+            except FileNotFoundError:
+                pass
+            except OSError:
+                left += 1
+        for d in reversed(self.dirs):  # deepest first (they were recorded parent first)
+            try:
+                d.rmdir()  # only succeeds when empty
+            except FileNotFoundError:
+                pass
+            except OSError:
+                left += 1
+        return left
+
+
+def _missing_dirs(path: Path) -> list[Path]:
+    """The folders in path (parent first) that do not exist yet."""
+    out: list[Path] = []
+    cur = path
+    while not cur.exists() and cur.parent != cur:
+        out.append(cur)
+        cur = cur.parent
+    return out[::-1]
+
+
+def prepare_folder(path: Path, created: Created) -> None:
+    """Make the chosen folder and prove shuto can write there. Records what it made."""
     try:
+        created.dirs.extend(_missing_dirs(path))
         path.mkdir(parents=True, exist_ok=True)
         probe = path / f".shuto-write-test{PART_SUFFIX}"
         probe.write_bytes(b"ok")
@@ -129,12 +291,6 @@ def validate_target(raw: str, current: Path | None = None) -> Check:
         raise StoreError(
             "shuto cannot save files in that folder. Choose another folder or drive."
         ) from None
-    warnings = []
-    if path.parent == path:
-        warnings.append(
-            "That is the top of a drive. A folder inside it, such as ollama\\models, is tidier."
-        )
-    return Check(path, warnings)
 
 
 # ---------------------------------------------------------------- saving the setting
@@ -383,6 +539,44 @@ def models_size_bytes(root: Path) -> int:
     return sum(s for _, s in _model_files(root))
 
 
+def _manifest_digests(path: Path) -> set[str]:
+    data = json.loads(path.read_text(encoding="utf-8"))
+    items = [data.get("config") or {}, *(data.get("layers") or [])]
+    return {str(i["digest"]).replace(":", "-") for i in items if i.get("digest")}
+
+
+def freeable_bytes(root: Path, name: str) -> int | None:
+    """Bytes Ollama would really free by deleting model `name`: only the blobs that no other
+    model uses (models often share layers). None when the manifests cannot be read."""
+    name = hardware.normalize_tag(name)
+    model, _, tag = name.rpartition(":")
+    parts = model.split("/")
+    if len(parts) == 1:
+        parts = ["library", model]
+    wanted = Path("manifests", "registry.ollama.ai", *parts, tag)
+    try:
+        mine: set[str] = set()
+        others: set[str] = set()
+        found = False
+        for rel, _size in _model_files(root):
+            if not rel.startswith("manifests"):
+                continue
+            digests = _manifest_digests(root / rel)
+            if Path(rel) == wanted:
+                mine, found = digests, True
+            else:
+                others |= digests
+        if not found:
+            return None
+        return sum(
+            (root / "blobs" / d).stat().st_size
+            for d in mine - others
+            if (root / "blobs" / d).is_file()
+        )
+    except (OSError, ValueError, AttributeError, TypeError):
+        return None
+
+
 def _same(src: Path, dst: Path, size: int) -> bool:
     try:
         if not dst.is_file() or dst.stat().st_size != size:
@@ -392,10 +586,75 @@ def _same(src: Path, dst: Path, size: int) -> bool:
         return False
 
 
+_BLOB_NAME = re.compile(r"^sha256-([0-9a-f]{64})$")
+_hash_cache: dict[tuple[str, int, int], bool] = {}
+
+
+def _blob_matches_name(path: Path) -> bool:
+    """Does a model blob hold the data its name promises (blobs are named by their sha256)?
+    Files that are not named that way are trusted."""
+    m = _BLOB_NAME.match(path.name)
+    if not m:
+        return True
+    st = path.stat()
+    key = (str(path), st.st_size, st.st_mtime_ns)
+    if key not in _hash_cache:
+        digest = hashlib.sha256()
+        with path.open("rb") as fh:
+            while chunk := fh.read(CHUNK):
+                digest.update(chunk)
+        _hash_cache[key] = digest.hexdigest() == m.group(1)
+    return _hash_cache[key]
+
+
 def plan_move(old: Path, new: Path) -> MovePlan:
     files = _model_files(old)
-    todo = sum(s for rel, s in files if not _same(old / rel, new / rel, s))
-    return MovePlan(old, new, files, todo)
+    todo = 0
+    conflicts: list[str] = []
+    for rel, size in files:
+        dst = new / rel
+        if _same(old / rel, dst, size):
+            # a big file already there was not copied by us: prove it is intact before the
+            # original can be deleted; a damaged one is never overwritten, so it is a conflict
+            try:
+                intact = size < SMALL_FILE or _blob_matches_name(dst)
+            except OSError:
+                intact = False
+            if not intact:
+                conflicts.append(rel)
+            continue
+        if dst.exists():
+            conflicts.append(rel)  # same name, different content: never overwritten
+        else:
+            todo += size
+    return MovePlan(old, new, files, todo, conflicts)
+
+
+def conflict_message(plan: MovePlan) -> str:
+    n = len(plan.conflicts)
+    return (
+        f"That folder already holds models, and {n} of its files have the same name as yours "
+        "but are different. shuto will not overwrite them, so nothing was changed. "
+        "Choose an empty folder, or choose the folder without moving the models."
+    )
+
+
+def manifest_names(files: list[tuple[str, int]]) -> set[str]:
+    """Model names (as Ollama lists them) for the manifest files of a models folder."""
+    names: set[str] = set()
+    for rel, _size in files:
+        parts = Path(rel).parts
+        if len(parts) < 5 or parts[0] != "manifests":
+            continue
+        host, ns, tail = parts[1], parts[2], parts[3:]
+        model, tag = "/".join(tail[:-1]), tail[-1]
+        name = f"{model}:{tag}"
+        if ns != "library":
+            name = f"{ns}/{name}"
+        if host not in ("registry.ollama.ai", "registry"):
+            name = f"{host}/{name}"
+        names.add(hardware.normalize_tag(name))
+    return names
 
 
 Progress = Callable[[int, int, str], None]
@@ -413,6 +672,8 @@ def _copy_file(
                 on_bytes(len(chunk))
                 if cancelled():
                     raise MoveCancelled("stopped")
+        if dst.exists():
+            raise FileExistsError(errno.EEXIST, "already exists")  # never overwrite
         os.replace(tmp, dst)
     except BaseException:
         try:
@@ -426,11 +687,16 @@ def copy_models(
     plan: MovePlan,
     progress: Progress | None = None,
     cancelled: Callable[[], bool] = lambda: False,
+    created: Created | None = None,
 ) -> int:
     """Copy every model file not already identical in the new folder, then check all sizes.
 
-    Returns the number of files copied. Never touches the old folder.
+    Returns the number of files copied. Never touches the old folder and never overwrites a
+    file in the new one; what it creates is recorded in `created`.
     """
+    created = created if created is not None else Created()
+    if plan.conflicts:
+        raise StoreError(conflict_message(plan))
     total = max(plan.todo_bytes, 1)
     done = 0
     copied = 0
@@ -447,6 +713,7 @@ def copy_models(
             continue
         if cancelled():
             raise MoveCancelled("stopped")
+        created.dirs.extend(_missing_dirs(dst.parent))
         try:
             _copy_file(src, dst, on_bytes, cancelled)
         except OSError as exc:
@@ -454,6 +721,7 @@ def copy_models(
                 f"Copying the models failed ({exc.strerror or 'disk error'}). "
                 "Your models were not changed."
             ) from None
+        created.files.append(dst)
         copied += 1
     bad = [rel for rel, size in plan.files if not _same(plan.old / rel, plan.new / rel, size)]
     if bad:
@@ -464,9 +732,25 @@ def copy_models(
 
 
 def delete_old_models(plan: MovePlan) -> int:
-    """Remove the old model files that were copied and verified. Returns bytes freed."""
-    freed = 0
+    """Remove the old model files that were copied and verified. Returns bytes freed.
+
+    Refuses (and deletes nothing) unless every copy exists, has the same size and is a
+    different file from the original. Manifests go first, so an interrupted delete never
+    leaves a model that points at blobs that are gone.
+    """
+    if same_dir(plan.old, plan.new):
+        raise StoreError("The old and the new folder are the same place.")
     for rel, size in plan.files:
+        src, dst = plan.old / rel, plan.new / rel
+        try:
+            if not dst.is_file() or dst.stat().st_size != size:
+                raise StoreError(f"The copy of {rel} is missing or incomplete.")
+            if src.exists() and os.path.samefile(src, dst):
+                raise StoreError(f"{rel} in the old folder is the same file as its copy.")
+        except OSError:
+            raise StoreError(f"shuto could not check the copy of {rel}.") from None
+    freed = 0
+    for rel, size in sorted(plan.files, key=lambda f: not f[0].startswith("manifests")):
         try:
             (plan.old / rel).unlink()
             freed += size
@@ -487,7 +771,8 @@ def delete_old_models(plan: MovePlan) -> int:
 # ---------------------------------------------------------------- the whole change
 
 
-def _names(client: Any) -> set[str]:
+def _names(client: Any) -> set[str] | None:
+    """Models Ollama lists right now; None when it could not be asked."""
     try:
         return {
             hardware.normalize_tag(m.get("name") or m.get("model", ""))
@@ -495,7 +780,27 @@ def _names(client: Any) -> set[str]:
             if m.get("name") or m.get("model")
         }
     except Exception:
-        return set()
+        return None
+
+
+def login_order_warning(client: Any, os_name: str | None = None) -> str | None:
+    """macOS only: after a restart Ollama can start before the folder setting is applied, and
+    then it looks in the default folder and lists nothing. Say so when that seems to be the case."""
+    if (os_name or hardware._os_name()) != "macos" or not is_custom():
+        return None
+    folder = current_models_dir()
+    names = _names(client)
+    if (
+        names
+        or names is None
+        or not any(n.startswith("manifests") for n, _ in _model_files(folder))
+    ):
+        return None
+    return (
+        f"Ollama is running but shows no models, although {folder} has some. On a Mac, Ollama "
+        "can start at login before the setting is applied. Choose Quit Ollama in the menu bar, "
+        "open it again from Applications, and your models will be back."
+    )
 
 
 def _gb(n: int) -> str:
@@ -519,14 +824,16 @@ def change_models_dir(
     os_ = os_name or hardware._os_name()
     if not supported(os_):
         raise StoreUnsupported(LINUX_TEXT)
+    if machine_wide_value(os_):
+        raise StoreError(MACHINE_TEXT)
+    if target is None and machine_any_value(os_):
+        raise StoreError(MACHINE_RESET_TEXT)
     old = current_models_dir()
-    new = default_models_dir() if target is None else target
-    if _norm(old) == _norm(new):
-        raise StoreError("Ollama already keeps its models in that folder.")
-    prev = os.environ.get(ENV_NAME)
+    new = default_models_dir() if target is None else Path(os.path.abspath(target))
+    check_distinct(old, new)
+    prev = saved_value(os_)
     was_up = _is_up(client)
     installed = was_up or can_start(os_)
-    names_before = _names(client) if was_up else set()
 
     def save() -> None:
         reset_models_dir(os_) if target is None else set_models_dir(new, os_)
@@ -535,56 +842,107 @@ def change_models_dir(
         save()
         return f"Saved. Ollama will keep its models in {new} once it is installed."
 
-    plan = plan_move(old, new) if move else None
-    if plan and plan.files:
-        free = hardware.free_gb(new)
-        if free is not None and free * 1024**3 < plan.todo_bytes + HEADROOM_GB * 1024**3:
-            raise StoreError(
-                f"There is not enough room: the models need {_gb(plan.todo_bytes)} and "
-                f"{free:g} GB is free there. Choose a drive with more space, "
-                "or do not move the models."
-            )
-    else:
-        plan = None
+    if move:  # a first look, while Ollama is still running: stop early if the move cannot work
+        _check_room(plan_move(old, new), new)
 
-    stopped = False
+    created = Created()
+    restart = False
+    plan: MovePlan | None = None
+    keep_old = False
     try:
-        if plan:
+        prepare_folder(new, created)
+        if was_up:
+            restart = True
             stop_ollama(client, os_)
-            stopped = True
-            copy_models(plan, progress, cancelled)
-        elif was_up:
-            stop_ollama(client, os_)
-            stopped = True
+        if move:  # planned after Ollama stopped, so a finishing download is not missed
+            plan = plan_move(old, new)
+            if plan.conflicts:
+                raise StoreError(conflict_message(plan))
+            if not plan.files:
+                plan = None
+            else:
+                _check_room(plan, new)
+                copy_models(plan, progress, cancelled, created)
         save()
+        restart = True
         start_ollama(client, os_)
         if plan:
-            missing = names_before - _names(client)
+            expected = manifest_names(plan.files)
+            seen = _names(client)
+            if seen is None:
+                raise StoreError("Ollama restarted but shuto could not ask it for its models.")
+            missing = expected - seen
             if missing:
                 raise StoreError(
                     "Ollama restarted but cannot see " + ", ".join(sorted(missing)) + " in "
                     "the new folder."
                 )
+            keep_old = not expected  # nothing to check the copy against: do not delete
     except MoveCancelled:
-        _recover(client, os_, prev, stopped or was_up)
-        return f"Stopped. Nothing was changed. Your models are still in {old}."
+        stopped_text = f"Stopped. Nothing was changed. Your models are still in {old}."
+        return _undo(client, os_, prev, restart, created, new, stopped_text)
     except StoreError as exc:
-        _recover(client, os_, prev, stopped or was_up)
+        _undo(client, os_, prev, restart, created, new, "")
         raise StoreError(
             f"{exc} The setting was put back and your models are still in {old}."
         ) from None
+    except Exception as exc:
+        _undo(client, os_, prev, restart, created, new, "")
+        raise StoreError(
+            f"Something unexpected went wrong ({type(exc).__name__}). "
+            f"The setting was put back and your models are still in {old}."
+        ) from None
 
     where = f"Ollama now keeps its models in {new}."
+    if plan and keep_old:
+        return f"{where} The models were copied; the originals in {old} were left in place."
     if plan:
-        freed = delete_old_models(plan)
+        try:
+            freed = delete_old_models(plan)
+        except StoreError as exc:
+            return f"{where} The models were copied, but the originals in {old} were kept: {exc}"
         return f"{where} {len(plan.files)} model file(s) were moved; {_gb(freed)} freed in {old}."
     return where + (
         " Models you downloaded before stay in the old folder." if models_size_bytes(old) else ""
     )
 
 
+def _check_room(plan: MovePlan, new: Path) -> None:
+    if plan.conflicts:
+        raise StoreError(conflict_message(plan))
+    if not plan.files:
+        return
+    free = hardware.free_gb(new)
+    if free is not None and free * 1024**3 < plan.todo_bytes + HEADROOM_GB * 1024**3:
+        raise StoreError(
+            f"There is not enough room: the models need {_gb(plan.todo_bytes)} and "
+            f"{free:g} GB is free there. Choose a drive with more space, "
+            "or do not move the models."
+        )
+
+
+def _undo(
+    client: Any,
+    os_: str,
+    prev: str | None,
+    restart: bool,
+    created: Created,
+    new: Path,
+    message: str,
+) -> str:
+    """Put the old setting back, bring Ollama back, then remove only what this run created."""
+    _recover(client, os_, prev, restart)
+    left = created.remove()
+    if left:
+        message += f" Some copied files could not be removed from {new}."
+    return message
+
+
 def _recover(client: Any, os_: str, prev: str | None, restart: bool) -> None:
-    """Best effort: restore the previous setting and bring Ollama back."""
+    """Best effort: restore the previous setting and bring Ollama back on it.
+
+    Ollama may already be running on the new folder, so it is always stopped and started again.
+    """
     try:
         if prev:
             set_models_dir(prev, os_)
@@ -594,7 +952,10 @@ def _recover(client: Any, os_: str, prev: str | None, restart: bool) -> None:
         pass
     if restart:
         try:
-            if not _is_up(client):
-                start_ollama(client, os_)
+            stop_ollama(client, os_)
+        except StoreError:
+            pass
+        try:
+            start_ollama(client, os_)
         except StoreError:
             pass

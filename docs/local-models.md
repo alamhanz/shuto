@@ -69,10 +69,24 @@ What shuto does for you:
 - **macOS**: runs `launchctl setenv OLLAMA_MODELS ...`, adds a small login item
   (`~/Library/LaunchAgents/com.shuto.ollama-models.plist`) so it survives a reboot, then quits
   and reopens the Ollama app. **Use the standard folder** removes both again.
-- Moving models: files are copied to the new folder, every size is checked, Ollama is restarted
-  and must still list every model, and only then are the old `blobs/` and `manifests/` files
-  deleted. If anything fails the setting is put back and the old files stay. shuto checks the
-  free space on the new drive first.
+- Moving models: Ollama is stopped, the files are copied to the new folder, every size is
+  checked, Ollama is restarted and must still list every model named by the old `manifests/`,
+  and only then are the old files deleted (manifests first). Folders are compared by real
+  identity, so a link, junction, drive alias or different capitalisation of the current folder
+  is refused. If anything fails the setting is put back, Ollama is restarted on it, and only
+  the files this run copied are removed. shuto checks the free space on the new drive first.
+- A folder that already holds models is merged. A file with the same name but different content
+  is never overwritten: shuto stops before changing anything and says so.
+- A Windows `OLLAMA_MODELS` set for the whole computer (by an administrator) cannot be changed
+  by shuto. Settings explains this and hides Save and Reset; ask someone with administrator
+  rights.
+- macOS: after a restart, the Ollama login item and shuto's login item run in no fixed order. If
+  Ollama then shows no models, Settings says so: quit Ollama from the menu bar and open it again.
+
+You can also remove a downloaded model from the model list (**Remove from this computer**; never
+the one in use). If a download does not fit on the disk, **Replace: remove X and download Y**
+offers the downloaded models whose removal makes room. Both ask for confirmation. The list shows
+when it was last updated and gently flags it after about six months.
 
 **Linux** needs an administrator, so it stays manual (systemd service):
 

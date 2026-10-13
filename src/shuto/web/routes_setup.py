@@ -10,9 +10,9 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
 from starlette.datastructures import FormData
 
-from .. import estimate, hardware, ollama_store, pipeline
+from .. import estimate, hardware, local_models, ollama_store, pipeline
 from .. import secrets as shuto_secrets
-from ..jobs import JobContext
+from ..jobs import JobBusy, JobContext
 from . import browse, ux
 from .common import IMPORT_JOB_KEY, MODELS_JOB_KEY, PostForm, WebCtx
 
@@ -132,6 +132,40 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
         except Exception:
             return None
         return f"{sel.model}" if sel.provider == "ollama" else f"{sel.provider} / {sel.model}"
+
+    def selected_tag() -> str | None:
+        """The downloaded model that is in use now (None when an online AI or nothing).
+
+        Raises RuntimeError when the choice cannot be read: callers must then not remove.
+        """
+        try:
+            sel = pipeline.resolve_selection(ctx.cfg, ctx.store)
+        except local_models.ModelChoiceRequired:
+            return None  # nothing chosen yet, so nothing is in use
+        except Exception:
+            raise RuntimeError("The model in use could not be read.") from None
+        return hardware.normalize_tag(sel.model) if sel.provider == "ollama" else None
+
+    def removable_models() -> list[dict]:
+        """Downloaded models that may be removed: only models from the model list (they can be
+        downloaded again; a model made by hand cannot), and never the one in use. size_gb is
+        what Ollama would really free (layers shared with other models stay)."""
+        try:
+            rows = pipeline.ollama_client(ctx.cfg).tags()
+            keep = selected_tag()
+        except Exception:
+            return []
+        listed = {hardware.normalize_tag(m.tag) for m in local_models.load_catalog()[0]}
+        root = ollama_store.current_models_dir()
+        out = []
+        for m in rows:
+            name = str(m.get("name") or m.get("model") or "")
+            norm = hardware.normalize_tag(name)
+            if not name or not TAG_RE.match(name) or norm == keep or norm not in listed:
+                continue
+            freed = ollama_store.freeable_bytes(root, name)
+            out.append({"tag": name, "size_gb": (freed or 0) / 1024**3, "known": freed is not None})
+        return out
 
     def batch_cards() -> list[dict]:
         cards = []
@@ -262,7 +296,10 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
                     "profile": ctx.cfg.llm.bedrock.profile,
                 }
             )
+        list_updated, list_old = local_models.catalog_staleness()
         return {
+            "list_updated": list_updated,
+            "list_old": list_old,
             "cards": rows,
             "providers": providers,
             "selected": report.selected,
@@ -278,8 +315,20 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             drives = hardware.other_volumes(max(10.0, gb + 2), cur)
         except Exception:
             drives = []
+        machine = ollama_store.machine_wide_value()
+        warning = None
+        if ollama_store.supported() and not machine:
+            try:
+                warning = ollama_store.login_order_warning(pipeline.ollama_client(ctx.cfg))
+            except Exception:
+                warning = None
         return {
             "supported": ollama_store.supported(),
+            "machine": machine,
+            "machine_any": bool(ollama_store.machine_any_value()),
+            "machine_text": ollama_store.MACHINE_TEXT,
+            "machine_reset_text": ollama_store.MACHINE_RESET_TEXT,
+            "mac_warning": warning,
             "current": str(cur),
             "free_gb": hardware.free_gb(cur),
             "custom": ollama_store.is_custom(),
@@ -474,9 +523,15 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
         advice = pipeline.model_disk_advice(ctx.cfg, tag)
         if advice is None:
             raise HTTPException(status_code=404, detail="Unknown model.")
+        replaceable = []
+        if not advice.fits and advice.free_gb is not None:
+            replaceable = [
+                m for m in removable_models() if advice.free_gb + m["size_gb"] >= advice.need_gb
+            ]
         return ctx.render(
             request,
             "_advice.html",
+            replaceable=replaceable,
             advice=advice.to_dict(),
             tag=tag,
             return_to=return_to if return_to in RETURN_PAGES else "/settings",
@@ -502,13 +557,46 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
         advice = pipeline.model_disk_advice(cfg, tag)
         if advice is None:
             return ctx.message_fragment(request, f"{tag} is not in the model catalog.")
-        if not advice.fits:
+        replace = str(form.get("replace") or "")
+        victim: dict | None = None
+        if replace:
+            victim = next((m for m in removable_models() if m["tag"] == replace), None)
+            if victim is None or hardware.normalize_tag(replace) == hardware.normalize_tag(tag):
+                return ctx.message_fragment(
+                    request, f"{replace} cannot be removed. It is in use, or not downloaded."
+                )
+            if advice.free_gb is None or advice.free_gb + victim["size_gb"] < advice.need_gb:
+                return ctx.message_fragment(
+                    request, f"Removing {replace} would not free enough room for {tag}."
+                )
+        elif not advice.fits:
             return ctx.message_fragment(request, advice.message or "Not enough free disk space.")
         back = str(form.get("return_to") or "")
-        pull_return[0] = back if back in RETURN_PAGES else "/settings"
+        back = back if back in RETURN_PAGES else "/settings"
 
         def run(job: JobContext) -> str:
             last: list[object] = [None]
+            if victim is not None:
+                # this job may have waited in the queue: check again that it is still safe
+                try:
+                    now_in_use = hardware.normalize_tag(replace) == selected_tag()
+                except RuntimeError:
+                    now_in_use = True
+                if now_in_use:
+                    raise RuntimeError(
+                        f"{replace} is now the model in use, so it was not removed and "
+                        f"{tag} was not downloaded."
+                    )
+                if not any(m["tag"] == replace for m in removable_models()):
+                    raise RuntimeError(
+                        f"{replace} is no longer there to remove, so {tag} was not downloaded."
+                    )
+                try:
+                    pipeline.ollama_client(cfg).delete(replace)
+                except Exception as exc:
+                    raise RuntimeError(
+                        f"{replace} could not be removed, so {tag} was not downloaded: {exc}"
+                    ) from None
 
             def on_progress(ev: dict) -> None:
                 total, done = ev.get("total") or 0, ev.get("completed") or 0
@@ -519,14 +607,73 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
                 last[0] = mark
                 job.progress(int(done / 1_000_000), int(total / 1_000_000), mark[0])
 
-            pipeline.pull_model(cfg, tag, on_progress)
-            return f"Downloaded {tag}. Go back and press Use this."
+            try:
+                pipeline.pull_model(cfg, tag, on_progress)
+            except Exception as exc:
+                if victim is None:
+                    raise
+                raise RuntimeError(
+                    f"{replace} was removed, but {tag} could not be downloaded: {exc}"
+                ) from None
+            removed = f" {replace} was removed." if victim is not None else ""
+            return f"Downloaded {tag}.{removed} Go back and press Use this."
 
-        return ctx.start_job(request, "pull", MODELS_JOB_KEY, run, next_href=pull_return[0])
+        return submit_models_job(request, "pull", run, back)
+
+    @app.post("/settings/model/remove")
+    def settings_model_remove(request: Request, form: PostForm):
+        tag = str(form.get("tag") or "")
+        back = str(form.get("return_to") or "")
+        back = back if back in RETURN_PAGES else "/settings"
+        if form.get("confirm") != "yes" or not TAG_RE.match(tag):
+            return go(back, None, "Removal not confirmed.", request)
+        if ctx.runner.active_job(MODELS_JOB_KEY):
+            return go(back, None, "Wait for the download or change in progress to finish.", request)
+        try:
+            in_use = hardware.normalize_tag(tag) == selected_tag()
+        except RuntimeError:
+            return go(
+                back,
+                None,
+                "shuto could not tell which model is in use, so it removed nothing.",
+                request,
+            )
+        if in_use:
+            return go(
+                back, None, f"{tag} is the model in use. Choose another model first.", request
+            )
+        if not any(m["tag"] == tag for m in removable_models()):
+            return go(
+                back,
+                None,
+                f"{tag} cannot be removed here: it is not downloaded, or not on the model list.",
+                request,
+            )
+        client = pipeline.ollama_client(ctx.cfg)
+        try:
+            client.delete(tag)
+        except Exception as exc:
+            why = _friendly(str(exc))
+            msg = f"{tag} could not be removed. {why['what']} {why['todo']}"
+            return go(back, None, msg, request)
+        return go(back, f"{tag} was removed from this computer.", None, request)
+
+    def submit_models_job(request: Request, kind: str, run, back: str):
+        """Start a models job; the page to return to is only remembered once it really started."""
+        try:
+            job_id = ctx.runner.submit(kind, MODELS_JOB_KEY, run)
+        except JobBusy as exc:
+            return ctx.message_fragment(request, str(exc))
+        pull_return[0] = back
+        return ctx.job_fragment(request, job_id, next_href=back)
 
     def change_models_dir(request: Request, form: PostForm, reset: bool):
         if not ollama_store.supported():
             return ctx.message_fragment(request, ollama_store.LINUX_TEXT)
+        if ollama_store.machine_wide_value():
+            return ctx.message_fragment(request, ollama_store.MACHINE_TEXT)
+        if reset and ollama_store.machine_any_value():
+            return ctx.message_fragment(request, ollama_store.MACHINE_RESET_TEXT)
         back = str(form.get("return_to") or "")
         back = back if back in RETURN_PAGES else "/settings"
         target, warnings = None, []
@@ -538,7 +685,6 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             target, warnings = check.path, check.warnings
         move = form.get("move") == "yes"
         client = pipeline.ollama_client(ctx.cfg)
-        pull_return[0] = back
 
         def run(job: JobContext) -> str:
             text = ollama_store.change_models_dir(
@@ -550,7 +696,7 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             )
             return " ".join([text, *warnings])
 
-        return ctx.start_job(request, "models_dir", MODELS_JOB_KEY, run, next_href=back)
+        return submit_models_job(request, "models_dir", run, back)
 
     @app.post("/settings/models-dir", response_class=HTMLResponse)
     def settings_models_dir(request: Request, form: PostForm):

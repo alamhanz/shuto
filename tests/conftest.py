@@ -13,6 +13,20 @@ from shuto.config import Config
 from .helpers import write_jpeg
 
 
+@pytest.fixture(autouse=True)
+def _no_real_registry(monkeypatch):
+    """Tests never read the real Windows registry: the 'saved' user value is the test's env."""
+    import os
+
+    from shuto import ollama_store
+
+    monkeypatch.setattr(
+        ollama_store,
+        "_win_read",
+        lambda machine: None if machine else os.environ.get("OLLAMA_MODELS") or None,
+    )
+
+
 class FakeOllama:
     url = "http://127.0.0.1:11434"
 
@@ -20,6 +34,8 @@ class FakeOllama:
         self.pulled = list(pulled)
         self.running = running
         self.pull_calls: list[str] = []
+        self.delete_calls: list[str] = []
+        self.sizes: dict[str, int] = {}  # bytes, as Ollama reports them
 
     def version(self):
         if not self.running:
@@ -27,7 +43,13 @@ class FakeOllama:
         return "0.0-test"
 
     def tags(self):
-        return [{"name": n} for n in self.pulled]
+        return [{"name": n, "size": self.sizes.get(n, 0)} for n in self.pulled]
+
+    def delete(self, tag):
+        self.delete_calls.append(tag)
+        if tag not in self.pulled:
+            raise OSError("model not found")
+        self.pulled.remove(tag)
 
     def pull(self, tag, on_progress=None):
         self.pull_calls.append(tag)

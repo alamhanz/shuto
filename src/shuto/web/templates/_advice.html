@@ -12,6 +12,20 @@
     </form>
   {% else %}
     <p class="bad">{{ advice.message }}</p>
+    {% if replaceable %}
+    <p>Or make room by replacing a model you already downloaded (never the one in use):</p>
+    {% for m in replaceable %}
+    <form hx-post="/settings/pull" hx-target="#job-area" hx-swap="innerHTML"
+          hx-confirm="Remove {{ m.tag }} from this computer (frees about {{ '%.1f'|format(m.size_gb) }} GB) and then download {{ tag }} (about {{ advice.need_gb }} GB)? {{ m.tag }} can be downloaded again later.">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <input type="hidden" name="tag" value="{{ tag }}">
+      <input type="hidden" name="replace" value="{{ m.tag }}">
+      <input type="hidden" name="return_to" value="{{ return_to }}">
+      <input type="hidden" name="confirm" value="yes">
+      <button type="submit" class="secondary">Replace: remove {{ m.tag }} and download {{ tag }}</button>
+    </form>
+    {% endfor %}
+    {% endif %}
     {% if advice.volumes %}
     <p>These drives have enough room:</p>
     <ul>{% for v in advice.volumes %}

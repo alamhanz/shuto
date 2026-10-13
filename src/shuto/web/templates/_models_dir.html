@@ -6,7 +6,10 @@
 </dl>
 {% if not ms.supported %}
 <p class="flash warn" role="note">{{ icon('alert') }}<span>{{ ms.linux_text }} <a href="/help#for-helpers">Open Help</a></span></p>
+{% elif ms.machine %}
+<p class="flash warn" role="note">{{ icon('alert') }}<span>{{ ms.machine_text }} <a href="/help#for-helpers">Open Help</a></span></p>
 {% else %}
+{% if ms.mac_warning %}<p class="flash warn" role="note">{{ icon('alert') }}<span>{{ ms.mac_warning }}</span></p>{% endif %}
 {% if ms.drives %}
 <p>Drives with room for your models. Press one to use it:</p>
 <p class="chips">{% for v in ms.drives %}<button type="button" class="chip" data-pick-path="{{ v.suggested_path }}">{{ v.mount }} ({{ "%.0f"|format(v.free_gb) }} GB free)</button>{% endfor %}</p>
@@ -24,7 +27,9 @@
   {% endif %}
   <p><button type="submit" class="btn primary">Save and restart Ollama</button></p>
 </form>
-{% if ms.custom %}
+{% if ms.custom and ms.machine_any %}
+<p class="hint">{{ ms.machine_reset_text }}</p>
+{% elif ms.custom %}
 <form hx-post="/settings/models-dir/reset" hx-target="#job-area" hx-swap="innerHTML" class="stack"
       hx-confirm="Go back to the standard folder? Ollama will close and start again, which takes up to half a minute.">
   <input type="hidden" name="csrf_token" value="{{ csrf }}">

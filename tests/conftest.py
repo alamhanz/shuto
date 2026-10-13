@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import shutil
 from datetime import datetime
 from pathlib import Path
 
@@ -112,13 +113,21 @@ def store(cfg):
     return pipeline.open_store(cfg)
 
 
-@pytest.fixture
-def photos_dir(tmp_path) -> Path:
-    d = tmp_path / "photos"
+@pytest.fixture(scope="session")
+def _photos_template(tmp_path_factory) -> Path:
+    """The five synthetic photos, made once per test process (making them is the slow part)."""
+    d = tmp_path_factory.mktemp("photos-template")
     when = datetime(2025, 3, 4, 10, 0, 0)
     write_jpeg(d / "a.jpg", "sharp", seed=1, captured=when)
     write_jpeg(d / "b.jpg", "sharp", seed=2, captured=when)
     write_jpeg(d / "c.jpg", "sharp", seed=3, captured=when)
     write_jpeg(d / "blurry.jpg", "blurred", seed=4, captured=when)
     write_jpeg(d / "tiny.jpg", "small", seed=5, captured=when)
+    return d
+
+
+@pytest.fixture
+def photos_dir(tmp_path, _photos_template) -> Path:
+    d = tmp_path / "photos"
+    shutil.copytree(_photos_template, d)
     return d

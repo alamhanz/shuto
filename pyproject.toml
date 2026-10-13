@@ -29,7 +29,7 @@ bedrock = ["boto3"]
 keyring = ["keyring"]
 heic = ["pillow-heif"]
 all = ["anthropic", "google-genai", "boto3", "keyring", "pillow-heif"]
-dev = ["pytest>=8", "ruff>=0.6", "httpx"]
+dev = ["pytest>=8", "pytest-xdist>=3", "ruff>=0.6", "httpx"]
 
 [project.scripts]
 shuto = "shuto.cli:main"

@@ -642,7 +642,7 @@ def test_advice_fragment_has_no_jargon(web, cfg, monkeypatch):
     from shuto import local_models
 
     tag = pipeline.list_models(cfg)[0].tag
-    vol = local_models.VolumeOption("D:", 500.0, "D:\ollama", "setx OLLAMA_MODELS D:\ollama")
+    vol = local_models.VolumeOption("D:", 500.0, r"D:\ollama", r"setx OLLAMA_MODELS D:\ollama")
     monkeypatch.setattr(
         pipeline,
         "model_disk_advice",

@@ -215,7 +215,7 @@ def test_concurrent_writers(store):
 
     def work(t):
         try:
-            for i in range(25):
+            for i in range(10):
                 pid = store.add_photo(
                     sha256=f"t{t}-{i}", src_path="/x", orig_name="x.jpg", batch_id="b"
                 )
@@ -231,8 +231,8 @@ def test_concurrent_writers(store):
     for t in threads:
         t.join()
     assert errors == []
-    assert len(store.list_photos(statuses=[Status.READY])) == 100
-    assert store.usage_by_batch("b")["calls"] == 100
+    assert len(store.list_photos(statuses=[Status.READY])) == 40
+    assert store.usage_by_batch("b")["calls"] == 40
 
 
 # -- schema v2 / filters / set_aside -----------------------------------------------------

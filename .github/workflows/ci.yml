@@ -19,11 +19,15 @@ jobs:
         python: ["3.12", "3.13"]
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v6
         with:
           python-version: ${{ matrix.python }}
-          cache: pip
-      - run: pip install -e ".[dev,all]"
-      - run: ruff check .
-      - run: ruff format --check .
-      - run: pytest -q
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+      - run: uv venv
+      - run: uv pip install -e ".[dev,all]"
+      - if: matrix.os == 'ubuntu-latest' && matrix.python == '3.12'
+        run: uv run --no-sync ruff check .
+      - if: matrix.os == 'ubuntu-latest' && matrix.python == '3.12'
+        run: uv run --no-sync ruff format --check .
+      - run: uv run --no-sync pytest -q -n auto

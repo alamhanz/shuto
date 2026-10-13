@@ -21,6 +21,9 @@ them. You stay in charge.
   Neutral wording by default; a **Region focus** option in Settings adds Japan-specific help.
 - **It checks Shutterstock's rules.** It warns you about things like logos or people that can
   cause a rejection.
+- **It checks your theme and your own rules.** Photos that do not fit your theme (for example
+  "Everyday Japan") or break a rule you wrote (for example "no people") are set aside with a
+  reason. You can still approve them. Every batch gets a report you can open in Excel.
 - **It uploads for you.** One click sends your approved photos to Shutterstock.
 - **You press Submit yourself.** The last step on the Shutterstock website is always yours.
 
@@ -156,6 +159,8 @@ shuto                      # start the web app
 | `ledger export/import` | back up or restore the already-uploaded list (`uploaded.csv`) |
 | `secrets set NAME`, `check-ftps` | store a secret (the web app does this in Settings); test the upload login |
 | `restrictions` | `list` rules or `check TEXT` |
+| `rules` | your own photo rules: `list`, `add --avoid/--include TEXT [--flag]`, `remove ID`, `clear`, `mode ID set-aside/flag`, `theme on/off`, `partly pass/flag` (shared with the web app; applies to photos described from now on) |
+| `report BATCH` | write the batch report CSV (`reports/<batch>.csv`) and print its path |
 | `shortcut`, `uninstall` | create or remove icons; uninstall shuto |
 
 ### Configuration and secrets
@@ -164,7 +169,9 @@ Copy [shuto.example.yaml](shuto.example.yaml) to `shuto.yaml` and pass it with `
 Secrets never go in the config: use environment variables, a `.env` file or the OS keyring
 (`SHUTO_FTPS_USER`, `SHUTO_FTPS_PASSWORD`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`; Bedrock uses
 the normal AWS credentials). Model choice order: CLI flag, UI or `shuto models use`, config,
-then `auto`.
+then `auto`. The `filters:` section sets the theme check and up to 10 rules of your own;
+rules saved in the web app or with `shuto rules` replace the ones from the file.
+Note: 0.4.0 upgrades the database, so shuto 0.3.x cannot open it afterwards.
 
 ### More
 

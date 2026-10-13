@@ -51,6 +51,21 @@ Shutterstock rules. A progress bar shows how long it will take, and you can canc
 
 If the AI helper is not running, a box explains how to fix it in **Settings**.
 
+### Your photo rules
+
+In the same step the AI also answers three kinds of questions about each photo, with the same
+model and no extra waiting: the **Shutterstock rules**, whether the photo fits your **theme**
+(for example "Everyday Japan"), and **your own rules** (up to 10, such as "Must avoid: people").
+Set them up in **Settings > Your photo rules**. For each rule you choose what happens when a
+photo fails: **Set aside** or **just flag** it (**Needs a look**). A theme fit of "partly" is
+let through and shown with its reason.
+
+Changes only apply to photos you check from then on; photos already checked keep their results.
+Every batch also has a **report** (a CSV file you can open in Excel) listing every check and
+its reason: download it from Review or Submit, or find it in `reports` in your workspace.
+Going back to shuto 0.3.x after updating to 0.4.0 is not possible, because the database is
+upgraded.
+
 ## 4. Review
 
 Here you decide what goes to Shutterstock. Each photo has a label:
@@ -60,12 +75,14 @@ Here you decide what goes to Shutterstock. Each photo has a label:
 | Looks good | Ready for you to approve |
 | Needs a look | shuto noticed something, such as a logo or a missing release |
 | Can't send as is | The photo breaks a rule and needs a change |
-| Set aside | Too low quality, an exact copy, or looks like another photo |
+| Set aside | Too low quality, an exact copy, looks like another photo, or does not fit your theme or rules |
 | Sent before | You already sent this photo |
 
 <!-- screenshot: the review grid with labels (images/web-review.png) -->
 
 - Use the filter chips at the top to show only one kind.
+- A photo set aside because of your theme or a rule shows the reason. If you disagree, open it
+  and press **Approve anyway**. (A photo that breaks a Shutterstock rule cannot be approved.)
 - **Approve all that look good** approves the good ones in one click.
 - Click a photo to read and edit its title, description and keywords. The page also explains
   what shuto noticed. **Approve** saves your edits first and then approves the photo, so you do not need to save

@@ -125,6 +125,84 @@ For how the check looks in the web app, see [web-guide.md](web-guide.md).
 
 </details>
 
+## Theme and your own rules
+
+After the quality check, every photo goes through three filter layers. All three are answered
+in the **same AI call** that writes the title, description and keywords, with the same model.
+There is no second model, no extra download and no extra photo upload to an online AI.
+
+1. **Shutterstock rules.** The check described above (brand names, releases, caption format).
+   It is the only layer that can stop a photo completely (**Can't send as is**).
+2. **Theme fit.** If you set a theme (for example "Everyday Japan") the AI says whether the
+   photo fits it: yes, partly or no. A "no" puts the photo under **Set aside**. A "partly" is
+   let through, and the reason is shown in Review and in the report. You can turn the theme
+   check off, or make "partly" show up as **Needs a look** instead.
+3. **Your rules.** Up to 10 rules of your own, such as "Must avoid: people" or "Must include:
+   a street scene" (2 to 80 characters each). Each rule is either **set aside** or **just
+   flag** (the photo shows as **Needs a look**) when it fails. The rules are global: they apply
+   to every batch.
+
+The AI always gives a short reason with each answer, and Review shows it. If the AI gives no
+usable answer for a check, the photo goes to **Needs a look** with a message. It is never
+passed silently and never set aside by mistake.
+
+**Set aside is not final.** Open the photo and press **Approve anyway** if you disagree. shuto
+remembers that you did, so a later edit does not send it back. A photo that breaks a Shutterstock
+rule still cannot be approved this way.
+
+**Rule changes only apply to photos described from now on.** Photos already described keep the
+results (and the rules) they were checked with. shuto never re-checks old photos on its own and
+never moves approved or uploaded photos.
+
+Small local models judge less reliably than large online ones. That is why the reason is always
+shown and why set aside can be undone.
+
+Where to set this up: **Settings > Your photo rules** in the web app, or on the command line
+(`shuto rules`). Both use the same rules. The config file can also hold them in the `filters:`
+section of [shuto.example.yaml](../shuto.example.yaml); rules saved in the web app or with
+`shuto rules` replace the ones from the file.
+
+## The batch report (CSV)
+
+Every batch has one report file that shuto keeps up to date after each step (add, check,
+approve, edit, upload, export, submit, results). It lists, for each photo, what was checked and
+what the answer was.
+
+- **Where:** `reports/<batch>.csv` inside your shuto workspace. In the web app press
+  **Download report** on the Review or Submit page. On the command line, `shuto report BATCH`
+  writes it and prints the path (`--out PATH` writes a copy somewhere else).
+- **Columns:** file, batch, quality and its reasons, which Shutterstock rules were hit, theme and
+  how well the photo fits it (with the reason), one column per rule of yours (pass, fail or
+  unknown; blank when the photo was not checked with that rule), the reasons for your rules,
+  what set it aside, whether you approved it by hand, status, title, number of keywords, the AI
+  model, and the dates it was checked, approved, uploaded, submitted, accepted or rejected
+  (with the rejection reason).
+- **Excel:** the file opens directly in Excel and shows Japanese text correctly. Text that
+  could be read as a formula is stored as plain text. If Excel has the file open, shuto cannot
+  update it; close it, and the next step refreshes it (the step itself still succeeds).
+
+## Upgrading to 0.4.0
+
+0.4.0 upgrades shuto's database (a one-time, automatic step the first time it starts). Photos
+described before 0.4.0 simply show as "not checked" for theme and rules. **Going back to 0.3.x
+afterwards will not work:** the older version cannot open the upgraded database. Keep a copy of
+the workspace folder first if you may want to go back.
+
+<details>
+<summary><strong>For developers</strong></summary>
+
+- Filters add two optional properties at the end of the describe JSON schema: `theme_fit`
+  (only with an active theme) and `checks` (one required key `r1`..`rN` per rule). Both are
+  `{"reason", "answer"|"fit"}` objects, reason first. The core fields are validated as before.
+- Rules are asked as neutral statements ("Is this in or true of the photo: ..."); shuto maps
+  yes/no to pass/fail by rule kind. Rule text is quoted in the prompt.
+- Anything unreadable or missing in the filter part becomes `unknown` and never raises.
+- Statuses: guardrail block, then `set_aside`, then `needs_review`, then `described`.
+- Results are stored per photo (`photos.filters_json`) with a copy of the theme and rules used.
+- `shuto rules list|add|remove|clear|mode|theme|partly` writes the `ui.filters` setting.
+
+</details>
+
 ## Status and roadmap
 
 shuto is an early version (0.3.1). The pipeline, command line and local web app work end to end,

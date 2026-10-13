@@ -14,6 +14,8 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from . import deliver, ftps, guardrails, launcher, local_models, pipeline
+from . import filters as filters_mod
+from . import report as report_mod
 from .config import Config, ConfigError, default_config_dir, find_config_path, load_config
 from .llm.base import LLMError
 from .metadata import PhotoMetadata
@@ -151,12 +153,20 @@ class Ctx:
                 raise
             self.cfg = Config()  # a broken config must not block uninstalling
         self._store: Store | None = None
+        self._run_cfg: Config | None = None
 
     @property
     def store(self) -> Store:
         if self._store is None:
             self._store = pipeline.open_store(self.cfg)
         return self._store
+
+    @property
+    def run_cfg(self) -> Config:
+        """The config plus the style, theme and rules saved in the web app (shared with it)."""
+        if self._run_cfg is None:
+            self._run_cfg = pipeline.apply_style_overrides(self.cfg, self.store)
+        return self._run_cfg
 
 
 def _progress_printer(label: str):
@@ -367,7 +377,7 @@ def _print_hardware(report: pipeline.DoctorReport) -> None:
 
 
 def cmd_doctor(ctx: Ctx) -> int:
-    report = pipeline.doctor(ctx.cfg, ctx.store, config_path=ctx.config_path)
+    report = pipeline.doctor(ctx.run_cfg, ctx.store, config_path=ctx.config_path)
     out(f"Config:    {report.config_path or '(none, using defaults)'}")
     out(f"Workspace: {report.workspace}")
     _print_hardware(report)
@@ -392,6 +402,12 @@ def cmd_doctor(ctx: Ctx) -> int:
         out("Model:     (the AI model choice could not be read)")
     else:
         out(f"Model:     {report.selected or '(not chosen)'}")
+    if report.checks:
+        out("Checks:    " + report.checks[0])
+        for line in report.checks[1:]:
+            out(f"           {line}")
+    else:
+        out("Checks:    none (no theme check and no rules of your own)")
     out(f"Model choice file: {pipeline.model_choice_path()}")
     out(f"Benchmark cache:   {pipeline.benchmark_cache_path()}")
     if report.selected is None and report.provider == "ollama" and not report.selection_unreadable:
@@ -616,7 +632,7 @@ def _describe_flow(
     provider: str | None,
     model: str | None,
 ) -> int:
-    cfg, store = ctx.cfg, ctx.store
+    cfg, store = ctx.run_cfg, ctx.store
     try:
         sel = pipeline.resolve_selection(cfg, store, provider, model)
     except local_models.ModelChoiceRequired:
@@ -648,7 +664,7 @@ def _describe_flow(
     )
     out(
         f"Described {summary.described}, needs review {summary.needs_review}, "
-        f"blocked {summary.blocked}, failed {summary.failed}."
+        f"set aside {summary.set_aside}, blocked {summary.blocked}, failed {summary.failed}."
     )
     for pid, err in summary.errors[:10]:
         out(f"  photo {pid}: {err}")
@@ -673,7 +689,7 @@ def cmd_run(ctx: Ctx) -> int:
     code = 0
     for batch in sorted(summary.batches):
         out(f"== batch {batch} ==")
-        _print_cull(pipeline.cull_batch(ctx.cfg, ctx.store, batch), explain=False)
+        _print_cull(pipeline.cull_batch(ctx.run_cfg, ctx.store, batch), explain=False)
         code = max(code, _describe_flow(ctx, batch, None, a.yes, a.provider, a.model))
     return code
 
@@ -711,6 +727,8 @@ def cmd_review(ctx: Ctx) -> int:
         out(f"  categories: {', '.join(m.get('categories') or [])}")
         for w in m.get("warnings") or []:
             out(f"  ! {w}")
+        for line in filters_mod.messages(p.filters):
+            out(f"  ! {line}")
         if p.cull and not p.cull.get("ok", True):
             out("  cull: " + "; ".join(p.cull.get("reasons", [])))
         out()
@@ -726,7 +744,7 @@ def _split_csv(text: str | None) -> list[str] | None:
 def cmd_edit(ctx: Ctx) -> int:
     a = ctx.args
     photo = pipeline.update_metadata(
-        ctx.cfg,
+        ctx.run_cfg,
         ctx.store,
         a.id,
         description=a.description,
@@ -746,7 +764,7 @@ def cmd_edit(ctx: Ctx) -> int:
 def cmd_approve(ctx: Ctx) -> int:
     a = ctx.args
     summary = pipeline.approve(
-        ctx.cfg,
+        ctx.run_cfg,
         ctx.store,
         batch_id=a.batch,
         photo_ids=a.ids,
@@ -757,6 +775,7 @@ def cmd_approve(ctx: Ctx) -> int:
         out(f"  photo {pid} not approved: {why}")
     if not a.include_review and a.ids is None:
         out("Photos in `needs_review` are only approved with --include-review (or --ids).")
+        out("Photos that were set aside are only approved by hand: --ids ... (Approve anyway).")
     return 0
 
 
@@ -811,8 +830,99 @@ def cmd_export(ctx: Ctx) -> int:
 
 
 def cmd_submitted(ctx: Ctx) -> int:
-    ids = pipeline.mark_submitted(ctx.store, ctx.args.batch)
+    ids = pipeline.mark_submitted(ctx.store, ctx.args.batch, cfg=ctx.cfg)
     out(f"Marked {len(ids)} photo(s) as submitted.")
+    return 0
+
+
+def cmd_report(ctx: Ctx) -> int:
+    a = ctx.args
+    if not ctx.store.list_photos(a.batch):
+        raise PipelineError(f"There are no photos in batch {a.batch!r}.")
+    if a.out:
+        header, records = pipeline.build_report(ctx.cfg, ctx.store, a.batch)
+        path = report_mod.write_report(Path(a.out).expanduser(), header, records)
+    else:
+        path = pipeline.write_report(ctx.cfg, ctx.store, a.batch)
+    out(f"Report for {a.batch}: {path}")
+    return 0
+
+
+def _rule_dicts(rules: Sequence[filters_mod.UserRule]) -> list[dict[str, str]]:
+    return [{"id": r.id, "kind": r.kind, "text": r.text, "mode": r.mode} for r in rules]
+
+
+def _mode_words(mode: str) -> str:
+    return "set aside" if mode == "set_aside" else "just flag"
+
+
+def _print_rules(cfg: Config) -> None:
+    checks = pipeline.active_checks(cfg)
+    spec_theme = cfg.style.theme.strip()
+    out(
+        f"Theme check: {'on' if cfg.filters.theme_check else 'off'}"
+        + (f' (theme "{spec_theme}")' if spec_theme else " (no theme set, nothing to check)")
+    )
+    partly = "needs a look" if cfg.filters.theme_partly == "flag" else "let through"
+    out(f"Theme fits partly: {partly}")
+    rules = pipeline.get_filter_rules(cfg)
+    if rules:
+        out(
+            table(
+                ["id", "rule", "when it fails"],
+                [[r.id, r.label(), _mode_words(r.mode)] for r in rules],
+            )
+        )
+    else:
+        out("No rules of your own yet. Add one: shuto rules add --avoid people")
+    out(f"Rules apply to photos described from now on ({len(checks)} active check(s)).")
+
+
+def cmd_rules(ctx: Ctx) -> int:
+    a = ctx.args
+    cmd = a.rules_cmd or "list"
+    store = ctx.store
+    rules = list(pipeline.get_filter_rules(ctx.run_cfg))
+    if cmd == "list":
+        _print_rules(ctx.run_cfg)
+        return 0
+    if cmd == "add":
+        kind = "avoid" if a.avoid is not None else "include"
+        text = a.avoid if a.avoid is not None else a.include
+        mode = "flag" if a.flag else "set_aside"
+        added = {"kind": kind, "text": text, "mode": mode}
+        stored = pipeline.set_ui_setting(store, "filters", {"rules": [*_rule_dicts(rules), added]})
+        new = stored["rules"][-1] if stored["rules"] else added
+        out(f"Added rule {new.get('id', '')}: {kind} {new['text']!r} ({_mode_words(mode)}).")
+    elif cmd == "remove":
+        kept = [r for r in rules if r.id != a.id]
+        if len(kept) == len(rules):
+            raise PipelineError(f"There is no rule with id {a.id!r}. See: shuto rules list")
+        pipeline.set_ui_setting(store, "filters", {"rules": _rule_dicts(kept)})
+        out(f"Removed rule {a.id}.")
+    elif cmd == "clear":
+        pipeline.set_ui_setting(store, "filters", {"rules": []})
+        out("Removed all rules.")
+    elif cmd == "mode":
+        mode = a.mode.replace("-", "_")
+        found = [r for r in rules if r.id == a.id]
+        if not found:
+            raise PipelineError(f"There is no rule with id {a.id!r}. See: shuto rules list")
+        changed = [{**d, "mode": mode} if d["id"] == a.id else d for d in _rule_dicts(rules)]
+        pipeline.set_ui_setting(store, "filters", {"rules": changed})
+        out(f"Rule {a.id} will now {'set photos aside' if mode == 'set_aside' else 'just flag'}.")
+    elif cmd == "theme":
+        pipeline.set_ui_setting(store, "filters", {"theme_check": a.state == "on"})
+        out(f"Theme check is {a.state}.")
+    elif cmd == "partly":
+        pipeline.set_ui_setting(store, "filters", {"theme_partly": a.how})
+        out(
+            "Photos that fit the theme partly are "
+            + ("let through." if a.how == "pass" else "flagged.")
+        )
+    out(
+        "This applies to photos described from now on; photos already described keep their results."
+    )
     return 0
 
 
@@ -840,7 +950,7 @@ def cmd_reject(ctx: Ctx) -> int:
     a = ctx.args
     photo = pipeline.find_photo(ctx.store, a.file)
     assert photo.id is not None
-    pipeline.record_result(ctx.store, photo.id, False, a.reason, a.note)
+    pipeline.record_result(ctx.store, photo.id, False, a.reason, a.note, cfg=ctx.cfg)
     out(
         f"Recorded rejection ({a.reason}) for {photo.orig_name}; later prompts will account for it."
     )
@@ -850,7 +960,7 @@ def cmd_reject(ctx: Ctx) -> int:
 def cmd_accept(ctx: Ctx) -> int:
     photo = pipeline.find_photo(ctx.store, ctx.args.file)
     assert photo.id is not None
-    pipeline.record_result(ctx.store, photo.id, True)
+    pipeline.record_result(ctx.store, photo.id, True, cfg=ctx.cfg)
     out(f"Recorded acceptance for {photo.orig_name}.")
     return 0
 
@@ -943,6 +1053,8 @@ HANDLERS = {
     "secrets": cmd_secrets,
     "check-ftps": cmd_check_ftps,
     "restrictions": cmd_restrictions,
+    "rules": cmd_rules,
+    "report": cmd_report,
 }
 
 
@@ -1074,6 +1186,33 @@ def build_parser() -> argparse.ArgumentParser:
 
     s = add("status", "batches and photo counts")
     s.add_argument("batch", nargs="?")
+
+    s = add("rules", "your own photo rules and the theme check (shared with the web app)")
+    rl = s.add_subparsers(dest="rules_cmd")
+    rl.add_parser("list", parents=[common], help="show the theme check and your rules")
+    m = rl.add_parser("add", parents=[common], help="add a rule (up to 10)")
+    g = m.add_mutually_exclusive_group(required=True)
+    g.add_argument(
+        "--avoid", metavar="TEXT", help='photos showing this are a problem, e.g. "people"'
+    )
+    g.add_argument("--include", metavar="TEXT", help="photos must show this")
+    m.add_argument(
+        "--flag", action="store_true", help='only flag ("Needs a look"), do not set aside'
+    )
+    m = rl.add_parser("remove", parents=[common], help="remove one rule by its id")
+    m.add_argument("id")
+    rl.add_parser("clear", parents=[common], help="remove all your rules")
+    m = rl.add_parser("mode", parents=[common], help="what happens when a rule fails")
+    m.add_argument("id")
+    m.add_argument("mode", choices=["set-aside", "flag"])
+    m = rl.add_parser("theme", parents=[common], help="turn the theme check on or off")
+    m.add_argument("state", choices=["on", "off"])
+    m = rl.add_parser("partly", parents=[common], help='photos that fit the theme "partly"')
+    m.add_argument("how", choices=["pass", "flag"], help="pass = let through, flag = needs a look")
+
+    s = add("report", "write the report CSV of a batch (every check and its reason)")
+    s.add_argument("batch")
+    s.add_argument("--out", metavar="PATH", help="write it here instead of the workspace")
 
     s = add("reject", "record a rejection and its reason")
     s.add_argument("file", help="photo id, original file name or prepared name")

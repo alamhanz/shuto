@@ -7,6 +7,11 @@ Compiled 2026-10-12 from Shutterstock's contributor help center ("Known Image Re
 page dated 2026-03-25). The lists are **non-exhaustive** and Shutterstock reviews case by case;
 re-check the sources below every few months.
 
+Note: this file is the first of shuto's three filter layers (Shutterstock rules, theme fit,
+your own rules; see [details.md](details.md#theme-and-your-own-rules)). Only this layer
+can mark a photo "Can't send as is". Theme fit and your own rules can set a photo aside, but you
+can always approve it anyway.
+
 ## Outcomes
 
 | Level | Commercial | Editorial | shuto action |

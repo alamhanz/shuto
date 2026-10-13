@@ -781,6 +781,8 @@ def test_settings_and_wizard_show_models_folder_section(web, monkeypatch):
     assert "hx-confirm" in html and 'data-open-dialog="browse-dialog"' in html
     wiz = web.get("/welcome?step=3&storage=1").text
     assert 'id="storage" open' in wiz and 'name="return_to" value="/welcome?step=3"' in wiz
+    # The folder comes before the model cards, so downloads land in the right place.
+    assert wiz.index('id="storage"') < wiz.index('class="cards"')
 
 
 def test_models_folder_section_on_linux_points_to_help(web, monkeypatch):

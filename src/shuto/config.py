@@ -10,6 +10,8 @@ import platformdirs
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
+from .metadata import clean_place_part
+
 APP_NAME = "shuto"
 CONFIG_FILENAME = "shuto.yaml"
 CONFIG_ENV_VAR = "SHUTO_CONFIG"
@@ -84,6 +86,18 @@ class KeywordStyle(_Section):
     seasonal_terms: bool = True
 
 
+class DefaultPlace(_Section):
+    """Used in editorial captions when a photo has no known city or country."""
+
+    city: str = ""
+    country: str = ""
+
+    @field_validator("city", "country")
+    @classmethod
+    def _check_part(cls, v: str) -> str:
+        return clean_place_part(v)
+
+
 class StyleConfig(_Section):
     theme: str = ""
     tone: str = "documentary, warm, factual; no hype words"
@@ -92,6 +106,7 @@ class StyleConfig(_Section):
     keywords: KeywordStyle = Field(default_factory=KeywordStyle)
     avoid: list[str] = ["beautiful", "amazing", "stunning"]
     extra_instructions: str = ""
+    default_place: DefaultPlace = Field(default_factory=DefaultPlace)
 
 
 class FilterRuleConfig(_Section):

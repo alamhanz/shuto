@@ -296,6 +296,7 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
             "snippet": short(str(meta.get("description") or ""), 90),
             "editorial": bool(meta.get("editorial")),
             "gps": p.has_gps,
+            "default_place": bool((meta.get("place") or {}).get("default")),
         }
 
     @app.get("/batch/{batch_id}/review", response_class=HTMLResponse)

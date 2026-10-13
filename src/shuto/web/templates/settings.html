@@ -73,6 +73,12 @@
     <option value="japan"{% if style.region_focus == 'japan' %} selected{% endif %}>Japan</option>
   </select>
   {% endcall %}
+  {% call field('default_city', 'Default place: city', help='Used in editorial captions when a photo has no location. Check that it is right for each photo before you submit.') %}
+  <input id="default_city" name="default_city" value="{{ style.default_city }}" maxlength="60" placeholder="Tokyo" aria-describedby="default_city-help">
+  {% endcall %}
+  {% call field('default_country', 'Default place: country', help='Written in English, for example Japan.') %}
+  <input id="default_country" name="default_country" value="{{ style.default_country }}" maxlength="60" placeholder="Japan" aria-describedby="default_country-help">
+  {% endcall %}
   <p><button type="submit" class="btn primary">Save style</button></p>
 </form>
 </section>

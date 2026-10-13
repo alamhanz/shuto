@@ -39,6 +39,8 @@ class Style:
     seasonal_terms: bool = True
     avoid: list[str] = field(default_factory=lambda: ["beautiful", "amazing", "stunning"])
     extra_instructions: str = ""
+    default_city: str = ""
+    default_country: str = ""
 
     @classmethod
     def from_config(cls, style: Any) -> Style:
@@ -57,6 +59,8 @@ class Style:
             seasonal_terms=k.seasonal_terms,
             avoid=list(style.avoid),
             extra_instructions=style.extra_instructions,
+            default_city=style.default_place.city,
+            default_country=style.default_place.country,
         )
 
 
@@ -68,6 +72,7 @@ class DescribeResult:
     guardrails: guardrails.GuardrailResult
     llm: LLMResult
     filters: FilterResult | None = None
+    place: dict = field(default_factory=dict)
 
 
 def _ascii_upper(text: str | None) -> str:
@@ -77,17 +82,55 @@ def _ascii_upper(text: str | None) -> str:
     return re.sub(r"\s+", " ", text).strip(" .-'/")
 
 
-def editorial_caption(location: Any, captured: datetime | None, sentence: str) -> str:
-    """`CITY, COUNTRY - MONTH D, YYYY: sentence`; UNKNOWN stands in for missing parts.
+PLACE_SOURCES = ("ai", "default", "partly default", "unknown")
+NO_PLACE_WARNING = "No place known: set a default place in Settings or edit the caption"
 
-    ``location`` is a dict or an object with ``city`` and ``country`` attributes.
+
+def resolve_place(location: Any, default_city: str = "", default_country: str = "") -> dict:
+    """The city and country for an editorial caption and where each came from.
+
+    The AI's answer wins; a missing part is filled from the default place. ``source`` is
+    "ai" (nothing defaulted and something known), "default" (all from the default),
+    "partly default" (a mix) or "unknown" (nothing known). The photo's GPS never reaches the
+    model, so there is no GPS source. Parts stay empty when still unknown.
     """
     if isinstance(location, dict):
         city, country = location.get("city"), location.get("country")
     else:
         city, country = getattr(location, "city", None), getattr(location, "country", None)
-    city_s = _ascii_upper(city) or "UNKNOWN"
-    country_s = _ascii_upper(country) or "UNKNOWN"
+    city_s, country_s = _ascii_upper(city), _ascii_upper(country)
+    from_ai = bool(city_s) + bool(country_s)
+    used = 0
+    if not city_s and (fill := _ascii_upper(default_city)):
+        city_s, used = fill, used + 1
+    if not country_s and (fill := _ascii_upper(default_country)):
+        country_s, used = fill, used + 1
+    if not (city_s or country_s):
+        source = "unknown"
+    elif used == 0:
+        source = "ai"
+    elif from_ai == 0:
+        source = "default"
+    else:
+        source = "partly default"
+    return {"city": city_s, "country": country_s, "source": source, "default": used > 0}
+
+
+def editorial_caption(
+    location: Any,
+    captured: datetime | None,
+    sentence: str,
+    default_city: str = "",
+    default_country: str = "",
+) -> str:
+    """`CITY, COUNTRY - MONTH D, YYYY: sentence`; UNKNOWN stands in for missing parts that
+    the default place (when set) cannot fill.
+
+    ``location`` is a dict or an object with ``city`` and ``country`` attributes.
+    """
+    place = resolve_place(location, default_city, default_country)
+    city_s = place["city"] or "UNKNOWN"
+    country_s = place["country"] or "UNKNOWN"
     if captured:
         date_s = f"{MONTHS[captured.month - 1]} {captured.day}, {captured.year}"
     else:
@@ -268,9 +311,14 @@ def describe_photo(
     detected = out.detected.model_dump()
     sentence = out.caption_sentence.strip() or out.description
 
+    def caption() -> str:
+        return editorial_caption(
+            location, captured, sentence, style.default_city, style.default_country
+        )
+
     description = out.description
     if out.editorial:
-        description = editorial_caption(location, captured, sentence)
+        description = caption()
     data = {
         "description": description,
         "keywords": _apply_style_keywords(out.keywords, style),
@@ -293,7 +341,7 @@ def describe_photo(
     meta, gr = run_check(meta)
     if meta.editorial and not out.editorial:
         # Guardrails forced editorial: the description must become an editorial caption.
-        data["description"] = editorial_caption(location, captured, sentence)
+        data["description"] = caption()
         data["editorial"] = True
         data["keywords"] = meta.keywords
         meta, gr2 = run_check(normalize(filename, data))
@@ -306,6 +354,12 @@ def describe_photo(
         ]
         gr = gr2
     meta.warnings.extend(m for m in gr.messages if m not in meta.warnings)
+    place = resolve_place(location, style.default_city, style.default_country)
+    if meta.editorial:
+        if not (place["city"] and place["country"]) and NO_PLACE_WARNING not in meta.warnings:
+            meta.warnings.append(NO_PLACE_WARNING)
+    else:  # the default place only ever goes into editorial captions
+        place = resolve_place(location)
     checked = None
     if filters and filters.active:
         checked = filters_mod.evaluate(
@@ -315,4 +369,4 @@ def describe_photo(
             model=f"{llm.name}/{llm.model}",
             at=at,
         )
-    return DescribeResult(meta, detected, location, gr, result, checked)
+    return DescribeResult(meta, detected, location, gr, result, checked, place)

@@ -409,6 +409,7 @@ def cmd_doctor(ctx: Ctx) -> int:
             out(f"           {line}")
     else:
         out("Checks:    none (no theme check and no rules of your own)")
+    out(f"Place:     {report.default_place or 'no default place (editorial captions say UNKNOWN)'}")
     out(f"Model choice file: {pipeline.model_choice_path()}")
     out(f"Benchmark cache:   {pipeline.benchmark_cache_path()}")
     if report.selected is None and report.provider == "ollama" and not report.selection_unreadable:

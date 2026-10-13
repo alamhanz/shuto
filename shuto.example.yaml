@@ -38,6 +38,9 @@ style:
     seasonal_terms: true
   avoid: [beautiful, amazing, stunning]
   extra_instructions: ""
+  default_place:                   # used in editorial captions when a photo has no known place
+    city: ""                       # for example Tokyo
+    country: ""                    # for example Japan
 filters:                           # extra checks in the same AI call as the description
   theme_check: true                # with style.theme set: photos that do not fit are set aside
   theme_partly: pass               # a "partly" fit: pass (shown in Review) or flag ("Needs a look")

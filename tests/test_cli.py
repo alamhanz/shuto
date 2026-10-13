@@ -399,6 +399,17 @@ def test_doctor_shows_checks(config_file, capsys, monkeypatch):
     assert "Checks:    Must avoid: people (set aside)" in out
 
 
+def test_doctor_shows_default_place(config_file, capsys, monkeypatch):
+    monkeypatch.setattr(pipeline, "ollama_client", lambda cfg: FakeOllama([]))
+    assert run(config_file, "doctor") == 0
+    assert "Place:     no default place" in capsys.readouterr().out
+    data = yaml.safe_load(config_file.read_text(encoding="utf-8"))
+    data["style"] = {"default_place": {"city": "Tokyo", "country": "Japan"}}
+    config_file.write_text(yaml.safe_dump(data), encoding="utf-8")
+    assert run(config_file, "doctor") == 0
+    assert "Place:     Tokyo, Japan" in capsys.readouterr().out
+
+
 def test_report_command(config_file, photos_dir, tmp_path, capsys):
     assert run(config_file, "report", "2025-W10") == 1  # no such batch
     assert "no photos" in capsys.readouterr().err

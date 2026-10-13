@@ -6,6 +6,7 @@
     {{ chip(c.bucket if c.bucket in ('good', 'attention', 'aside') else 'neutral', label(c.status)) }}
     {% if c.group is not none %}<span class="chip neutral">Similar photos</span>{% endif %}
     {% if c.editorial %}<span class="chip neutral">Editorial</span>{% endif %}
+    {% if c.default_place %}<span class="chip review" title="The place in the caption is your default place. Check that it is right for this photo.">Default place</span>{% endif %}
     {% if c.gps %}<span class="chip review" title="This photo contains the place where it was taken">Place included</span>{% endif %}
     <div class="name"><a href="/photo/{{ c.id }}?back={{ show }}">{{ c.name }}</a></div>
     {% if c.layer %}<span class="chip neutral layer">{{ c.layer }}</span>{% endif %}

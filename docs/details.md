@@ -162,6 +162,26 @@ Where to set this up: **Settings > Your photo rules** in the web app, or on the 
 section of [shuto.example.yaml](../shuto.example.yaml); rules saved in the web app or with
 `shuto rules` replace the ones from the file.
 
+## Default place for Editorial captions
+
+An Editorial caption starts with the place: `CITY, COUNTRY - MONTH D, YYYY: ...`. The AI
+works out the city and country from the picture. It never sees the place stored in the photo
+(GPS), so when it cannot tell where a photo was taken, that part is missing, and Shutterstock
+does not accept a caption that says `UNKNOWN`.
+
+Set a **Default place** (city and country, for example Tokyo and Japan) in **Settings, Your
+style** (or in the style step of the first-run guide). It is used only in Editorial captions, and
+only for the part that is missing: a place the AI found always wins. Check that it is right for
+each photo before you submit. Photos whose caption used it show a **Default place** label in
+Review and on the photo page. With no default place, the missing part stays `UNKNOWN` and the
+photo gets the note "No place known: set a default place in Settings or edit the caption".
+Changing the caption by hand removes the label.
+
+- **Where it comes from, per photo:** `ai` (the AI knew the place), `default`, `partly default`
+  (a mix) or `unknown`. It is kept with the photo's text and shown in the batch report.
+- **Config file:** `style.default_place` with `city` and `country` (English letters, up to 60
+  characters each). A value saved in Settings wins over the file. `shuto doctor` shows it.
+
 ## The batch report (CSV)
 
 Every batch has one report file that shuto keeps up to date after each step (add, check,
@@ -182,7 +202,8 @@ what the answer was.
 - **Columns:** file, batch, quality and its reasons, which Shutterstock rules were hit, theme and
   how well the photo fits it (with the reason), one column per rule of yours (pass, fail or
   unknown; blank when the photo was not checked with that rule), the reasons for your rules,
-  what set it aside, whether you approved it by hand, status, title, number of keywords, the AI
+  what set it aside, whether you approved it by hand, status, title, the place used in the caption, where it came from (ai, default, partly default,
+  unknown) and whether it is the default place (yes or no), number of keywords, the AI
   model, how many seconds and tries the AI needed, and the dates it was checked, approved, uploaded, submitted, accepted or rejected
   (with the rejection reason).
 - **Excel:** the file opens directly in Excel and shows Japanese text correctly. Text that

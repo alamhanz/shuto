@@ -13,6 +13,7 @@ LABELS: dict[str, str] = {
     "imported": "New",
     "ready": "Waiting for AI",
     "culled": "Set aside: quality",
+    "set_aside": "Set aside: doesn't fit",
     "duplicate": "Exact copy",
     "near_duplicate": "Looks like another photo",
     "already_uploaded": "Sent before",
@@ -33,6 +34,7 @@ BUCKETS: dict[str, str] = {
     "imported": "stage",
     "ready": "stage",
     "culled": "aside",
+    "set_aside": "aside",
     "duplicate": "aside",
     "near_duplicate": "aside",
     "already_uploaded": "aside",
@@ -79,7 +81,11 @@ HELP: dict[str, str] = {
     "title, description and keywords, and shuto checks them against the Shutterstock rules.",
     "attention": "The AI or the rules found something you should look at before sending.",
     "good": "Nothing to fix. You can still change the text if you like.",
-    "aside": "Left out on purpose: poor quality, copies, or photos you sent before.",
+    "aside": "Left out on purpose: poor quality, copies, photos you sent before, or photos that "
+    "don't fit your theme or your own rules. Open one and press Approve anyway if the AI got it "
+    "wrong.",
+    "rules": "The AI checks each photo against your theme and your rules while it writes the "
+    "title. Small AI models can be wrong, so read the reason and approve by hand when it missed.",
     "commercial": "Commercial photos can be used in ads and products. People and private "
     "places may need a release.",
     "editorial": "Editorial photos show real news or events and cannot be used in ads.",
@@ -106,6 +112,20 @@ def label(status: Any) -> str:
 def bucket(status: Any) -> str:
     key = getattr(status, "value", status)
     return BUCKETS.get(str(key), "stage")
+
+
+def ai_time_text(seconds: float) -> str:
+    """'4.2 s', '45 s', '3 min 12 s' or '1 h 5 min' for a number of seconds."""
+    if 0 < seconds < 10:
+        return f"{seconds:.1f} s"
+    total = max(0, round(seconds))
+    if total < 60:
+        return f"{total} s"
+    minutes, secs = divmod(total, 60)
+    if minutes < 60:
+        return f"{minutes} min {secs} s" if secs else f"{minutes} min"
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours} h {minutes} min" if minutes else f"{hours} h"
 
 
 def _n(counts: dict[str, int], *names: str) -> int:

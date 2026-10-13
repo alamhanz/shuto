@@ -42,6 +42,8 @@ FIXED_AFTER = (
     "title",
     "keyword_count",
     "ai_model",
+    "ai_seconds",
+    "ai_tries",
     "checked_at",
     "approved_at",
     "uploaded_at",
@@ -72,6 +74,7 @@ def _row(
     duplicate_of: str,
     labels: Callable[[str], str],
     rejection: tuple[str, str] | None,
+    ai_time: tuple[float, int] | None = None,
 ) -> ReportRow:
     cull = p.cull or {}
     guard = p.guardrail or {}
@@ -121,6 +124,8 @@ def _row(
         "title": str(meta.get("title") or ""),
         "keyword_count": str(len(keywords)) if keywords else "",
         "ai_model": str(flt.get("model") or ""),
+        "ai_seconds": f"{ai_time[0]:.1f}" if ai_time else "",
+        "ai_tries": str(ai_time[1]) if ai_time else "",
         "checked_at": str(flt.get("at") or ""),
         "approved_at": times.get("approved", ""),
         "uploaded_at": p.uploaded_at or times.get("uploaded", ""),
@@ -141,6 +146,7 @@ def build_rows(
     duplicate_of: dict[int, str],
     labels: Callable[[str], str],
     rejections: dict[int, tuple[str, str]],
+    ai_times: dict[int, tuple[float, int]] | None = None,
 ) -> tuple[list[str], list[list[str]]]:
     """Header and records for a batch. Per-rule columns are the union of the photos' rule
     snapshots in first-seen order; a cell is pass / fail / unknown, or blank when the photo was
@@ -152,6 +158,7 @@ def build_rows(
             duplicate_of.get(p.id or 0, ""),
             labels,
             rejections.get(p.id or 0),
+            (ai_times or {}).get(p.id or 0),
         )
         for p in photos
     ]
@@ -166,6 +173,13 @@ def build_rows(
         values = {**r.cells, **r.rules}
         records.append([values.get(col, "") for col in header])
     return header, records
+
+
+def ai_time_totals(ai_times: dict[int, tuple[float, int]]) -> dict[str, float | int]:
+    """Total seconds, number of photos with an AI time and the average per photo."""
+    n = len(ai_times)
+    total = sum(sec for sec, _ in ai_times.values())
+    return {"total": total, "photos": n, "average": total / n if n else 0.0}
 
 
 def render(header: list[str], records: list[list[str]]) -> bytes:

@@ -13,6 +13,7 @@ from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse,
 from starlette.datastructures import FormData
 
 from .. import estimate, hardware, local_models, ollama_store, pipeline, updates
+from .. import filters as filters_mod
 from .. import secrets as shuto_secrets
 from ..jobs import JobBusy, JobCancelled, JobContext
 from . import browse, ux
@@ -40,6 +41,8 @@ WIZARD_STEPS = (
     ("done", "All set"),
 )
 MAX_BATCH_NAME = 80
+MAX_RULES = filters_mod.MAX_RULES
+MAX_RULE_ROWS = 40  # form rows read at most; the real limit is MAX_RULES
 
 
 def _version() -> str:
@@ -220,7 +223,11 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
                 ("review", "Needs a look", _n(counts, "needs_review")),
                 ("blocked", "Can't send", _n(counts, "blocked")),
                 ("neutral", "Sent before", _n(counts, "already_uploaded")),
-                ("neutral", "Set aside", _n(counts, "culled", "duplicate", "near_duplicate")),
+                (
+                    "neutral",
+                    "Set aside",
+                    _n(counts, "culled", "duplicate", "near_duplicate", "set_aside"),
+                ),
                 ("ok", "Uploaded", _n(counts, "uploaded", "exported")),
                 ("ok", "Submitted", _n(counts, "submitted", "accepted", "rejected")),
             ]
@@ -296,6 +303,36 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             return None, str(exc)
         state.cfg = pipeline.apply_style_overrides(state.base_cfg, ctx.store)
         return "Your style is saved.", None
+
+    def save_rules(form: FormData) -> tuple[str | None, str | None]:
+        """Save the theme check and the rule rows of the "Your photo rules" form."""
+        rows = []
+        for n in range(MAX_RULE_ROWS):
+            text = str(form.get(f"rule_text_{n}") or "").strip()
+            if not text or form.get(f"rule_remove_{n}"):
+                continue
+            rows.append(
+                {
+                    "id": str(form.get(f"rule_id_{n}") or ""),
+                    "kind": str(form.get(f"rule_kind_{n}") or ""),
+                    "text": text,
+                    "mode": str(form.get(f"rule_mode_{n}") or ""),
+                }
+            )
+        try:
+            pipeline.set_ui_setting(
+                ctx.store,
+                "filters",
+                {
+                    "theme_check": form.get("theme_check") == "yes",
+                    "theme_partly": str(form.get("theme_partly") or "pass"),
+                    "rules": rows,
+                },
+            )
+        except pipeline.PipelineError as exc:
+            return None, str(exc)
+        state.cfg = pipeline.apply_style_overrides(state.base_cfg, ctx.store)
+        return "Your photo rules are saved. They apply to photos you check from now on.", None
 
     def _key_return(form: FormData) -> str:
         back = str(form.get("return_to") or "")
@@ -382,6 +419,27 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             "tone": cfg.style.tone,
             "always_include": ", ".join(cfg.style.keywords.always_include),
             "region_focus": cfg.style.region_focus,
+        }
+
+    def rules_values() -> dict:
+        """Rule rows for the form: the saved ones plus two empty rows (up to the limit)."""
+        cfg = ctx.cfg
+        try:
+            saved = [
+                {"id": r.id, "kind": r.kind, "text": r.text, "mode": r.mode}
+                for r in pipeline.get_filter_rules(cfg)
+            ]
+        except pipeline.PipelineError:
+            saved = []
+        blank = {"id": "", "kind": "avoid", "text": "", "mode": "set_aside"}
+        room = max(0, MAX_RULES - len(saved))
+        return {
+            "theme_check": cfg.filters.theme_check,
+            "theme_partly": cfg.filters.theme_partly,
+            "theme": cfg.style.theme,
+            "rule_rows": saved + [dict(blank) for _ in range(min(2, room))],
+            "rule_count": len(saved),
+            "max_rules": MAX_RULES,
         }
 
     @app.get("/welcome", response_class=HTMLResponse)
@@ -727,6 +785,7 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             ollama_url=OLLAMA_URL,
             login=pipeline.ftps_login_status(ctx.cfg),
             style=style_values(),
+            rules=rules_values(),
             usage=usage,
             job=ctx.runner.get(active) if active else None,
             job_active=bool(active),
@@ -1143,6 +1202,11 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
     @app.post("/settings/style")
     def settings_style(form: PostForm):
         notice, error = save_style(form)
+        return go("/settings", notice, error)
+
+    @app.post("/settings/rules")
+    def settings_rules(form: PostForm):
+        notice, error = save_rules(form)
         return go("/settings", notice, error)
 
     # ------------------------------------------------------------------ help

@@ -1,7 +1,7 @@
 {% from "_ui.html" import field %}
 {% from "_wizard_nav.html" import wizard_nav %}
 <h1>Your style (optional)</h1>
-<p>These guide the AI when it writes about your photos. You can change them later in Settings.</p>
+<p>These guide the AI when it writes about your photos. You can change them later in Settings. Your theme is also used to check each photo: photos that don't fit it are set aside for you to look at, and you can turn that off in Settings.</p>
 <form method="post" action="/welcome/5" class="stack" id="wizard-form">
   <input type="hidden" name="csrf_token" value="{{ csrf }}">
   {% call field('theme', 'Theme of your portfolio', help='For example: Street food, Mountain trails, City life.') %}

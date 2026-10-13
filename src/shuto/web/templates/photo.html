@@ -22,7 +22,7 @@
       {% if photo.captured_at %}<dt>Taken</dt><dd>{{ photo.captured_at }}</dd>{% endif %}
       {% if photo.camera %}<dt>Camera</dt><dd>{{ photo.camera }}</dd>{% endif %}
       {% if photo.submit_name %}<dt>Upload name</dt><dd>{{ photo.submit_name }}</dd>{% endif %}
-      {% if photo.metadata_source %}<dt>Text written by</dt><dd>{{ photo.metadata_source }}</dd>{% endif %}
+      {% if photo.metadata_source %}<dt>Text written by</dt><dd>{{ photo.metadata_source|replace('llm:', '', 1) }}</dd>{% endif %}
     </dl>
 
     <h2>What shuto noticed</h2>
@@ -51,6 +51,14 @@
       {% if gr.removed_keywords %}<li>Keywords taken out: {{ gr.removed_keywords|join(", ") }}</li>{% endif %}
       {% if not gr.messages and not gr.hits %}<li>{{ 'Nothing flagged.' if gr else 'Not checked yet.' }}</li>{% endif %}
     </ul>
+    <h3 id="your-checks">Your checks</h3>
+    {% if checks %}
+    <ul class="checks">
+      {% for c in checks %}<li><span class="chip {{ c.tone }}">{{ c.result }}</span> {{ c.what }}{% if c.reason %}<br><span class="hint">The AI says: {{ c.reason }}</span>{% endif %}</li>{% endfor %}
+    </ul>
+    {% if checks_overridden %}<p class="hint">You approved this photo even though a check did not pass.</p>{% endif %}
+    {% if checked_with_older_rules %}<p class="hint">Checked with your earlier theme or rules. New rules only apply to photos checked from now on.</p>{% endif %}
+    {% else %}<p class="hint">Not checked with a theme or your own rules.</p>{% endif %}
     {% if meta.warnings %}<h3>Other notes</h3><ul>{% for w in meta.warnings %}<li>{{ w }}</li>{% endfor %}</ul>{% endif %}
   </section>
 
@@ -91,12 +99,13 @@
       </div>
       {% if editable %}<div class="row">
         <button type="submit"{% if can_approve %} formaction="/photo/{{ photo.id }}"{% endif %} class="secondary">Save changes</button>
-        {% if can_approve %}<button type="submit">{% if next_id %}Save and approve, go to next (a){% else %}Save and approve (a){% endif %}</button>{% endif %}
+        {% if can_approve and photo.status.value == 'set_aside' %}<button type="submit">Approve anyway{% if next_id %}, go to next{% endif %}</button>
+        {% elif can_approve %}<button type="submit">{% if next_id %}Save and approve, go to next (a){% else %}Save and approve (a){% endif %}</button>{% endif %}
       </div>{% else %}<p class="hint">This photo is "{{ label(photo.status) }}" and can no longer be edited.</p>{% endif %}
     </form>
 
     <div class="row">
-      {% if photo.batch_id and photo.status.value in ['ready', 'described', 'needs_review', 'blocked', 'approved', 'prepared', 'culled'] %}
+      {% if photo.batch_id and photo.status.value in ['ready', 'described', 'needs_review', 'blocked', 'set_aside', 'approved', 'prepared', 'culled'] %}
       <form hx-post="/photo/{{ photo.id }}/regenerate" hx-target="#job-area" hx-swap="innerHTML"
             hx-confirm="Ask the AI to write this text again? It replaces the current text.">
         <input type="hidden" name="csrf_token" value="{{ csrf }}">

@@ -12,6 +12,10 @@
     <li>The AI writes a title, a description and keywords for each photo.</li>
     <li>shuto compares the text with the Shutterstock rules and flags anything that needs a look.</li>
   </ol>
+  {% if checks %}
+  <p>The AI also checks each photo against your theme and rules (<a href="/settings#rules">change them in Settings</a>):</p>
+  <ul>{% for c in checks %}<li>{{ c }}</li>{% endfor %}</ul>
+  {% endif %}
   {% if model %}<p>AI in use: <strong>{{ model }}</strong>.{% if estimate %} This will take {{ estimate }}.{% endif %}</p>{% endif %}
   {% for p in problems %}
   <p class="flash bad" role="alert">{{ icon('alert') }}<span>{{ p }} <a href="/settings">Fix in Settings</a></span></p>

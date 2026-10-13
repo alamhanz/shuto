@@ -482,6 +482,21 @@ class Store:
             ).fetchone()
         return dict(row)
 
+    def ai_times(self, batch_id: str) -> dict[int, tuple[float, int]]:
+        """Per photo: (seconds, tries) of its latest successful describe call. A call's seconds
+        already include its retries; tries is retries + 1."""
+        with self._read() as conn:
+            rows = conn.execute(
+                "SELECT c.photo_id, c.seconds, c.retries FROM llm_calls c "
+                "JOIN photos p ON p.id = c.photo_id WHERE p.batch_id=? AND c.ok=1 "
+                "AND c.id = (SELECT MAX(id) FROM llm_calls WHERE photo_id=c.photo_id AND ok=1)",
+                (batch_id,),
+            ).fetchall()
+        return {
+            int(r["photo_id"]): (float(r["seconds"] or 0.0), int(r["retries"] or 0) + 1)
+            for r in rows
+        }
+
     # -- jobs ---------------------------------------------------------------------------
 
     def create_job(self, kind: str, batch_id: str | None = None, total: int = 0) -> int:

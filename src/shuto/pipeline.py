@@ -1625,7 +1625,13 @@ def build_report(cfg: Config, store: Store, batch_id: str) -> tuple[list[str], l
         duplicate_of=duplicate_of,
         labels=ux.label,
         rejections=rejections,
+        ai_times=store.ai_times(batch_id),
     )
+
+
+def ai_time_summary(store: Store, batch_id: str) -> dict[str, float | int]:
+    """Total and average AI seconds per photo for a batch (the figures in the report)."""
+    return report_mod.ai_time_totals(store.ai_times(batch_id))
 
 
 def report_bytes(cfg: Config, store: Store, batch_id: str) -> bytes:

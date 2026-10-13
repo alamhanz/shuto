@@ -127,7 +127,7 @@ For how the check looks in the web app, see [web-guide.md](web-guide.md).
 
 ## Status and roadmap
 
-shuto is an early version (0.2.0). The pipeline, command line and local web app work end to end,
+shuto is an early version (0.2.1). The pipeline, command line and local web app work end to end,
 and the tests run on Linux, macOS and Windows.
 
 Known limits:

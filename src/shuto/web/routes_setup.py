@@ -112,6 +112,19 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
     state.templates.env.globals["app_version"] = _version()
     import_results: dict[int, list[tuple[str, int]]] = {}
     pull_return: list[str] = ["/settings"]
+    # (job id, {"tag", "status"}) of the latest models job: one tuple, swapped in one step
+    pull_state: list[tuple[int, dict] | None] = [None]
+
+    def pull_info(job_id: int | None) -> dict | None:
+        cur = pull_state[0]
+        return cur[1] if cur is not None and cur[0] == job_id else None
+
+    def pulling_tag() -> str | None:
+        """Tag of the model being downloaded right now, if any."""
+        active = ctx.runner.active_job(MODELS_JOB_KEY)
+        job = ctx.runner.get(active) if active else None
+        info = pull_info(job.id) if job is not None and job.kind == "pull" else None
+        return str(info["tag"]) if info is not None else None
 
     def job_extras(job_id: int) -> dict:
         job = ctx.runner.get(job_id)
@@ -306,6 +319,7 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             "providers": providers,
             "selected": report.selected,
             "chosen": report.selected is not None,
+            "pulling": pulling_tag(),
         }
 
     def storage_context() -> dict:
@@ -361,6 +375,10 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
                 extra.update(model_context(report))
             if step == 3:
                 extra["ms"] = storage_context()
+                active = ctx.runner.active_job(MODELS_JOB_KEY)
+                extra.update(
+                    job=ctx.runner.get(active) if active else None, job_active=bool(active)
+                )
         if step in (4, 6):
             extra["login"] = pipeline.ftps_login_status(ctx.cfg)
         if step == 5:
@@ -466,6 +484,29 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
     @app.get("/jobs/{job_id}", response_class=HTMLResponse)
     def job_status(request: Request, job_id: int):
         return ctx.job_fragment(request, job_id, **job_extras(job_id))
+
+    @app.get("/downloads/bar", response_class=HTMLResponse)
+    def download_bar(request: Request, job: int = 0):
+        """Small progress bar for the running model download, shown on every page (read-only)."""
+        job_id = ctx.runner.active_job(MODELS_JOB_KEY) or job
+        found = ctx.runner.get(job_id) if job_id else None
+        if found is None or found.kind not in ("pull", "models_dir"):
+            return HTMLResponse("")
+        active = found.state in ("queued", "running")
+        if not active and job != found.id:
+            return HTMLResponse("")  # finished earlier: only the page that saw it run says so
+        result = ctx.runner.result(found.id)
+        info = pull_info(found.id) or {"tag": "", "status": ""}
+        return ctx.render(
+            request,
+            "_download_bar.html",
+            job=found,
+            active=active,
+            result=result if isinstance(result, str) else None,
+            tag=info["tag"],
+            status=info["status"],
+            href=pull_return[0],
+        )
 
     @app.post("/jobs/{job_id}/cancel", response_class=HTMLResponse)
     def job_cancel(request: Request, job_id: int, form: PostForm):
@@ -683,6 +724,7 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
         if advice is None:
             return ctx.message_fragment(request, f"{tag} is not in the model catalog.")
         replace = str(form.get("replace") or "")
+        info = {"tag": tag, "status": ""}
         victim: dict | None = None
         if replace:
             victim = next((m for m in removable_models() if m["tag"] == replace), None)
@@ -723,6 +765,8 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
                         f"{replace} could not be removed, so {tag} was not downloaded: {exc}"
                     ) from None
 
+            info["status"] = "Getting ready"
+
             def on_progress(ev: dict) -> None:
                 total, done = ev.get("total") or 0, ev.get("completed") or 0
                 pct = int(done * 100 / total) if total else 0
@@ -730,6 +774,7 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
                 if mark == last[0]:
                     return  # one database write per percent, not per Ollama event
                 last[0] = mark
+                info["status"] = plain_pull_status(mark[0], total)
                 job.progress(int(done / 1_000_000), int(total / 1_000_000), mark[0])
 
             try:
@@ -743,7 +788,7 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             removed = f" {replace} was removed." if victim is not None else ""
             return f"Downloaded {tag}.{removed} Go back and press Use this."
 
-        return submit_models_job(request, "pull", run, back)
+        return submit_models_job(request, "pull", run, back, info)
 
     @app.post("/settings/model/remove")
     def settings_model_remove(request: Request, form: PostForm):
@@ -783,13 +828,24 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             return go(back, None, msg, request)
         return go(back, f"{tag} was removed from this computer.", None, request)
 
-    def submit_models_job(request: Request, kind: str, run, back: str):
+    def plain_pull_status(status: str, total: int) -> str:
+        """Ollama's own words ('pulling manifest', 'verifying sha256 digest') in plain ones."""
+        if status.startswith("pulling") and total:
+            return ""  # the percentage says it all
+        if status.startswith("verifying"):
+            return "Checking the download"
+        if status.startswith(("writing", "removing", "success")):
+            return "Finishing"
+        return "Getting ready"
+
+    def submit_models_job(request: Request, kind: str, run, back: str, info: dict | None = None):
         """Start a models job; the page to return to is only remembered once it really started."""
         try:
             job_id = ctx.runner.submit(kind, MODELS_JOB_KEY, run)
         except JobBusy as exc:
             return ctx.message_fragment(request, str(exc))
         pull_return[0] = back
+        pull_state[0] = (job_id, info if info is not None else {"tag": "", "status": ""})
         return ctx.job_fragment(request, job_id, next_href=back)
 
     def change_models_dir(request: Request, form: PostForm, reset: bool):

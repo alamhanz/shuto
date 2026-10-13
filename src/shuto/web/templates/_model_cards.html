@@ -15,7 +15,7 @@
       <p class="chips">
         {% for t in r.tags %}{{ chip('neutral', t) }}{% endfor %}
         {% if selected == 'ollama:' ~ r.tag %}{{ chip('ok', 'In use') }}{% endif %}
-        {% if r.pulled %}{{ chip('ok', 'Already downloaded') }}{% endif %}
+        {% if r.pulled %}{{ chip('ok', 'Already downloaded') }}{% elif pulling == r.tag %}{{ chip('neutral', 'Downloading now') }}{% endif %}
       </p>
       <p>{{ r.time_text }} &middot; {{ "%.1f"|format(r.size_gb) }} GB download</p>
       <p>Works on this computer: <strong>{{ "yes" if r.fits_hardware else "no" }}</strong>
@@ -44,6 +44,8 @@
           <button type="submit" class="danger">Remove from this computer</button>
         </form>
         {% endif %}
+        {% elif pulling == r.tag %}
+        <p class="hint">Downloading now. Progress is shown on this page.</p>
         {% else %}
         <button type="button" class="btn primary" hx-get="/settings/advice" hx-vals='{"tag": "{{ r.tag }}", "return_to": "{{ return_to }}"}' hx-target="#advice-{{ r.rank }}" hx-swap="innerHTML"{% if not r.fits_hardware %} disabled{% endif %}>Download ({{ "%.0f"|format(r.size_gb) }} GB)...</button>
         {% endif %}

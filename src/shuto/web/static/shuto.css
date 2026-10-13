@@ -186,6 +186,17 @@ details > summary { cursor: pointer; font-weight: 600; min-height: 32px; }
   *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
 }
 
+/* model download bar (hidden when the page already shows the same job in full) */
+.dl-bar { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; padding: .45rem .9rem; margin: .6rem 0; border-radius: var(--radius); background: var(--surface); border: 2px solid var(--border); }
+.dl-bar progress { flex: 1 1 10rem; height: 14px; appearance: none; -webkit-appearance: none; border: 2px solid var(--border-input); border-radius: 999px; background: var(--surface-alt); overflow: hidden; }
+.dl-bar progress::-webkit-progress-bar { background: var(--surface-alt); }
+.dl-bar progress::-webkit-progress-value { background: var(--primary); }
+.dl-bar progress::-moz-progress-bar { background: var(--primary); }
+.dl-bar.done { border-color: var(--ok); background: var(--ok-bg); }
+.dl-bar.failed { border-color: var(--danger); background: var(--danger-bg); color: var(--danger); }
+.dl-bar button { min-height: 32px; padding: .1rem .7rem; }
+body:has(#job-area .progress, #job-resume .progress) .dl-bar { display: none; }
+
 /* update banner */
 .update-banner { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; padding: .45rem .9rem; margin: .6rem 0; border-radius: var(--radius); background: var(--secondary); color: var(--on-secondary); }
 .update-banner a { color: var(--on-secondary); font-weight: 600; }

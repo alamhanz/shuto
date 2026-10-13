@@ -6,6 +6,7 @@
   <summary>Where to keep AI models</summary>
   {% with return_to="/welcome?step=3" %}{% include "_models_dir.html" %}{% endwith %}
 </details>
+<div id="job-resume">{% if job %}{% with active=job_active, result=job_result, next_href="/welcome?step=3" %}{% include "_job.html" %}{% endwith %}{% endif %}</div>
 {% with use_action="/welcome/3", return_to="/welcome?step=3", show_bench=false, open_online=request.query_params.get('online') %}
 {% include "_model_cards.html" %}
 {% endwith %}

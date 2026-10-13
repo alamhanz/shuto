@@ -43,6 +43,7 @@ curl -LsSf https://raw.githubusercontent.com/alamhanz/shuto/main/install/install
 
 When it finishes, shuto opens in your browser and a **shuto** icon appears on your Desktop.
 This installs the latest release ([all releases](https://github.com/alamhanz/shuto/releases)).
+To update later, open **Settings, Updates** in shuto and press **Update now**.
 Prefer to install from a downloaded copy? See
 [Install from a downloaded copy](docs/install.md#install-from-a-downloaded-copy).
 

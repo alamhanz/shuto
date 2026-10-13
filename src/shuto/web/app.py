@@ -69,6 +69,13 @@ def create_app(
     return app
 
 
+def request_shutdown(app: FastAPI) -> None:
+    """Ask the running server to stop cleanly (a no-op without a server, as in tests)."""
+    server = getattr(app.state, "server", None)
+    if server is not None:
+        server.should_exit = True
+
+
 def serve(
     cfg: Config,
     *,
@@ -76,6 +83,7 @@ def serve(
     port: int,
     open_browser: bool = True,
     config_path: str | None = None,
+    launch_args: list[str] | None = None,
 ) -> None:
     """Run the web UI until interrupted. Bind to loopback unless the user asks otherwise."""
     import uvicorn
@@ -93,4 +101,7 @@ def serve(
         import webbrowser
 
         threading.Timer(1.0, webbrowser.open, args=(url,)).start()
-    uvicorn.run(app, host=host, port=port, log_level="warning")
+    server = uvicorn.Server(uvicorn.Config(app, host=host, port=port, log_level="warning"))
+    app.state.server = server
+    app.state.launch_args = launch_args
+    server.run()

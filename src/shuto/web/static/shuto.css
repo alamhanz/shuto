@@ -185,3 +185,13 @@ details > summary { cursor: pointer; font-weight: 600; min-height: 32px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; }
 }
+
+/* update banner */
+.update-banner { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; padding: .45rem .9rem; margin: .6rem 0; border-radius: var(--radius); background: var(--secondary); color: var(--on-secondary); }
+.update-banner a { color: var(--on-secondary); font-weight: 600; }
+.update-banner.ok { background: var(--ok-bg); color: var(--primary-strong); border: 2px solid var(--ok); }
+.update-banner.ok a { color: var(--primary-strong); }
+.update-banner.bad { background: var(--danger-bg); color: var(--danger); border: 2px solid var(--danger); }
+.update-banner.bad a { color: var(--danger); }
+.update-banner button { margin-left: auto; min-height: 32px; padding: .1rem .7rem; background: transparent; color: inherit; border-color: currentColor; }
+.update-banner button:hover { background: var(--primary-strong); color: var(--on-primary); border-color: var(--primary-strong); }

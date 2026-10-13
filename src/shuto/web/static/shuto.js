@@ -3,6 +3,8 @@
 // - live keyword count, max 2 categories
 // - bulk select: [data-select-all] / [data-select-none] toggle input[name=ids]; [data-select-count] shows the count
 // - dialogs: [data-open-dialog="id"], [data-close-dialog], [data-pick-path="/some/dir"] fills input[name=path]
+// - updates: [data-update-wait] polls /healthz and reloads when shuto is back; the banner
+//   [data-dismiss-update] hides itself (and remembers the version)
 // - after htmx swaps, focus moves to the first heading in the swapped content
 (function () {
   "use strict";
@@ -81,6 +83,56 @@
       h.focus();
     }
     updateCount();
+  });
+
+
+  var DISMISS_KEY = "shuto-update-dismissed";
+
+  function hideDismissedBanner() {
+    var banner = document.querySelector(".update-banner[data-update-version]");
+    if (!banner) return;
+    try {
+      if (window.localStorage.getItem(DISMISS_KEY) === banner.getAttribute("data-update-version")) {
+        banner.remove();
+      }
+    } catch (e) { /* storage blocked: show the banner */ }
+  }
+
+  document.addEventListener("click", function (ev) {
+    var t = ev.target.closest ? ev.target.closest("[data-dismiss-update]") : null;
+    if (!t) return;
+    var banner = t.closest(".update-banner");
+    if (banner && banner.hasAttribute("data-update-version")) {
+      try {
+        window.localStorage.setItem(DISMISS_KEY, banner.getAttribute("data-update-version"));
+      } catch (e) { /* storage blocked: just hide it now */ }
+    }
+    if (banner) banner.remove();
+  });
+
+  var waiting = false;
+  function startUpdateWait() {
+    var box = document.querySelector("[data-update-wait]");
+    if (!box || waiting) return;
+    waiting = true;
+    var began = Date.now();
+    var wasDown = false;
+    var slow = box.querySelector("[data-update-slow]");
+    window.setInterval(function () {
+      var elapsed = Date.now() - began;
+      if (slow && elapsed > 10 * 60 * 1000) slow.hidden = false;
+      fetch("/healthz", { cache: "no-store" }).then(function (r) {
+        if (!r.ok) throw new Error("not ready");
+        if (wasDown || elapsed > 20000) {
+          window.location.href = "/settings?r=" + Date.now() + "#updates";
+        }
+      }).catch(function () { wasDown = true; });
+    }, 2000);
+  }
+
+  document.addEventListener("htmx:afterSwap", function () {
+    hideDismissedBanner();
+    startUpdateWait();
   });
 
   document.addEventListener("DOMContentLoaded", function () {

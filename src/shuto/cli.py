@@ -173,6 +173,12 @@ def _progress_printer(label: str):
 # --------------------------------------------------------------------------- setup commands
 
 
+def _installed_version() -> str:
+    from .updates import current_version
+
+    return current_version()
+
+
 def cmd_ui(ctx: Ctx) -> int:
     try:
         from .web import serve
@@ -184,6 +190,10 @@ def cmd_ui(ctx: Ctx) -> int:
     host = getattr(a, "host", None) or web.host
     port = getattr(a, "port", None) or web.port
     no_browser = getattr(a, "no_browser", False)
+    launch_args = ["ui", "--host", host, "--port", str(port)]
+    if ctx.config_path:
+        launch_args += ["--config", str(ctx.config_path)]
+    launch_args += ["-v"] * (getattr(a, "verbose", 0) or 0)
     if launcher.is_running(host, port):
         out("shuto is already running.")
         if not no_browser:
@@ -195,6 +205,7 @@ def cmd_ui(ctx: Ctx) -> int:
         port=port,
         open_browser=web.open_browser and not no_browser,
         config_path=str(ctx.config_path) if ctx.config_path else None,
+        launch_args=launch_args,
     )
     return 0
 
@@ -946,6 +957,7 @@ def build_parser() -> argparse.ArgumentParser:
         description="Local-first pipeline for Shutterstock contributors. "
         "With no command, starts the web UI.",
     )
+    p.add_argument("--version", action="version", version=f"shuto {_installed_version()}")
     sub = p.add_subparsers(dest="command")
 
     def add(name: str, help_: str) -> argparse.ArgumentParser:

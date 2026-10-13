@@ -1636,7 +1636,14 @@ def batch_summary(store: Store, batch_id: str) -> dict[str, Any]:
 
 # --------------------------------------------------------------------------- UI settings
 
-UI_SETTING_KEYS = ("onboarded", "last_folder", "style", "bedrock_profile")
+UI_SETTING_KEYS = (
+    "onboarded",
+    "last_folder",
+    "style",
+    "bedrock_profile",
+    "update_check",
+    "update_cache",
+)
 PROFILE_RE = re.compile(r"^[A-Za-z0-9_.@:+=,-]{1,100}$")
 MAX_STYLE_TEXT = 200
 MAX_EXTRA_INSTRUCTIONS = 2000
@@ -1691,6 +1698,17 @@ def _clean_style(value: Any) -> dict[str, Any]:
     return out
 
 
+def _clean_update_cache(value: Any) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise PipelineError("The update cache must be a mapping.")
+    version, checked_at, ok = value.get("version"), value.get("checked_at"), value.get("ok")
+    if not isinstance(version, str) or not isinstance(ok, bool):
+        raise PipelineError("The update cache is not valid.")
+    if isinstance(checked_at, bool) or not isinstance(checked_at, int | float):
+        raise PipelineError("The update cache is not valid.")
+    return {"version": version, "checked_at": float(checked_at), "ok": ok}
+
+
 def set_ui_setting(store: Store, name: str, value: Any) -> Any:
     """Save a UI setting (validated for `style`); returns the stored value."""
     key = _ui_key(name)
@@ -1700,6 +1718,10 @@ def set_ui_setting(store: Store, name: str, value: Any) -> Any:
         value = str(value or "").strip()
         if value and not PROFILE_RE.match(value):
             raise PipelineError("That AWS profile name is not valid.")
+    elif key == "ui.update_check":
+        value = bool(value)
+    elif key == "ui.update_cache":
+        value = _clean_update_cache(value)
     store.set_setting(key, value)
     return value
 

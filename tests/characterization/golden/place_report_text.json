@@ -1,0 +1,43 @@
+[
+  {
+    "place": null,
+    "text": "",
+    "default": ""
+  },
+  {
+    "place": "x",
+    "text": "",
+    "default": ""
+  },
+  {
+    "place": {},
+    "text": "",
+    "default": "no"
+  },
+  {
+    "place": {
+      "city": "TOKYO",
+      "country": "JAPAN",
+      "source": "ai",
+      "default": false
+    },
+    "text": "TOKYO, JAPAN",
+    "default": "no"
+  },
+  {
+    "place": {
+      "city": "",
+      "country": "JAPAN",
+      "default": true
+    },
+    "text": "JAPAN",
+    "default": "yes"
+  },
+  {
+    "place": {
+      "city": "TOKYO"
+    },
+    "text": "TOKYO",
+    "default": "no"
+  }
+]

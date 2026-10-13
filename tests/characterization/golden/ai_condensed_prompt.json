@@ -1,0 +1,10 @@
+{
+  "num_ctx 2048": true,
+  "num_ctx 4096": true,
+  "num_ctx 4097": false,
+  "num_ctx 8192": false,
+  "num_ctx 0 falls back to the catalogue": true,
+  "no num_ctx attribute": true,
+  "unknown model, no attribute": false,
+  "api provider": false
+}

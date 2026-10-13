@@ -1,0 +1,11 @@
+usage: shuto accept [-h] [--config CONFIG] [-v] file
+
+record an acceptance
+
+positional arguments:
+  file
+
+options:
+  -h, --help       show this help message and exit
+  --config CONFIG  path to shuto.yaml
+  -v, --verbose

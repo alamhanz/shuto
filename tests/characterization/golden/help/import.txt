@@ -1,0 +1,18 @@
+usage: shuto import [-h] [--config CONFIG] [-v] [--no-recursive] [--notes NOTES] [--force] [--yes]
+                    [--mark-uploaded]
+                    [path]
+
+register photos from a folder
+
+positional arguments:
+  path             folder (default: sources in the config)
+
+options:
+  -h, --help       show this help message and exit
+  --config CONFIG  path to shuto.yaml
+  -v, --verbose
+  --no-recursive
+  --notes NOTES    batch notes (location, event) sent with the prompt
+  --force          import even photos that look already uploaded
+  --yes            skip the --mark-uploaded confirmation
+  --mark-uploaded  just remember these photos as already uploaded (nothing else is done to them)

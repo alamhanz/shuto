@@ -1,0 +1,140 @@
+{
+  "strict": {
+    "style": {
+      "theme": "",
+      "tone": "documentary, warm, factual; no hype words",
+      "language": "en",
+      "english_only": true,
+      "language_name": "",
+      "region_focus": "",
+      "keywords_min": 25,
+      "keywords_max": 45,
+      "always_include": [],
+      "romaji_place_names": false,
+      "seasonal_terms": true,
+      "avoid": [
+        "beautiful",
+        "amazing",
+        "stunning"
+      ],
+      "extra_instructions": "",
+      "default_city": "",
+      "default_country": "",
+      "desc_target_min": 70,
+      "desc_target_max": 150,
+      "desc_max": 200,
+      "text_language": "English"
+    },
+    "rule": "English only: write every field in English using Latin letters. Never use any other script (CJK characters, Cyrillic, Arabic and so on), not even for names. Translate other-language text from the photo or the photo facts, and write place names in plain English letters.",
+    "rule_short": "English only: Latin letters, never CJK, Cyrillic or other scripts; translate or transliterate names.",
+    "config_language": [
+      true,
+      ""
+    ]
+  },
+  "strict with a name left over": {
+    "style": {
+      "theme": "",
+      "tone": "documentary, warm, factual; no hype words",
+      "language": "en",
+      "english_only": true,
+      "language_name": "Japanese",
+      "region_focus": "",
+      "keywords_min": 25,
+      "keywords_max": 45,
+      "always_include": [],
+      "romaji_place_names": false,
+      "seasonal_terms": true,
+      "avoid": [
+        "beautiful",
+        "amazing",
+        "stunning"
+      ],
+      "extra_instructions": "",
+      "default_city": "",
+      "default_country": "",
+      "desc_target_min": 70,
+      "desc_target_max": 150,
+      "desc_max": 200,
+      "text_language": "English"
+    },
+    "rule": "English only: write every field in English using Latin letters. Never use any other script (CJK characters, Cyrillic, Arabic and so on), not even for names. Translate other-language text from the photo or the photo facts, and write place names in plain English letters.",
+    "rule_short": "English only: Latin letters, never CJK, Cyrillic or other scripts; translate or transliterate names.",
+    "config_language": [
+      true,
+      "Japanese"
+    ]
+  },
+  "japanese": {
+    "style": {
+      "theme": "",
+      "tone": "documentary, warm, factual; no hype words",
+      "language": "en",
+      "english_only": false,
+      "language_name": "Japanese",
+      "region_focus": "",
+      "keywords_min": 25,
+      "keywords_max": 45,
+      "always_include": [],
+      "romaji_place_names": false,
+      "seasonal_terms": true,
+      "avoid": [
+        "beautiful",
+        "amazing",
+        "stunning"
+      ],
+      "extra_instructions": "",
+      "default_city": "",
+      "default_country": "",
+      "desc_target_min": 70,
+      "desc_target_max": 150,
+      "desc_max": 200,
+      "text_language": "Japanese"
+    },
+    "rule": "Write the description and keywords in Japanese. Place names in the location field stay in English letters.",
+    "rule_short": "Write the description and keywords in Japanese.",
+    "config_language": [
+      false,
+      "Japanese"
+    ]
+  },
+  "french": {
+    "style": {
+      "theme": "",
+      "tone": "documentary, warm, factual; no hype words",
+      "language": "en",
+      "english_only": false,
+      "language_name": "french",
+      "region_focus": "",
+      "keywords_min": 25,
+      "keywords_max": 45,
+      "always_include": [],
+      "romaji_place_names": false,
+      "seasonal_terms": true,
+      "avoid": [
+        "beautiful",
+        "amazing",
+        "stunning"
+      ],
+      "extra_instructions": "",
+      "default_city": "",
+      "default_country": "",
+      "desc_target_min": 70,
+      "desc_target_max": 150,
+      "desc_max": 200,
+      "text_language": "french"
+    },
+    "rule": "Write the description and keywords in french. Place names in the location field stay in English letters.",
+    "rule_short": "Write the description and keywords in french.",
+    "config_language": [
+      false,
+      "french"
+    ]
+  },
+  "non-english without a name": {
+    "error": "ValidationError: Value error, style.metadata_language: Type the language to write in, for example Japanese."
+  },
+  "bad language name": {
+    "error": "ValidationError: Value error, style.metadata_language: Use only letters, spaces and hyphens in the language name."
+  }
+}

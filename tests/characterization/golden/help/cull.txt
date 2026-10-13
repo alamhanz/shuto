@@ -1,0 +1,12 @@
+usage: shuto cull [-h] [--config CONFIG] [-v] [--explain] batch
+
+technical check: size, sharpness, exposure
+
+positional arguments:
+  batch
+
+options:
+  -h, --help       show this help message and exit
+  --config CONFIG  path to shuto.yaml
+  -v, --verbose
+  --explain

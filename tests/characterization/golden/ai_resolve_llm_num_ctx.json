@@ -1,0 +1,58 @@
+{
+  "moondream": [
+    "ollama",
+    2048
+  ],
+  "llava-phi3": [
+    "ollama",
+    4096
+  ],
+  "granite3.2-vision": [
+    "ollama",
+    8192
+  ],
+  "qwen2.5vl:3b": [
+    "ollama",
+    8192
+  ],
+  "gemma3:4b": [
+    "ollama",
+    8192
+  ],
+  "qwen3-vl:4b": [
+    "ollama",
+    8192
+  ],
+  "qwen2.5vl:7b": [
+    "ollama",
+    8192
+  ],
+  "minicpm-v:8b": [
+    "ollama",
+    8192
+  ],
+  "qwen3-vl:8b": [
+    "ollama",
+    8192
+  ],
+  "llama3.2-vision:11b": [
+    "ollama",
+    8192
+  ],
+  "gemma3:12b": [
+    "ollama",
+    8192
+  ],
+  "gemma3:27b": [
+    "ollama",
+    4096
+  ],
+  "mistral-small3.2:24b": [
+    "ollama",
+    4096
+  ],
+  "qwen3-vl:32b": [
+    "ollama",
+    4096
+  ]
+}

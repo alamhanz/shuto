@@ -1,0 +1,141 @@
+{
+  "latin-1 Köln undeclared": {
+    "title": null,
+    "caption": null,
+    "keywords": [],
+    "place_hint": {
+      "city": "Köln",
+      "country": "Germany"
+    }
+  },
+  "latin-1 Köln declared": {
+    "title": null,
+    "caption": null,
+    "keywords": [],
+    "place_hint": {
+      "city": "Köln"
+    }
+  },
+  "utf-8 Köln undeclared": {
+    "title": null,
+    "caption": null,
+    "keywords": [],
+    "place_hint": {
+      "city": "Köln",
+      "country": "Germany"
+    }
+  },
+  "utf-8 declared": {
+    "title": "Café",
+    "caption": null,
+    "keywords": [],
+    "place_hint": {
+      "city": "Zürich"
+    }
+  },
+  "utf-8 declared but invalid": {
+    "title": "Title",
+    "caption": null,
+    "keywords": [],
+    "place_hint": null
+  },
+  "shift-jis 渋谷": {
+    "title": null,
+    "caption": null,
+    "keywords": [],
+    "place_hint": {
+      "city": "渋谷",
+      "country": "日本"
+    }
+  },
+  "shift-jis title": {
+    "title": "東京の通り",
+    "caption": "朝の写真",
+    "keywords": [],
+    "place_hint": null
+  },
+  "shift-jis half-width kana dropped": {
+    "title": null,
+    "caption": null,
+    "keywords": [],
+    "place_hint": null
+  },
+  "private use dropped": {
+    "title": null,
+    "caption": null,
+    "keywords": [],
+    "place_hint": null
+  },
+  "undecodable high bytes": {
+    "title": null,
+    "caption": null,
+    "keywords": [],
+    "place_hint": null
+  },
+  "latin-1 with symbols dropped": {
+    "title": null,
+    "caption": null,
+    "keywords": [],
+    "place_hint": null
+  },
+  "keywords": {
+    "title": null,
+    "caption": null,
+    "keywords": [
+      "tokyo",
+      "渋谷",
+      "street"
+    ],
+    "place_hint": null
+  },
+  "all place fields": {
+    "title": null,
+    "caption": null,
+    "keywords": [],
+    "place_hint": {
+      "city": "Yokohama",
+      "region": "Kanagawa",
+      "country": "Japan",
+      "sublocation": "Pier"
+    }
+  },
+  "xmp fills when iptc has nothing": {
+    "title": null,
+    "caption": null,
+    "keywords": [],
+    "place_hint": {
+      "city": "Nagoya",
+      "country": "Japan"
+    }
+  },
+  "xmp wins over iptc": {
+    "title": null,
+    "caption": null,
+    "keywords": [],
+    "place_hint": {
+      "city": "Cologne",
+      "country": "Germany"
+    }
+  },
+  "xmp city only keeps iptc country": {
+    "title": null,
+    "caption": null,
+    "keywords": [],
+    "place_hint": {
+      "city": "Kobe",
+      "country": "Japan"
+    }
+  },
+  "xmp title does not replace iptc title": {
+    "title": "IPTC title",
+    "caption": null,
+    "keywords": [],
+    "place_hint": null
+  },
+  "not an image": {
+    "title": null,
+    "caption": null,
+    "keywords": [],
+    "place_hint": null
+  }
+}

@@ -1,0 +1,9 @@
+usage: shuto check-ftps [-h] [--config CONFIG] [-v] [--upload FILE]
+
+test the Shutterstock FTPS login
+
+options:
+  -h, --help       show this help message and exit
+  --config CONFIG  path to shuto.yaml
+  -v, --verbose
+  --upload FILE    also upload this file

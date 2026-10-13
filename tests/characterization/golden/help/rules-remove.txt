@@ -1,0 +1,9 @@
+usage: shuto rules remove [-h] [--config CONFIG] [-v] id
+
+positional arguments:
+  id
+
+options:
+  -h, --help       show this help message and exit
+  --config CONFIG  path to shuto.yaml
+  -v, --verbose

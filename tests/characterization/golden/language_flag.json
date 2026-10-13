@@ -1,0 +1,70 @@
+{
+  "not_english / strict=True": {
+    "english": false,
+    "japanese": true,
+    "mixed": true,
+    "accented": false
+  },
+  "release_check / strict=True": {
+    "english": [],
+    "japanese": [
+      "Text is not in English: Shutterstock needs English, Latin letters."
+    ],
+    "mixed": [
+      "Text is not in English: Shutterstock needs English, Latin letters."
+    ],
+    "accented": []
+  },
+  "build_csv / strict=True": {
+    "english": {
+      "ok": "Filename,Description,Keywords,Categories,Editorial,Mature content,illustration\na.jpg,A quiet street in Tokyo with parked bicycles,\"tokyo,street\",Transportation,no,no,no\n"
+    },
+    "japanese": {
+      "error": "NotEnglishError: a.jpg: the text is not in English"
+    },
+    "mixed": {
+      "error": "NotEnglishError: a.jpg: the text is not in English"
+    },
+    "accented": {
+      "ok": "Filename,Description,Keywords,Categories,Editorial,Mature content,illustration\na.jpg,A quiet street in Tokyo with parked bicycles,\"tokyo,street\",Transportation,no,no,no\n"
+    }
+  },
+  "clean_text / strict=True": {
+    "Shibuya 渋谷 crossing": "Shibuya crossing",
+    "渋谷": "",
+    "Köln  Hbf": "Koln Hbf",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…"
+  },
+  "not_english / strict=False": {
+    "english": false,
+    "japanese": false,
+    "mixed": false,
+    "accented": false
+  },
+  "release_check / strict=False": {
+    "english": [],
+    "japanese": [],
+    "mixed": [],
+    "accented": []
+  },
+  "build_csv / strict=False": {
+    "english": {
+      "ok": "Filename,Description,Keywords,Categories,Editorial,Mature content,illustration\na.jpg,A quiet street in Tokyo with parked bicycles,\"tokyo,street\",Transportation,no,no,no\n"
+    },
+    "japanese": {
+      "ok": "Filename,Description,Keywords,Categories,Editorial,Mature content,illustration\na.jpg,東京の 静かな 通りに 駐輪された 自転車,\"東京,通り\",Transportation,no,no,no\n"
+    },
+    "mixed": {
+      "ok": "Filename,Description,Keywords,Categories,Editorial,Mature content,illustration\na.jpg,A quiet street in Tokyo with parked bicycles,\"tokyo,渋谷\",Transportation,no,no,no\n"
+    },
+    "accented": {
+      "ok": "Filename,Description,Keywords,Categories,Editorial,Mature content,illustration\na.jpg,A quiet street in Tokyo with parked bicycles,\"tokyo,street\",Transportation,no,no,no\n"
+    }
+  },
+  "clean_text / strict=False": {
+    "Shibuya 渋谷 crossing": "Shibuya 渋谷 crossing",
+    "渋谷": "渋谷",
+    "Köln  Hbf": "Köln Hbf",
+    "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx…"
+  }
+}

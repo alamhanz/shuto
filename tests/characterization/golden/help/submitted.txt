@@ -1,0 +1,11 @@
+usage: shuto submitted [-h] [--config CONFIG] [-v] batch
+
+mark an exported batch as submitted on the portal
+
+positional arguments:
+  batch
+
+options:
+  -h, --help       show this help message and exit
+  --config CONFIG  path to shuto.yaml
+  -v, --verbose

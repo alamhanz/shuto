@@ -1,0 +1,16 @@
+usage: shuto review [-h] [--config CONFIG] [-v]
+                    [--status {imported,duplicate,near_duplicate,already_uploaded,culled,ready,described,needs_review,blocked,set_aside,approved,prepared,uploaded,exported,submitted,accepted,rejected}]
+                    [--full]
+                    batch
+
+list described photos
+
+positional arguments:
+  batch
+
+options:
+  -h, --help            show this help message and exit
+  --config CONFIG       path to shuto.yaml
+  -v, --verbose
+  --status {imported,duplicate,near_duplicate,already_uploaded,culled,ready,described,needs_review,blocked,set_aside,approved,prepared,uploaded,exported,submitted,accepted,rejected}
+  --full

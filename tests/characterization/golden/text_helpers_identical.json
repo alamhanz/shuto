@@ -1,0 +1,9 @@
+{
+  "plain_seconds == format_duration": true,
+  "ai_time_text == format_duration": false,
+  "time_left == format_duration": false,
+  "web_mb == pipeline_megabytes": false,
+  "cli_yn == csv_yn": true,
+  "cli_short == web_short": false,
+  "ux_n == routes_setup_n": false
+}

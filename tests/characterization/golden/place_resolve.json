@@ -1,0 +1,146 @@
+{
+  "gps both": {
+    "ok": {
+      "city": "KYOTO",
+      "country": "JAPAN",
+      "source": "gps",
+      "default": false
+    }
+  },
+  "file both": {
+    "ok": {
+      "city": "KYOTO",
+      "country": "JAPAN",
+      "source": "file",
+      "default": false
+    }
+  },
+  "gps country only, AI city": {
+    "ok": {
+      "city": "OSAKA",
+      "country": "JAPAN",
+      "source": "gps + AI",
+      "default": false
+    }
+  },
+  "file country only, AI nothing": {
+    "ok": {
+      "city": "TOKYO",
+      "country": "JAPAN",
+      "source": "partly default",
+      "default": true
+    }
+  },
+  "ai only": {
+    "ok": {
+      "city": "OSAKA",
+      "country": "JAPAN",
+      "source": "ai",
+      "default": false
+    }
+  },
+  "ai city, default country": {
+    "ok": {
+      "city": "OSAKA",
+      "country": "JAPAN",
+      "source": "partly default",
+      "default": true
+    }
+  },
+  "default only": {
+    "ok": {
+      "city": "TOKYO",
+      "country": "JAPAN",
+      "source": "default",
+      "default": true
+    }
+  },
+  "default country only": {
+    "ok": {
+      "city": "",
+      "country": "JAPAN",
+      "source": "default",
+      "default": true
+    }
+  },
+  "unknown": {
+    "ok": {
+      "city": "",
+      "country": "",
+      "source": "unknown",
+      "default": false
+    }
+  },
+  "region used as city": {
+    "ok": {
+      "city": "KANAGAWA",
+      "country": "JAPAN",
+      "source": "gps",
+      "default": false
+    }
+  },
+  "prefecture used as city": {
+    "ok": {
+      "city": "CHIBA",
+      "country": "JAPAN",
+      "source": "file",
+      "default": false
+    }
+  },
+  "foreign known country skips default city": {
+    "ok": {
+      "city": "",
+      "country": "FRANCE",
+      "source": "gps",
+      "default": false
+    }
+  },
+  "foreign known country, AI city": {
+    "ok": {
+      "city": "LYON",
+      "country": "FRANCE",
+      "source": "gps + AI",
+      "default": false
+    }
+  },
+  "known country matches default": {
+    "ok": {
+      "city": "TOKYO",
+      "country": "JAPAN",
+      "source": "partly default",
+      "default": true
+    }
+  },
+  "region beats default city, AI empty": {
+    "ok": {
+      "city": "SAITAMA",
+      "country": "JAPAN",
+      "source": "partly default",
+      "default": true
+    }
+  },
+  "accents and case folded": {
+    "ok": {
+      "city": "KOLN",
+      "country": "GERMANY",
+      "source": "ai",
+      "default": false
+    }
+  },
+  "unknown source treated as file": {
+    "ok": {
+      "city": "NARA",
+      "country": "",
+      "source": "file",
+      "default": false
+    }
+  },
+  "location as object": {
+    "ok": {
+      "city": "TOKYO",
+      "country": "JAPAN",
+      "source": "default",
+      "default": true
+    }
+  }
+}

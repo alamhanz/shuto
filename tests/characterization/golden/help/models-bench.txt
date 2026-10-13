@@ -1,0 +1,9 @@
+usage: shuto models bench [-h] [--config CONFIG] [-v] [model]
+
+positional arguments:
+  model
+
+options:
+  -h, --help       show this help message and exit
+  --config CONFIG  path to shuto.yaml
+  -v, --verbose

@@ -1,0 +1,13 @@
+usage: shuto approve [-h] [--config CONFIG] [-v] [--ids IDS [IDS ...]] [--include-review] [batch]
+
+approve reviewed photos
+
+positional arguments:
+  batch
+
+options:
+  -h, --help           show this help message and exit
+  --config CONFIG      path to shuto.yaml
+  -v, --verbose
+  --ids IDS [IDS ...]
+  --include-review     also approve needs_review

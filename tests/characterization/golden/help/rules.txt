@@ -1,0 +1,18 @@
+usage: shuto rules [-h] [--config CONFIG] [-v] {list,add,remove,clear,mode,theme,partly} ...
+
+your own photo rules and the theme check (shared with the web app)
+
+positional arguments:
+  {list,add,remove,clear,mode,theme,partly}
+    list                show the theme check and your rules
+    add                 add a rule (up to 10)
+    remove              remove one rule by its id
+    clear               remove all your rules
+    mode                what happens when a rule fails
+    theme               turn the theme check on or off
+    partly              photos that fit the theme "partly"
+
+options:
+  -h, --help            show this help message and exit
+  --config CONFIG       path to shuto.yaml
+  -v, --verbose

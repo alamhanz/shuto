@@ -1,0 +1,11 @@
+usage: shuto status [-h] [--config CONFIG] [-v] [batch]
+
+batches and photo counts
+
+positional arguments:
+  batch
+
+options:
+  -h, --help       show this help message and exit
+  --config CONFIG  path to shuto.yaml
+  -v, --verbose

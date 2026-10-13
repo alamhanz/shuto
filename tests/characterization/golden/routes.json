@@ -1,0 +1,378 @@
+[
+  {
+    "methods": [],
+    "path": "/static"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/healthz"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/welcome"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/welcome/nav"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/welcome/{step}"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/add"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/import"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/import/add-anyway"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/jobs/{job_id}"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/model/banner"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/downloads/bar"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/jobs/{job_id}/cancel"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/browse"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/updates/panel"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/updates/banner"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/updates/check"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/updates/settings"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/updates/start"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/settings"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/settings/advice"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/settings/use"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/settings/pull"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/settings/model/remove"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/settings/model/remove"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/settings/models-dir"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/settings/models-dir/reset"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/settings/benchmark"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/settings/ftps"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/settings/ftps/test"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/settings/ftps/forget"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/settings/key"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/settings/key/forget"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/settings/style"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/settings/language"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/settings/rules"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/settings/tries"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/settings/privacy"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/help"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/batch/{batch_id}"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/batch/{batch_id}/check"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/batch/{batch_id}/speed/{choice}"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/batch/{batch_id}/check"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/batch/{batch_id}/review"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/batch/{batch_id}/bulk-edit"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/batch/{batch_id}/bulk"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/batch/{batch_id}/upload"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/batch/{batch_id}/deliver"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/batch/{batch_id}/submit"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/batch/{batch_id}/submitted"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/batch/{batch_id}/report.csv"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/batch/{batch_id}/resend"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/batch/{batch_id}/open-folder"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/batch/{batch_id}/{action}"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/batch/{batch_id}/exports/{filename}"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/thumb/{photo_id}"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/image/{photo_id}"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/photo/{photo_id}"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/photo/{photo_id}"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/photo/{photo_id}/approve"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/photo/{photo_id}/ready"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/photo/{photo_id}/regenerate"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/photo/{photo_id}/result"
+  }
+]

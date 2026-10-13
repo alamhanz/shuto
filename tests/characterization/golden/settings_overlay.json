@@ -1,0 +1,201 @@
+{
+  "nothing saved": {
+    "style": {
+      "theme": "",
+      "tone": "documentary, warm, factual; no hype words",
+      "extra_instructions": "",
+      "region_focus": "",
+      "always_include": [],
+      "default_city": "",
+      "default_country": "",
+      "english_only": true,
+      "metadata_language": ""
+    },
+    "filters": {
+      "theme_check": true,
+      "theme_partly": "pass",
+      "rules": []
+    },
+    "bedrock_profile": null,
+    "max_tries": 8,
+    "include_gps": false
+  },
+  "everything valid": {
+    "style": {
+      "theme": "Everyday Japan",
+      "tone": "calm",
+      "extra_instructions": "short",
+      "region_focus": "japan",
+      "always_include": [
+        "tokyo",
+        "japan"
+      ],
+      "default_city": "Kyoto",
+      "default_country": "Japan",
+      "english_only": false,
+      "metadata_language": "Japanese"
+    },
+    "filters": {
+      "theme_check": false,
+      "theme_partly": "flag",
+      "rules": [
+        [
+          "r1",
+          "avoid",
+          "people",
+          "flag"
+        ]
+      ]
+    },
+    "bedrock_profile": "work",
+    "max_tries": 3,
+    "include_gps": false
+  },
+  "empty style fields override": {
+    "style": {
+      "theme": "",
+      "tone": "",
+      "extra_instructions": "",
+      "region_focus": "",
+      "always_include": [],
+      "default_city": "",
+      "default_country": "",
+      "english_only": true,
+      "metadata_language": ""
+    },
+    "filters": {
+      "theme_check": true,
+      "theme_partly": "pass",
+      "rules": []
+    },
+    "bedrock_profile": null,
+    "max_tries": 8,
+    "include_gps": false
+  },
+  "damaged values are ignored": {
+    "style": {
+      "theme": "",
+      "tone": "documentary, warm, factual; no hype words",
+      "extra_instructions": "",
+      "region_focus": "",
+      "always_include": [],
+      "default_city": "",
+      "default_country": "",
+      "english_only": true,
+      "metadata_language": ""
+    },
+    "filters": {
+      "theme_check": true,
+      "theme_partly": "pass",
+      "rules": []
+    },
+    "bedrock_profile": null,
+    "max_tries": 8,
+    "include_gps": false
+  },
+  "max tries bool": {
+    "style": {
+      "theme": "",
+      "tone": "documentary, warm, factual; no hype words",
+      "extra_instructions": "",
+      "region_focus": "",
+      "always_include": [],
+      "default_city": "",
+      "default_country": "",
+      "english_only": true,
+      "metadata_language": ""
+    },
+    "filters": {
+      "theme_check": true,
+      "theme_partly": "pass",
+      "rules": []
+    },
+    "bedrock_profile": null,
+    "max_tries": 8,
+    "include_gps": false
+  },
+  "max tries zero": {
+    "style": {
+      "theme": "",
+      "tone": "documentary, warm, factual; no hype words",
+      "extra_instructions": "",
+      "region_focus": "",
+      "always_include": [],
+      "default_city": "",
+      "default_country": "",
+      "english_only": true,
+      "metadata_language": ""
+    },
+    "filters": {
+      "theme_check": true,
+      "theme_partly": "pass",
+      "rules": []
+    },
+    "bedrock_profile": null,
+    "max_tries": 8,
+    "include_gps": false
+  },
+  "language damaged shape": {
+    "style": {
+      "theme": "",
+      "tone": "documentary, warm, factual; no hype words",
+      "extra_instructions": "",
+      "region_focus": "",
+      "always_include": [],
+      "default_city": "",
+      "default_country": "",
+      "english_only": true,
+      "metadata_language": ""
+    },
+    "filters": {
+      "theme_check": true,
+      "theme_partly": "pass",
+      "rules": []
+    },
+    "bedrock_profile": null,
+    "max_tries": 8,
+    "include_gps": false
+  },
+  "language strict": {
+    "style": {
+      "theme": "",
+      "tone": "documentary, warm, factual; no hype words",
+      "extra_instructions": "",
+      "region_focus": "",
+      "always_include": [],
+      "default_city": "",
+      "default_country": "",
+      "english_only": true,
+      "metadata_language": ""
+    },
+    "filters": {
+      "theme_check": true,
+      "theme_partly": "pass",
+      "rules": []
+    },
+    "bedrock_profile": null,
+    "max_tries": 8,
+    "include_gps": false
+  },
+  "filters with bad rule list": {
+    "style": {
+      "theme": "",
+      "tone": "documentary, warm, factual; no hype words",
+      "extra_instructions": "",
+      "region_focus": "",
+      "always_include": [],
+      "default_city": "",
+      "default_country": "",
+      "english_only": true,
+      "metadata_language": ""
+    },
+    "filters": {
+      "theme_check": true,
+      "theme_partly": "pass",
+      "rules": []
+    },
+    "bedrock_profile": null,
+    "max_tries": 8,
+    "include_gps": false
+  }
+}

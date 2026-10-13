@@ -1,0 +1,10 @@
+usage: shuto rules mode [-h] [--config CONFIG] [-v] id {set-aside,flag}
+
+positional arguments:
+  id
+  {set-aside,flag}
+
+options:
+  -h, --help        show this help message and exit
+  --config CONFIG   path to shuto.yaml
+  -v, --verbose

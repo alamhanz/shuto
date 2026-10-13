@@ -1,0 +1,212 @@
+{
+  "gps only / neighborhood=True": {
+    "place": {
+      "city": "Shibuya",
+      "region": "Tokyo",
+      "country": "Japan",
+      "sublocation": null,
+      "neighborhood": "Sakuragaokacho",
+      "ward": "Shibuya",
+      "prefecture": "Tokyo",
+      "source": "gps",
+      "confidence": "high"
+    },
+    "hints": "Place from GPS: Sakuragaokacho (neighborhood), Shibuya (ward), Tokyo (prefecture), Japan. Use the ward for the caption; neighborhood may be a keyword. Photographer title: Pier day. Photographer keywords: sea.",
+    "place_text": "Shibuya, Tokyo, Japan"
+  },
+  "gps only / neighborhood=False": {
+    "place": {
+      "city": "Shibuya",
+      "region": "Tokyo",
+      "country": "Japan",
+      "sublocation": null,
+      "neighborhood": null,
+      "ward": "Shibuya",
+      "prefecture": "Tokyo",
+      "source": "gps",
+      "confidence": "high"
+    },
+    "hints": "Place from GPS: Shibuya (ward), Tokyo (prefecture), Japan. Use the ward for the caption. Photographer title: Pier day. Photographer keywords: sea.",
+    "place_text": "Shibuya, Tokyo, Japan"
+  },
+  "file only / neighborhood=True": {
+    "place": {
+      "sublocation": "Pier",
+      "city": "Yokohama",
+      "region": "Kanagawa",
+      "country": "Japan",
+      "source": "file",
+      "confidence": "medium"
+    },
+    "hints": "Taken in Pier, Yokohama, Kanagawa, Japan (from the photo file). Photographer title: Pier day. Photographer keywords: sea.",
+    "place_text": "Pier, Yokohama, Kanagawa, Japan"
+  },
+  "file only / neighborhood=False": {
+    "place": {
+      "sublocation": "Pier",
+      "city": "Yokohama",
+      "region": "Kanagawa",
+      "country": "Japan",
+      "source": "file",
+      "confidence": "medium",
+      "neighborhood": null
+    },
+    "hints": "Taken in Pier, Yokohama, Kanagawa, Japan (from the photo file). Photographer title: Pier day. Photographer keywords: sea.",
+    "place_text": "Pier, Yokohama, Kanagawa, Japan"
+  },
+  "gps wins over file / neighborhood=True": {
+    "place": {
+      "city": "Shibuya",
+      "region": "Tokyo",
+      "country": "Japan",
+      "sublocation": null,
+      "neighborhood": "Sakuragaokacho",
+      "ward": "Shibuya",
+      "prefecture": "Tokyo",
+      "source": "gps",
+      "confidence": "high"
+    },
+    "hints": "Place from GPS: Sakuragaokacho (neighborhood), Shibuya (ward), Tokyo (prefecture), Japan. Use the ward for the caption; neighborhood may be a keyword. Photographer title: Pier day. Photographer keywords: sea.",
+    "place_text": "Shibuya, Tokyo, Japan"
+  },
+  "gps wins over file / neighborhood=False": {
+    "place": {
+      "city": "Shibuya",
+      "region": "Tokyo",
+      "country": "Japan",
+      "sublocation": null,
+      "neighborhood": null,
+      "ward": "Shibuya",
+      "prefecture": "Tokyo",
+      "source": "gps",
+      "confidence": "high"
+    },
+    "hints": "Place from GPS: Shibuya (ward), Tokyo (prefecture), Japan. Use the ward for the caption. Photographer title: Pier day. Photographer keywords: sea.",
+    "place_text": "Shibuya, Tokyo, Japan"
+  },
+  "gps without city takes the file city / neighborhood=True": {
+    "place": {
+      "city": "Yokohama",
+      "region": "Tokyo",
+      "country": "Japan",
+      "sublocation": null,
+      "neighborhood": null,
+      "ward": null,
+      "prefecture": "Tokyo",
+      "source": "gps",
+      "confidence": "low"
+    },
+    "hints": "Place from GPS: Yokohama (city), Tokyo (prefecture), Japan. Use the city for the caption. Photographer title: Pier day. Photographer keywords: sea.",
+    "place_text": "Yokohama, Tokyo, Japan"
+  },
+  "gps without city takes the file city / neighborhood=False": {
+    "place": {
+      "city": "Yokohama",
+      "region": "Tokyo",
+      "country": "Japan",
+      "sublocation": null,
+      "neighborhood": null,
+      "ward": null,
+      "prefecture": "Tokyo",
+      "source": "gps",
+      "confidence": "low"
+    },
+    "hints": "Place from GPS: Yokohama (city), Tokyo (prefecture), Japan. Use the city for the caption. Photographer title: Pier day. Photographer keywords: sea.",
+    "place_text": "Yokohama, Tokyo, Japan"
+  },
+  "gps without city, no file city / neighborhood=True": {
+    "place": {
+      "city": null,
+      "region": "Tokyo",
+      "country": "Japan",
+      "sublocation": null,
+      "neighborhood": null,
+      "ward": null,
+      "prefecture": "Tokyo",
+      "source": "gps",
+      "confidence": "low"
+    },
+    "hints": "Place from GPS: Tokyo (prefecture), Japan. Photographer title: Pier day. Photographer keywords: sea.",
+    "place_text": "Tokyo, Japan"
+  },
+  "gps without city, no file city / neighborhood=False": {
+    "place": {
+      "city": null,
+      "region": "Tokyo",
+      "country": "Japan",
+      "sublocation": null,
+      "neighborhood": null,
+      "ward": null,
+      "prefecture": "Tokyo",
+      "source": "gps",
+      "confidence": "low"
+    },
+    "hints": "Place from GPS: Tokyo (prefecture), Japan. Photographer title: Pier day. Photographer keywords: sea.",
+    "place_text": "Tokyo, Japan"
+  },
+  "file in Japanese is dropped / neighborhood=True": {
+    "place": null,
+    "hints": "Photographer title: Pier day. Photographer keywords: sea.",
+    "place_text": ""
+  },
+  "file in Japanese is dropped / neighborhood=False": {
+    "place": null,
+    "hints": "Photographer title: Pier day. Photographer keywords: sea.",
+    "place_text": ""
+  },
+  "file half usable / neighborhood=True": {
+    "place": {
+      "sublocation": null,
+      "city": "Kyoto",
+      "region": null,
+      "country": null,
+      "source": "file",
+      "confidence": "medium"
+    },
+    "hints": "Taken in Kyoto (from the photo file). Photographer title: Pier day. Photographer keywords: sea.",
+    "place_text": "Kyoto"
+  },
+  "file half usable / neighborhood=False": {
+    "place": {
+      "sublocation": null,
+      "city": "Kyoto",
+      "region": null,
+      "country": null,
+      "source": "file",
+      "confidence": "medium",
+      "neighborhood": null
+    },
+    "hints": "Taken in Kyoto (from the photo file). Photographer title: Pier day. Photographer keywords: sea.",
+    "place_text": "Kyoto"
+  },
+  "file with digits is not trusted / neighborhood=True": {
+    "place": null,
+    "hints": "Photographer title: Pier day. Photographer keywords: sea.",
+    "place_text": ""
+  },
+  "file with digits is not trusted / neighborhood=False": {
+    "place": null,
+    "hints": "Photographer title: Pier day. Photographer keywords: sea.",
+    "place_text": ""
+  },
+  "nothing / neighborhood=True": {
+    "place": null,
+    "hints": "Photographer title: Pier day. Photographer keywords: sea.",
+    "place_text": ""
+  },
+  "nothing / neighborhood=False": {
+    "place": null,
+    "hints": "Photographer title: Pier day. Photographer keywords: sea.",
+    "place_text": ""
+  },
+  "empty gps / neighborhood=True": {
+    "place": null,
+    "hints": "Photographer title: Pier day. Photographer keywords: sea.",
+    "place_text": ""
+  },
+  "empty gps / neighborhood=False": {
+    "place": null,
+    "hints": "Photographer title: Pier day. Photographer keywords: sea.",
+    "place_text": ""
+  }
+}

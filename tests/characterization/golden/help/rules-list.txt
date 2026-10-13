@@ -1,0 +1,6 @@
+usage: shuto rules list [-h] [--config CONFIG] [-v]
+
+options:
+  -h, --help       show this help message and exit
+  --config CONFIG  path to shuto.yaml
+  -v, --verbose

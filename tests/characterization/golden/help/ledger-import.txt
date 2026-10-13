@@ -1,0 +1,9 @@
+usage: shuto ledger import [-h] [--config CONFIG] [-v] path
+
+positional arguments:
+  path
+
+options:
+  -h, --help       show this help message and exit
+  --config CONFIG  path to shuto.yaml
+  -v, --verbose

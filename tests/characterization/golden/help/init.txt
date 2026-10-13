@@ -1,0 +1,8 @@
+usage: shuto init [-h] [--config CONFIG] [-v]
+
+create the workspace and choose a model (asks before any download)
+
+options:
+  -h, --help       show this help message and exit
+  --config CONFIG  path to shuto.yaml
+  -v, --verbose

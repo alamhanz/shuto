@@ -1,0 +1,575 @@
+{
+  "batch": "2025-W10",
+  "statuses_after_export": {
+    "a.jpg": "exported",
+    "b.jpg": "exported",
+    "blurry.jpg": "culled",
+    "c.jpg": "exported",
+    "tiny.jpg": "culled"
+  },
+  "prepared_names": [
+    "20250304-a-quiet-residential-street-in-001.jpg",
+    "20250305-a-quiet-residential-street-in-002.jpg",
+    "20250306-a-quiet-residential-street-in-003.jpg"
+  ],
+  "uploaded_names": [
+    "20250304-a-quiet-residential-street-in-001.jpg",
+    "20250305-a-quiet-residential-street-in-002.jpg",
+    "20250306-a-quiet-residential-street-in-003.jpg"
+  ],
+  "export_files": [
+    "2025-W10-1d8c7f01-shutterstock.csv"
+  ],
+  "export_rows": [
+    {
+      "filename": "20250304-a-quiet-residential-street-in-001.jpg",
+      "description": "A quiet residential street in Tokyo with parked bicycles and utility poles on March 4, 2025",
+      "keywords": [
+        "japan",
+        "tokyo",
+        "street",
+        "bicycle",
+        "residential",
+        "urban",
+        "quiet",
+        "morning",
+        "city",
+        "asphalt",
+        "utility pole",
+        "houses",
+        "neighborhood",
+        "travel",
+        "daily life",
+        "asia",
+        "road",
+        "outdoor",
+        "architecture",
+        "wires",
+        "extra march 4 2025 0",
+        "extra march 4 2025 1",
+        "extra march 4 2025 2",
+        "extra march 4 2025 3",
+        "extra march 4 2025 4",
+        "extra march 4 2025 5"
+      ],
+      "categories": [
+        "Buildings/Landmarks",
+        "Transportation"
+      ],
+      "illustration": false,
+      "mature": false,
+      "editorial": false
+    },
+    {
+      "filename": "20250305-a-quiet-residential-street-in-002.jpg",
+      "description": "A quiet residential street in Tokyo with parked bicycles and utility poles on March 5, 2025",
+      "keywords": [
+        "japan",
+        "tokyo",
+        "street",
+        "bicycle",
+        "residential",
+        "urban",
+        "quiet",
+        "morning",
+        "city",
+        "asphalt",
+        "utility pole",
+        "houses",
+        "neighborhood",
+        "travel",
+        "daily life",
+        "asia",
+        "road",
+        "outdoor",
+        "architecture",
+        "wires",
+        "extra march 5 2025 0",
+        "extra march 5 2025 1",
+        "extra march 5 2025 2",
+        "extra march 5 2025 3",
+        "extra march 5 2025 4",
+        "extra march 5 2025 5"
+      ],
+      "categories": [
+        "Buildings/Landmarks",
+        "Transportation"
+      ],
+      "illustration": false,
+      "mature": false,
+      "editorial": false
+    },
+    {
+      "filename": "20250306-a-quiet-residential-street-in-003.jpg",
+      "description": "A quiet residential street in Tokyo with parked bicycles and utility poles on March 6, 2025",
+      "keywords": [
+        "japan",
+        "tokyo",
+        "street",
+        "bicycle",
+        "residential",
+        "urban",
+        "quiet",
+        "morning",
+        "city",
+        "asphalt",
+        "utility pole",
+        "houses",
+        "neighborhood",
+        "travel",
+        "daily life",
+        "asia",
+        "road",
+        "outdoor",
+        "architecture",
+        "wires",
+        "extra march 6 2025 0",
+        "extra march 6 2025 1",
+        "extra march 6 2025 2",
+        "extra march 6 2025 3",
+        "extra march 6 2025 4",
+        "extra march 6 2025 5"
+      ],
+      "categories": [
+        "Buildings/Landmarks",
+        "Transportation"
+      ],
+      "illustration": false,
+      "mature": false,
+      "editorial": false
+    }
+  ],
+  "report_header": [
+    "file",
+    "batch",
+    "duplicate_of",
+    "quality",
+    "quality_reasons",
+    "shutterstock_rules",
+    "rules_hit",
+    "theme",
+    "theme_fit",
+    "theme_reason",
+    "your_rules_reasons",
+    "set_aside_by",
+    "approved_by_hand",
+    "status",
+    "status_label",
+    "title",
+    "place",
+    "place_source",
+    "default_place",
+    "keyword_count",
+    "metadata_issues",
+    "metadata_language",
+    "ai_model",
+    "ai_tries",
+    "ai_max_tries",
+    "rejection_reason"
+  ],
+  "report_rows": [
+    {
+      "file": "a.jpg",
+      "batch": "2025-W10",
+      "duplicate_of": "",
+      "quality": "ok",
+      "quality_reasons": "",
+      "shutterstock_rules": "ok",
+      "rules_hit": "",
+      "theme": "",
+      "theme_fit": "",
+      "theme_reason": "",
+      "your_rules_reasons": "",
+      "set_aside_by": "",
+      "approved_by_hand": "",
+      "status": "exported",
+      "status_label": "Uploaded",
+      "title": "",
+      "place": "TOKYO, JAPAN",
+      "place_source": "ai",
+      "default_place": "no",
+      "keyword_count": "26",
+      "metadata_issues": "",
+      "metadata_language": "English",
+      "ai_model": "fake/fake",
+      "ai_tries": "1",
+      "ai_max_tries": "3",
+      "rejection_reason": ""
+    },
+    {
+      "file": "b.jpg",
+      "batch": "2025-W10",
+      "duplicate_of": "",
+      "quality": "ok",
+      "quality_reasons": "",
+      "shutterstock_rules": "ok",
+      "rules_hit": "",
+      "theme": "",
+      "theme_fit": "",
+      "theme_reason": "",
+      "your_rules_reasons": "",
+      "set_aside_by": "",
+      "approved_by_hand": "",
+      "status": "exported",
+      "status_label": "Uploaded",
+      "title": "",
+      "place": "TOKYO, JAPAN",
+      "place_source": "ai",
+      "default_place": "no",
+      "keyword_count": "26",
+      "metadata_issues": "",
+      "metadata_language": "English",
+      "ai_model": "fake/fake",
+      "ai_tries": "1",
+      "ai_max_tries": "3",
+      "rejection_reason": ""
+    },
+    {
+      "file": "blurry.jpg",
+      "batch": "2025-W10",
+      "duplicate_of": "",
+      "quality": "failed",
+      "quality_reasons": "blurry: sharpness 4 (minimum 80)",
+      "shutterstock_rules": "",
+      "rules_hit": "",
+      "theme": "",
+      "theme_fit": "",
+      "theme_reason": "",
+      "your_rules_reasons": "",
+      "set_aside_by": "",
+      "approved_by_hand": "",
+      "status": "culled",
+      "status_label": "Set aside: quality",
+      "title": "",
+      "place": "",
+      "place_source": "",
+      "default_place": "",
+      "keyword_count": "",
+      "metadata_issues": "",
+      "metadata_language": "",
+      "ai_model": "",
+      "ai_tries": "",
+      "ai_max_tries": "",
+      "rejection_reason": ""
+    },
+    {
+      "file": "c.jpg",
+      "batch": "2025-W10",
+      "duplicate_of": "",
+      "quality": "ok",
+      "quality_reasons": "",
+      "shutterstock_rules": "ok",
+      "rules_hit": "",
+      "theme": "",
+      "theme_fit": "",
+      "theme_reason": "",
+      "your_rules_reasons": "",
+      "set_aside_by": "",
+      "approved_by_hand": "",
+      "status": "exported",
+      "status_label": "Uploaded",
+      "title": "",
+      "place": "TOKYO, JAPAN",
+      "place_source": "ai",
+      "default_place": "no",
+      "keyword_count": "26",
+      "metadata_issues": "",
+      "metadata_language": "English",
+      "ai_model": "fake/fake",
+      "ai_tries": "1",
+      "ai_max_tries": "3",
+      "rejection_reason": ""
+    },
+    {
+      "file": "tiny.jpg",
+      "batch": "2025-W10",
+      "duplicate_of": "",
+      "quality": "failed",
+      "quality_reasons": "too small: 0.5 MP (minimum 4 MP)",
+      "shutterstock_rules": "",
+      "rules_hit": "",
+      "theme": "",
+      "theme_fit": "",
+      "theme_reason": "",
+      "your_rules_reasons": "",
+      "set_aside_by": "",
+      "approved_by_hand": "",
+      "status": "culled",
+      "status_label": "Set aside: quality",
+      "title": "",
+      "place": "",
+      "place_source": "",
+      "default_place": "",
+      "keyword_count": "",
+      "metadata_issues": "",
+      "metadata_language": "",
+      "ai_model": "",
+      "ai_tries": "",
+      "ai_max_tries": "",
+      "rejection_reason": ""
+    }
+  ],
+  "photos": {
+    "a.jpg": {
+      "status": "exported",
+      "metadata": {
+        "filename": "a.jpg",
+        "description": "A quiet residential street in Tokyo with parked bicycles and utility poles on March 4, 2025",
+        "keywords": [
+          "japan",
+          "tokyo",
+          "street",
+          "bicycle",
+          "residential",
+          "urban",
+          "quiet",
+          "morning",
+          "city",
+          "asphalt",
+          "utility pole",
+          "houses",
+          "neighborhood",
+          "travel",
+          "daily life",
+          "asia",
+          "road",
+          "outdoor",
+          "architecture",
+          "wires",
+          "extra march 4 2025 0",
+          "extra march 4 2025 1",
+          "extra march 4 2025 2",
+          "extra march 4 2025 3",
+          "extra march 4 2025 4",
+          "extra march 4 2025 5"
+        ],
+        "categories": [
+          "Buildings/Landmarks",
+          "Transportation"
+        ],
+        "editorial": false,
+        "mature": false,
+        "illustration": false,
+        "warnings": [],
+        "location": {
+          "city": "Tokyo",
+          "region": "Tokyo",
+          "country": "Japan"
+        },
+        "place": {
+          "city": "TOKYO",
+          "country": "JAPAN",
+          "source": "ai",
+          "default": false
+        },
+        "language": "English",
+        "file_meta": {
+          "captured": "2025-03-04T10:00:00"
+        },
+        "ai_run": {
+          "model": "fake/fake",
+          "max_tries": 3
+        }
+      },
+      "metadata_source": "llm:fake/fake",
+      "guardrail": {
+        "action": "ok",
+        "hits": [],
+        "removed_keywords": [],
+        "messages": []
+      },
+      "filters": null,
+      "detected": {
+        "recognizable_people": 0,
+        "logos_or_brands": [],
+        "landmarks": [],
+        "artworks_or_characters": [],
+        "private_interior": false
+      },
+      "submit_name": "20250304-a-quiet-residential-street-in-001.jpg"
+    },
+    "b.jpg": {
+      "status": "exported",
+      "metadata": {
+        "filename": "b.jpg",
+        "description": "A quiet residential street in Tokyo with parked bicycles and utility poles on March 5, 2025",
+        "keywords": [
+          "japan",
+          "tokyo",
+          "street",
+          "bicycle",
+          "residential",
+          "urban",
+          "quiet",
+          "morning",
+          "city",
+          "asphalt",
+          "utility pole",
+          "houses",
+          "neighborhood",
+          "travel",
+          "daily life",
+          "asia",
+          "road",
+          "outdoor",
+          "architecture",
+          "wires",
+          "extra march 5 2025 0",
+          "extra march 5 2025 1",
+          "extra march 5 2025 2",
+          "extra march 5 2025 3",
+          "extra march 5 2025 4",
+          "extra march 5 2025 5"
+        ],
+        "categories": [
+          "Buildings/Landmarks",
+          "Transportation"
+        ],
+        "editorial": false,
+        "mature": false,
+        "illustration": false,
+        "warnings": [],
+        "location": {
+          "city": "Tokyo",
+          "region": "Tokyo",
+          "country": "Japan"
+        },
+        "place": {
+          "city": "TOKYO",
+          "country": "JAPAN",
+          "source": "ai",
+          "default": false
+        },
+        "language": "English",
+        "file_meta": {
+          "captured": "2025-03-05T10:00:00"
+        },
+        "ai_run": {
+          "model": "fake/fake",
+          "max_tries": 3
+        }
+      },
+      "metadata_source": "llm:fake/fake",
+      "guardrail": {
+        "action": "ok",
+        "hits": [],
+        "removed_keywords": [],
+        "messages": []
+      },
+      "filters": null,
+      "detected": {
+        "recognizable_people": 0,
+        "logos_or_brands": [],
+        "landmarks": [],
+        "artworks_or_characters": [],
+        "private_interior": false
+      },
+      "submit_name": "20250305-a-quiet-residential-street-in-002.jpg"
+    },
+    "blurry.jpg": {
+      "status": "culled",
+      "metadata": {
+        "file_meta": {
+          "captured": "2025-03-04T10:00:00"
+        }
+      },
+      "metadata_source": null,
+      "guardrail": null,
+      "filters": null,
+      "detected": null,
+      "submit_name": null
+    },
+    "c.jpg": {
+      "status": "exported",
+      "metadata": {
+        "filename": "c.jpg",
+        "description": "A quiet residential street in Tokyo with parked bicycles and utility poles on March 6, 2025",
+        "keywords": [
+          "japan",
+          "tokyo",
+          "street",
+          "bicycle",
+          "residential",
+          "urban",
+          "quiet",
+          "morning",
+          "city",
+          "asphalt",
+          "utility pole",
+          "houses",
+          "neighborhood",
+          "travel",
+          "daily life",
+          "asia",
+          "road",
+          "outdoor",
+          "architecture",
+          "wires",
+          "extra march 6 2025 0",
+          "extra march 6 2025 1",
+          "extra march 6 2025 2",
+          "extra march 6 2025 3",
+          "extra march 6 2025 4",
+          "extra march 6 2025 5"
+        ],
+        "categories": [
+          "Buildings/Landmarks",
+          "Transportation"
+        ],
+        "editorial": false,
+        "mature": false,
+        "illustration": false,
+        "warnings": [],
+        "location": {
+          "city": "Tokyo",
+          "region": "Tokyo",
+          "country": "Japan"
+        },
+        "place": {
+          "city": "TOKYO",
+          "country": "JAPAN",
+          "source": "ai",
+          "default": false
+        },
+        "language": "English",
+        "file_meta": {
+          "captured": "2025-03-06T10:00:00"
+        },
+        "ai_run": {
+          "model": "fake/fake",
+          "max_tries": 3
+        }
+      },
+      "metadata_source": "llm:fake/fake",
+      "guardrail": {
+        "action": "ok",
+        "hits": [],
+        "removed_keywords": [],
+        "messages": []
+      },
+      "filters": null,
+      "detected": {
+        "recognizable_people": 0,
+        "logos_or_brands": [],
+        "landmarks": [],
+        "artworks_or_characters": [],
+        "private_interior": false
+      },
+      "submit_name": "20250306-a-quiet-residential-street-in-003.jpg"
+    },
+    "tiny.jpg": {
+      "status": "culled",
+      "metadata": {
+        "file_meta": {
+          "captured": "2025-03-04T10:00:00"
+        }
+      },
+      "metadata_source": null,
+      "guardrail": null,
+      "filters": null,
+      "detected": null,
+      "submit_name": null
+    }
+  },
+  "prepared_has_iptc_and_xmp": true
+}

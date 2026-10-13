@@ -1,0 +1,22 @@
+usage: shuto edit [-h] [--config CONFIG] [-v] [--description DESCRIPTION] [--title TITLE]
+                  [--keywords KEYWORDS] [--categories CATEGORIES] [--editorial | --no-editorial]
+                  [--mature | --no-mature] [--release RELEASE]
+                  id
+
+edit metadata of one photo (guardrails re-run)
+
+positional arguments:
+  id
+
+options:
+  -h, --help            show this help message and exit
+  --config CONFIG       path to shuto.yaml
+  -v, --verbose
+  --description DESCRIPTION
+  --title TITLE
+  --keywords KEYWORDS   comma separated
+  --categories CATEGORIES
+                        comma separated
+  --editorial, --no-editorial
+  --mature, --no-mature
+  --release RELEASE     release id; prefix property: for property

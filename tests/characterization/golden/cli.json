@@ -1,0 +1,2433 @@
+{
+  "options": [
+    {
+      "flags": [
+        "--config"
+      ],
+      "dest": "config",
+      "kind": "_StoreAction",
+      "default": null,
+      "suppressed_default": true,
+      "choices": null,
+      "nargs": null,
+      "required": false,
+      "type": null
+    },
+    {
+      "flags": [
+        "-v",
+        "--verbose"
+      ],
+      "dest": "verbose",
+      "kind": "_CountAction",
+      "default": null,
+      "suppressed_default": true,
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    },
+    {
+      "flags": [
+        "--version"
+      ],
+      "dest": "version",
+      "kind": "_VersionAction",
+      "default": null,
+      "suppressed_default": true,
+      "choices": null,
+      "nargs": 0,
+      "required": false,
+      "type": null
+    }
+  ],
+  "commands": {
+    "ui": {
+      "options": [
+        {
+          "flags": [
+            "--config"
+          ],
+          "dest": "config",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": null,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "-v",
+            "--verbose"
+          ],
+          "dest": "verbose",
+          "kind": "_CountAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "--host"
+          ],
+          "dest": "host",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": null,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "--port"
+          ],
+          "dest": "port",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": null,
+          "required": false,
+          "type": "int"
+        },
+        {
+          "flags": [
+            "--no-browser"
+          ],
+          "dest": "no_browser",
+          "kind": "_StoreTrueAction",
+          "default": false,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        }
+      ],
+      "commands": {}
+    },
+    "shortcut": {
+      "options": [
+        {
+          "flags": [
+            "--config"
+          ],
+          "dest": "config",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": null,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "-v",
+            "--verbose"
+          ],
+          "dest": "verbose",
+          "kind": "_CountAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "--remove"
+          ],
+          "dest": "remove",
+          "kind": "_StoreTrueAction",
+          "default": false,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "--no-desktop"
+          ],
+          "dest": "no_desktop",
+          "kind": "_StoreTrueAction",
+          "default": false,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "--no-menu"
+          ],
+          "dest": "no_menu",
+          "kind": "_StoreTrueAction",
+          "default": false,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        }
+      ],
+      "commands": {}
+    },
+    "uninstall": {
+      "options": [
+        {
+          "flags": [
+            "--config"
+          ],
+          "dest": "config",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": null,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "-v",
+            "--verbose"
+          ],
+          "dest": "verbose",
+          "kind": "_CountAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "--yes"
+          ],
+          "dest": "yes",
+          "kind": "_StoreTrueAction",
+          "default": false,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "--delete-data"
+          ],
+          "dest": "delete_data",
+          "kind": "_StoreTrueAction",
+          "default": false,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "--keep-login"
+          ],
+          "dest": "keep_login",
+          "kind": "_StoreTrueAction",
+          "default": false,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        }
+      ],
+      "commands": {}
+    },
+    "init": {
+      "options": [
+        {
+          "flags": [
+            "--config"
+          ],
+          "dest": "config",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": null,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "-v",
+            "--verbose"
+          ],
+          "dest": "verbose",
+          "kind": "_CountAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        }
+      ],
+      "commands": {}
+    },
+    "doctor": {
+      "options": [
+        {
+          "flags": [
+            "--config"
+          ],
+          "dest": "config",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": null,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "-v",
+            "--verbose"
+          ],
+          "dest": "verbose",
+          "kind": "_CountAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        }
+      ],
+      "commands": {}
+    },
+    "models": {
+      "options": [
+        {
+          "flags": [
+            "--config"
+          ],
+          "dest": "config",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": null,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "-v",
+            "--verbose"
+          ],
+          "dest": "verbose",
+          "kind": "_CountAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        }
+      ],
+      "commands": {
+        "list": {
+          "options": [
+            {
+              "flags": [
+                "--config"
+              ],
+              "dest": "config",
+              "kind": "_StoreAction",
+              "default": null,
+              "suppressed_default": true,
+              "choices": null,
+              "nargs": null,
+              "required": false,
+              "type": null
+            },
+            {
+              "flags": [
+                "-v",
+                "--verbose"
+              ],
+              "dest": "verbose",
+              "kind": "_CountAction",
+              "default": null,
+              "suppressed_default": true,
+              "choices": null,
+              "nargs": 0,
+              "required": false,
+              "type": null
+            }
+          ],
+          "commands": {}
+        },
+        "pull": {
+          "options": [
+            {
+              "flags": [
+                "--config"
+              ],
+              "dest": "config",
+              "kind": "_StoreAction",
+              "default": null,
+              "suppressed_default": true,
+              "choices": null,
+              "nargs": null,
+              "required": false,
+              "type": null
+            },
+            {
+              "flags": [
+                "-v",
+                "--verbose"
+              ],
+              "dest": "verbose",
+              "kind": "_CountAction",
+              "default": null,
+              "suppressed_default": true,
+              "choices": null,
+              "nargs": 0,
+              "required": false,
+              "type": null
+            },
+            {
+              "flags": [],
+              "dest": "tag",
+              "kind": "_StoreAction",
+              "default": null,
+              "suppressed_default": false,
+              "choices": null,
+              "nargs": null,
+              "required": true,
+              "type": null
+            },
+            {
+              "flags": [
+                "--yes"
+              ],
+              "dest": "yes",
+              "kind": "_StoreTrueAction",
+              "default": false,
+              "suppressed_default": false,
+              "choices": null,
+              "nargs": 0,
+              "required": false,
+              "type": null
+            }
+          ],
+          "commands": {}
+        },
+        "use": {
+          "options": [
+            {
+              "flags": [
+                "--config"
+              ],
+              "dest": "config",
+              "kind": "_StoreAction",
+              "default": null,
+              "suppressed_default": true,
+              "choices": null,
+              "nargs": null,
+              "required": false,
+              "type": null
+            },
+            {
+              "flags": [
+                "-v",
+                "--verbose"
+              ],
+              "dest": "verbose",
+              "kind": "_CountAction",
+              "default": null,
+              "suppressed_default": true,
+              "choices": null,
+              "nargs": 0,
+              "required": false,
+              "type": null
+            },
+            {
+              "flags": [],
+              "dest": "spec",
+              "kind": "_StoreAction",
+              "default": null,
+              "suppressed_default": false,
+              "choices": null,
+              "nargs": null,
+              "required": true,
+              "type": null
+            }
+          ],
+          "commands": {}
+        },
+        "bench": {
+          "options": [
+            {
+              "flags": [
+                "--config"
+              ],
+              "dest": "config",
+              "kind": "_StoreAction",
+              "default": null,
+              "suppressed_default": true,
+              "choices": null,
+              "nargs": null,
+              "required": false,
+              "type": null
+            },
+            {
+              "flags": [
+                "-v",
+                "--verbose"
+              ],
+              "dest": "verbose",
+              "kind": "_CountAction",
+              "default": null,
+              "suppressed_default": true,
+              "choices": null,
+              "nargs": 0,
+              "required": false,
+              "type": null
+            },
+            {
+              "flags": [],
+              "dest": "model",
+              "kind": "_StoreAction",
+              "default": null,
+              "suppressed_default": false,
+              "choices": null,
+              "nargs": "?",
+              "required": false,
+              "type": null
+            }
+          ],
+          "commands": {}
+        }
+      }
+    },
+    "import": {
+      "options": [
+        {
+          "flags": [
+            "--config"
+          ],
+          "dest": "config",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": null,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "-v",
+            "--verbose"
+          ],
+          "dest": "verbose",
+          "kind": "_CountAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [],
+          "dest": "path",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": "?",
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "--no-recursive"
+          ],
+          "dest": "no_recursive",
+          "kind": "_StoreTrueAction",
+          "default": false,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "--notes"
+          ],
+          "dest": "notes",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": null,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "--force"
+          ],
+          "dest": "force",
+          "kind": "_StoreTrueAction",
+          "default": false,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "--yes"
+          ],
+          "dest": "yes",
+          "kind": "_StoreTrueAction",
+          "default": false,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "--mark-uploaded"
+          ],
+          "dest": "mark_uploaded",
+          "kind": "_StoreTrueAction",
+          "default": false,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        }
+      ],
+      "commands": {}
+    },
+    "ledger": {
+      "options": [
+        {
+          "flags": [
+            "--config"
+          ],
+          "dest": "config",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": null,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "-v",
+            "--verbose"
+          ],
+          "dest": "verbose",
+          "kind": "_CountAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        }
+      ],
+      "commands": {
+        "export": {
+          "options": [
+            {
+              "flags": [
+                "--config"
+              ],
+              "dest": "config",
+              "kind": "_StoreAction",
+              "default": null,
+              "suppressed_default": true,
+              "choices": null,
+              "nargs": null,
+              "required": false,
+              "type": null
+            },
+            {
+              "flags": [
+                "-v",
+                "--verbose"
+              ],
+              "dest": "verbose",
+              "kind": "_CountAction",
+              "default": null,
+              "suppressed_default": true,
+              "choices": null,
+              "nargs": 0,
+              "required": false,
+              "type": null
+            },
+            {
+              "flags": [],
+              "dest": "path",
+              "kind": "_StoreAction",
+              "default": null,
+              "suppressed_default": false,
+              "choices": null,
+              "nargs": "?",
+              "required": false,
+              "type": null
+            }
+          ],
+          "commands": {}
+        },
+        "import": {
+          "options": [
+            {
+              "flags": [
+                "--config"
+              ],
+              "dest": "config",
+              "kind": "_StoreAction",
+              "default": null,
+              "suppressed_default": true,
+              "choices": null,
+              "nargs": null,
+              "required": false,
+              "type": null
+            },
+            {
+              "flags": [
+                "-v",
+                "--verbose"
+              ],
+              "dest": "verbose",
+              "kind": "_CountAction",
+              "default": null,
+              "suppressed_default": true,
+              "choices": null,
+              "nargs": 0,
+              "required": false,
+              "type": null
+            },
+            {
+              "flags": [],
+              "dest": "path",
+              "kind": "_StoreAction",
+              "default": null,
+              "suppressed_default": false,
+              "choices": null,
+              "nargs": null,
+              "required": true,
+              "type": null
+            }
+          ],
+          "commands": {}
+        }
+      }
+    },
+    "cull": {
+      "options": [
+        {
+          "flags": [
+            "--config"
+          ],
+          "dest": "config",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": null,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "-v",
+            "--verbose"
+          ],
+          "dest": "verbose",
+          "kind": "_CountAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [],
+          "dest": "batch",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": null,
+          "required": true,
+          "type": null
+        },
+        {
+          "flags": [
+            "--explain"
+          ],
+          "dest": "explain",
+          "kind": "_StoreTrueAction",
+          "default": false,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        }
+      ],
+      "commands": {}
+    },
+    "describe": {
+      "options": [
+        {
+          "flags": [
+            "--config"
+          ],
+          "dest": "config",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": null,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "-v",
+            "--verbose"
+          ],
+          "dest": "verbose",
+          "kind": "_CountAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [],
+          "dest": "batch",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": null,
+          "required": true,
+          "type": null
+        },
+        {
+          "flags": [
+            "--ids"
+          ],
+          "dest": "ids",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": "+",
+          "required": false,
+          "type": "int"
+        },
+        {
+          "flags": [
+            "--yes"
+          ],
+          "dest": "yes",
+          "kind": "_StoreTrueAction",
+          "default": false,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "--provider"
+          ],
+          "dest": "provider",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": null,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "--model"
+          ],
+          "dest": "model",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": null,
+          "required": false,
+          "type": null
+        }
+      ],
+      "commands": {}
+    },
+    "run": {
+      "options": [
+        {
+          "flags": [
+            "--config"
+          ],
+          "dest": "config",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": null,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "-v",
+            "--verbose"
+          ],
+          "dest": "verbose",
+          "kind": "_CountAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [],
+          "dest": "path",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": null,
+          "required": true,
+          "type": null
+        },
+        {
+          "flags": [
+            "--notes"
+          ],
+          "dest": "notes",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": null,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "--yes"
+          ],
+          "dest": "yes",
+          "kind": "_StoreTrueAction",
+          "default": false,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "--provider"
+          ],
+          "dest": "provider",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": null,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "--model"
+          ],
+          "dest": "model",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": null,
+          "required": false,
+          "type": null
+        }
+      ],
+      "commands": {}
+    },
+    "review": {
+      "options": [
+        {
+          "flags": [
+            "--config"
+          ],
+          "dest": "config",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": null,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "-v",
+            "--verbose"
+          ],
+          "dest": "verbose",
+          "kind": "_CountAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [],
+          "dest": "batch",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": null,
+          "required": true,
+          "type": null
+        },
+        {
+          "flags": [
+            "--status"
+          ],
+          "dest": "status",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": false,
+          "choices": [
+            "imported",
+            "duplicate",
+            "near_duplicate",
+            "already_uploaded",
+            "culled",
+            "ready",
+            "described",
+            "needs_review",
+            "blocked",
+            "set_aside",
+            "approved",
+            "prepared",
+            "uploaded",
+            "exported",
+            "submitted",
+            "accepted",
+            "rejected"
+          ],
+          "nargs": null,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "--full"
+          ],
+          "dest": "full",
+          "kind": "_StoreTrueAction",
+          "default": false,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        }
+      ],
+      "commands": {}
+    },
+    "edit": {
+      "options": [
+        {
+          "flags": [
+            "--config"
+          ],
+          "dest": "config",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": null,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "-v",
+            "--verbose"
+          ],
+          "dest": "verbose",
+          "kind": "_CountAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [],
+          "dest": "id",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": null,
+          "required": true,
+          "type": "int"
+        },
+        {
+          "flags": [
+            "--description"
+          ],
+          "dest": "description",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": null,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "--title"
+          ],
+          "dest": "title",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": null,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "--keywords"
+          ],
+          "dest": "keywords",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": null,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "--categories"
+          ],
+          "dest": "categories",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": null,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "--editorial",
+            "--no-editorial"
+          ],
+          "dest": "editorial",
+          "kind": "BooleanOptionalAction",
+          "default": null,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "--mature",
+            "--no-mature"
+          ],
+          "dest": "mature",
+          "kind": "BooleanOptionalAction",
+          "default": null,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "--release"
+          ],
+          "dest": "release",
+          "kind": "_AppendAction",
+          "default": null,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": null,
+          "required": false,
+          "type": null
+        }
+      ],
+      "commands": {}
+    },
+    "approve": {
+      "options": [
+        {
+          "flags": [
+            "--config"
+          ],
+          "dest": "config",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": null,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "-v",
+            "--verbose"
+          ],
+          "dest": "verbose",
+          "kind": "_CountAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [],
+          "dest": "batch",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": "?",
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "--ids"
+          ],
+          "dest": "ids",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": "+",
+          "required": false,
+          "type": "int"
+        },
+        {
+          "flags": [
+            "--include-review"
+          ],
+          "dest": "include_review",
+          "kind": "_StoreTrueAction",
+          "default": false,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        }
+      ],
+      "commands": {}
+    },
+    "prepare": {
+      "options": [
+        {
+          "flags": [
+            "--config"
+          ],
+          "dest": "config",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": null,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "-v",
+            "--verbose"
+          ],
+          "dest": "verbose",
+          "kind": "_CountAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [],
+          "dest": "batch",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": null,
+          "required": true,
+          "type": null
+        },
+        {
+          "flags": [
+            "--ids"
+          ],
+          "dest": "ids",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": "+",
+          "required": false,
+          "type": "int"
+        }
+      ],
+      "commands": {}
+    },
+    "upload": {
+      "options": [
+        {
+          "flags": [
+            "--config"
+          ],
+          "dest": "config",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": null,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "-v",
+            "--verbose"
+          ],
+          "dest": "verbose",
+          "kind": "_CountAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [],
+          "dest": "batch",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": null,
+          "required": true,
+          "type": null
+        },
+        {
+          "flags": [
+            "--ids"
+          ],
+          "dest": "ids",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": "+",
+          "required": false,
+          "type": "int"
+        },
+        {
+          "flags": [
+            "--yes"
+          ],
+          "dest": "yes",
+          "kind": "_StoreTrueAction",
+          "default": false,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        }
+      ],
+      "commands": {}
+    },
+    "reupload": {
+      "options": [
+        {
+          "flags": [
+            "--config"
+          ],
+          "dest": "config",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": null,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "-v",
+            "--verbose"
+          ],
+          "dest": "verbose",
+          "kind": "_CountAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [],
+          "dest": "batch",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": null,
+          "required": true,
+          "type": null
+        },
+        {
+          "flags": [
+            "--ids"
+          ],
+          "dest": "ids",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": "+",
+          "required": false,
+          "type": "int"
+        },
+        {
+          "flags": [
+            "--all"
+          ],
+          "dest": "all",
+          "kind": "_StoreTrueAction",
+          "default": false,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "--include-submitted"
+          ],
+          "dest": "include_submitted",
+          "kind": "_StoreTrueAction",
+          "default": false,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "--yes"
+          ],
+          "dest": "yes",
+          "kind": "_StoreTrueAction",
+          "default": false,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        }
+      ],
+      "commands": {}
+    },
+    "export": {
+      "options": [
+        {
+          "flags": [
+            "--config"
+          ],
+          "dest": "config",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": null,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "-v",
+            "--verbose"
+          ],
+          "dest": "verbose",
+          "kind": "_CountAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [],
+          "dest": "batch",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": null,
+          "required": true,
+          "type": null
+        },
+        {
+          "flags": [
+            "--dry-run"
+          ],
+          "dest": "dry_run",
+          "kind": "_StoreTrueAction",
+          "default": false,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        }
+      ],
+      "commands": {}
+    },
+    "submitted": {
+      "options": [
+        {
+          "flags": [
+            "--config"
+          ],
+          "dest": "config",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": null,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "-v",
+            "--verbose"
+          ],
+          "dest": "verbose",
+          "kind": "_CountAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [],
+          "dest": "batch",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": null,
+          "required": true,
+          "type": null
+        }
+      ],
+      "commands": {}
+    },
+    "status": {
+      "options": [
+        {
+          "flags": [
+            "--config"
+          ],
+          "dest": "config",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": null,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "-v",
+            "--verbose"
+          ],
+          "dest": "verbose",
+          "kind": "_CountAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [],
+          "dest": "batch",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": "?",
+          "required": false,
+          "type": null
+        }
+      ],
+      "commands": {}
+    },
+    "rules": {
+      "options": [
+        {
+          "flags": [
+            "--config"
+          ],
+          "dest": "config",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": null,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "-v",
+            "--verbose"
+          ],
+          "dest": "verbose",
+          "kind": "_CountAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        }
+      ],
+      "commands": {
+        "list": {
+          "options": [
+            {
+              "flags": [
+                "--config"
+              ],
+              "dest": "config",
+              "kind": "_StoreAction",
+              "default": null,
+              "suppressed_default": true,
+              "choices": null,
+              "nargs": null,
+              "required": false,
+              "type": null
+            },
+            {
+              "flags": [
+                "-v",
+                "--verbose"
+              ],
+              "dest": "verbose",
+              "kind": "_CountAction",
+              "default": null,
+              "suppressed_default": true,
+              "choices": null,
+              "nargs": 0,
+              "required": false,
+              "type": null
+            }
+          ],
+          "commands": {}
+        },
+        "add": {
+          "options": [
+            {
+              "flags": [
+                "--config"
+              ],
+              "dest": "config",
+              "kind": "_StoreAction",
+              "default": null,
+              "suppressed_default": true,
+              "choices": null,
+              "nargs": null,
+              "required": false,
+              "type": null
+            },
+            {
+              "flags": [
+                "-v",
+                "--verbose"
+              ],
+              "dest": "verbose",
+              "kind": "_CountAction",
+              "default": null,
+              "suppressed_default": true,
+              "choices": null,
+              "nargs": 0,
+              "required": false,
+              "type": null
+            },
+            {
+              "flags": [
+                "--avoid"
+              ],
+              "dest": "avoid",
+              "kind": "_StoreAction",
+              "default": null,
+              "suppressed_default": false,
+              "choices": null,
+              "nargs": null,
+              "required": false,
+              "type": null
+            },
+            {
+              "flags": [
+                "--include"
+              ],
+              "dest": "include",
+              "kind": "_StoreAction",
+              "default": null,
+              "suppressed_default": false,
+              "choices": null,
+              "nargs": null,
+              "required": false,
+              "type": null
+            },
+            {
+              "flags": [
+                "--flag"
+              ],
+              "dest": "flag",
+              "kind": "_StoreTrueAction",
+              "default": false,
+              "suppressed_default": false,
+              "choices": null,
+              "nargs": 0,
+              "required": false,
+              "type": null
+            }
+          ],
+          "commands": {}
+        },
+        "remove": {
+          "options": [
+            {
+              "flags": [
+                "--config"
+              ],
+              "dest": "config",
+              "kind": "_StoreAction",
+              "default": null,
+              "suppressed_default": true,
+              "choices": null,
+              "nargs": null,
+              "required": false,
+              "type": null
+            },
+            {
+              "flags": [
+                "-v",
+                "--verbose"
+              ],
+              "dest": "verbose",
+              "kind": "_CountAction",
+              "default": null,
+              "suppressed_default": true,
+              "choices": null,
+              "nargs": 0,
+              "required": false,
+              "type": null
+            },
+            {
+              "flags": [],
+              "dest": "id",
+              "kind": "_StoreAction",
+              "default": null,
+              "suppressed_default": false,
+              "choices": null,
+              "nargs": null,
+              "required": true,
+              "type": null
+            }
+          ],
+          "commands": {}
+        },
+        "clear": {
+          "options": [
+            {
+              "flags": [
+                "--config"
+              ],
+              "dest": "config",
+              "kind": "_StoreAction",
+              "default": null,
+              "suppressed_default": true,
+              "choices": null,
+              "nargs": null,
+              "required": false,
+              "type": null
+            },
+            {
+              "flags": [
+                "-v",
+                "--verbose"
+              ],
+              "dest": "verbose",
+              "kind": "_CountAction",
+              "default": null,
+              "suppressed_default": true,
+              "choices": null,
+              "nargs": 0,
+              "required": false,
+              "type": null
+            }
+          ],
+          "commands": {}
+        },
+        "mode": {
+          "options": [
+            {
+              "flags": [
+                "--config"
+              ],
+              "dest": "config",
+              "kind": "_StoreAction",
+              "default": null,
+              "suppressed_default": true,
+              "choices": null,
+              "nargs": null,
+              "required": false,
+              "type": null
+            },
+            {
+              "flags": [
+                "-v",
+                "--verbose"
+              ],
+              "dest": "verbose",
+              "kind": "_CountAction",
+              "default": null,
+              "suppressed_default": true,
+              "choices": null,
+              "nargs": 0,
+              "required": false,
+              "type": null
+            },
+            {
+              "flags": [],
+              "dest": "id",
+              "kind": "_StoreAction",
+              "default": null,
+              "suppressed_default": false,
+              "choices": null,
+              "nargs": null,
+              "required": true,
+              "type": null
+            },
+            {
+              "flags": [],
+              "dest": "mode",
+              "kind": "_StoreAction",
+              "default": null,
+              "suppressed_default": false,
+              "choices": null,
+              "nargs": null,
+              "required": true,
+              "type": null
+            }
+          ],
+          "commands": {}
+        },
+        "theme": {
+          "options": [
+            {
+              "flags": [
+                "--config"
+              ],
+              "dest": "config",
+              "kind": "_StoreAction",
+              "default": null,
+              "suppressed_default": true,
+              "choices": null,
+              "nargs": null,
+              "required": false,
+              "type": null
+            },
+            {
+              "flags": [
+                "-v",
+                "--verbose"
+              ],
+              "dest": "verbose",
+              "kind": "_CountAction",
+              "default": null,
+              "suppressed_default": true,
+              "choices": null,
+              "nargs": 0,
+              "required": false,
+              "type": null
+            },
+            {
+              "flags": [],
+              "dest": "state",
+              "kind": "_StoreAction",
+              "default": null,
+              "suppressed_default": false,
+              "choices": null,
+              "nargs": null,
+              "required": true,
+              "type": null
+            }
+          ],
+          "commands": {}
+        },
+        "partly": {
+          "options": [
+            {
+              "flags": [
+                "--config"
+              ],
+              "dest": "config",
+              "kind": "_StoreAction",
+              "default": null,
+              "suppressed_default": true,
+              "choices": null,
+              "nargs": null,
+              "required": false,
+              "type": null
+            },
+            {
+              "flags": [
+                "-v",
+                "--verbose"
+              ],
+              "dest": "verbose",
+              "kind": "_CountAction",
+              "default": null,
+              "suppressed_default": true,
+              "choices": null,
+              "nargs": 0,
+              "required": false,
+              "type": null
+            },
+            {
+              "flags": [],
+              "dest": "how",
+              "kind": "_StoreAction",
+              "default": null,
+              "suppressed_default": false,
+              "choices": null,
+              "nargs": null,
+              "required": true,
+              "type": null
+            }
+          ],
+          "commands": {}
+        }
+      }
+    },
+    "report": {
+      "options": [
+        {
+          "flags": [
+            "--config"
+          ],
+          "dest": "config",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": null,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "-v",
+            "--verbose"
+          ],
+          "dest": "verbose",
+          "kind": "_CountAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [],
+          "dest": "batch",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": null,
+          "required": true,
+          "type": null
+        },
+        {
+          "flags": [
+            "--out"
+          ],
+          "dest": "out",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": null,
+          "required": false,
+          "type": null
+        }
+      ],
+      "commands": {}
+    },
+    "reject": {
+      "options": [
+        {
+          "flags": [
+            "--config"
+          ],
+          "dest": "config",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": null,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "-v",
+            "--verbose"
+          ],
+          "dest": "verbose",
+          "kind": "_CountAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [],
+          "dest": "file",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": null,
+          "required": true,
+          "type": null
+        },
+        {
+          "flags": [
+            "--reason"
+          ],
+          "dest": "reason",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": false,
+          "choices": [
+            "focus",
+            "noise",
+            "lighting",
+            "composition",
+            "trademark",
+            "property_release",
+            "model_release",
+            "title",
+            "keywords",
+            "editorial_caption",
+            "similar",
+            "limited_value",
+            "ip",
+            "other"
+          ],
+          "nargs": null,
+          "required": true,
+          "type": null
+        },
+        {
+          "flags": [
+            "--note"
+          ],
+          "dest": "note",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": null,
+          "required": false,
+          "type": null
+        }
+      ],
+      "commands": {}
+    },
+    "accept": {
+      "options": [
+        {
+          "flags": [
+            "--config"
+          ],
+          "dest": "config",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": null,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "-v",
+            "--verbose"
+          ],
+          "dest": "verbose",
+          "kind": "_CountAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [],
+          "dest": "file",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": null,
+          "required": true,
+          "type": null
+        }
+      ],
+      "commands": {}
+    },
+    "secrets": {
+      "options": [
+        {
+          "flags": [
+            "--config"
+          ],
+          "dest": "config",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": null,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "-v",
+            "--verbose"
+          ],
+          "dest": "verbose",
+          "kind": "_CountAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        }
+      ],
+      "commands": {
+        "set": {
+          "options": [
+            {
+              "flags": [
+                "--config"
+              ],
+              "dest": "config",
+              "kind": "_StoreAction",
+              "default": null,
+              "suppressed_default": true,
+              "choices": null,
+              "nargs": null,
+              "required": false,
+              "type": null
+            },
+            {
+              "flags": [
+                "-v",
+                "--verbose"
+              ],
+              "dest": "verbose",
+              "kind": "_CountAction",
+              "default": null,
+              "suppressed_default": true,
+              "choices": null,
+              "nargs": 0,
+              "required": false,
+              "type": null
+            },
+            {
+              "flags": [],
+              "dest": "name",
+              "kind": "_StoreAction",
+              "default": null,
+              "suppressed_default": false,
+              "choices": null,
+              "nargs": null,
+              "required": true,
+              "type": null
+            }
+          ],
+          "commands": {}
+        }
+      }
+    },
+    "check-ftps": {
+      "options": [
+        {
+          "flags": [
+            "--config"
+          ],
+          "dest": "config",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": null,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "-v",
+            "--verbose"
+          ],
+          "dest": "verbose",
+          "kind": "_CountAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "--upload"
+          ],
+          "dest": "upload",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": false,
+          "choices": null,
+          "nargs": null,
+          "required": false,
+          "type": null
+        }
+      ],
+      "commands": {}
+    },
+    "restrictions": {
+      "options": [
+        {
+          "flags": [
+            "--config"
+          ],
+          "dest": "config",
+          "kind": "_StoreAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": null,
+          "required": false,
+          "type": null
+        },
+        {
+          "flags": [
+            "-v",
+            "--verbose"
+          ],
+          "dest": "verbose",
+          "kind": "_CountAction",
+          "default": null,
+          "suppressed_default": true,
+          "choices": null,
+          "nargs": 0,
+          "required": false,
+          "type": null
+        }
+      ],
+      "commands": {
+        "list": {
+          "options": [
+            {
+              "flags": [
+                "--config"
+              ],
+              "dest": "config",
+              "kind": "_StoreAction",
+              "default": null,
+              "suppressed_default": true,
+              "choices": null,
+              "nargs": null,
+              "required": false,
+              "type": null
+            },
+            {
+              "flags": [
+                "-v",
+                "--verbose"
+              ],
+              "dest": "verbose",
+              "kind": "_CountAction",
+              "default": null,
+              "suppressed_default": true,
+              "choices": null,
+              "nargs": 0,
+              "required": false,
+              "type": null
+            },
+            {
+              "flags": [
+                "--level"
+              ],
+              "dest": "level",
+              "kind": "_StoreAction",
+              "default": null,
+              "suppressed_default": false,
+              "choices": null,
+              "nargs": null,
+              "required": false,
+              "type": null
+            }
+          ],
+          "commands": {}
+        },
+        "check": {
+          "options": [
+            {
+              "flags": [
+                "--config"
+              ],
+              "dest": "config",
+              "kind": "_StoreAction",
+              "default": null,
+              "suppressed_default": true,
+              "choices": null,
+              "nargs": null,
+              "required": false,
+              "type": null
+            },
+            {
+              "flags": [
+                "-v",
+                "--verbose"
+              ],
+              "dest": "verbose",
+              "kind": "_CountAction",
+              "default": null,
+              "suppressed_default": true,
+              "choices": null,
+              "nargs": 0,
+              "required": false,
+              "type": null
+            },
+            {
+              "flags": [],
+              "dest": "text",
+              "kind": "_StoreAction",
+              "default": null,
+              "suppressed_default": false,
+              "choices": null,
+              "nargs": null,
+              "required": true,
+              "type": null
+            }
+          ],
+          "commands": {}
+        }
+      }
+    }
+  }
+}

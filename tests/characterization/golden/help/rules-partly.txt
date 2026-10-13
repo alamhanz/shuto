@@ -1,0 +1,9 @@
+usage: shuto rules partly [-h] [--config CONFIG] [-v] {pass,flag}
+
+positional arguments:
+  {pass,flag}      pass = let through, flag = needs a look
+
+options:
+  -h, --help       show this help message and exit
+  --config CONFIG  path to shuto.yaml
+  -v, --verbose

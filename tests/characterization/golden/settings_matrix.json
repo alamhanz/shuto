@@ -1,0 +1,560 @@
+{
+  "onboarded": [
+    {
+      "ok": true,
+      "input": "True",
+      "stored": true
+    },
+    {
+      "ok": false,
+      "input": "False",
+      "stored": false
+    },
+    {
+      "ok": "",
+      "input": "''",
+      "stored": ""
+    },
+    {
+      "ok": null,
+      "input": "None",
+      "stored": null
+    },
+    {
+      "ok": "yes",
+      "input": "'yes'",
+      "stored": "yes"
+    }
+  ],
+  "last_folder": [
+    {
+      "ok": "D:/photos",
+      "input": "'D:/photos'",
+      "stored": "D:/photos"
+    },
+    {
+      "ok": "",
+      "input": "''",
+      "stored": ""
+    },
+    {
+      "ok": null,
+      "input": "None",
+      "stored": null
+    }
+  ],
+  "style": [
+    {
+      "ok": {
+        "theme": "Everyday Japan",
+        "tone": "calm"
+      },
+      "input": "{'theme': 'Everyday Japan', 'tone': 'calm'}",
+      "stored": {
+        "theme": "Everyday Japan",
+        "tone": "calm"
+      }
+    },
+    {
+      "ok": {},
+      "input": "{}",
+      "stored": {}
+    },
+    {
+      "error": "Keep the theme under 200 characters.",
+      "input": "{'theme': 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'}",
+      "stored": {}
+    },
+    {
+      "error": "Keep the extra notes under 2000 characters.",
+      "input": "{'extra_instructions': 'yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy'}",
+      "stored": {}
+    },
+    {
+      "ok": {
+        "always_include": [
+          "tokyo",
+          "kyoto"
+        ]
+      },
+      "input": "{'always_include': 'tokyo\\nkyoto, tokyo,Tokyo'}",
+      "stored": {
+        "always_include": [
+          "tokyo",
+          "kyoto"
+        ]
+      }
+    },
+    {
+      "error": "Use at most 20 always-include keywords.",
+      "input": "{'always_include': ['w0', 'w1', 'w2', 'w3', 'w4', 'w5', 'w6', 'w7', 'w8', 'w9', 'w10', 'w11', 'w12', 'w13', 'w14', 'w15', 'w16', 'w17', 'w18', 'w19', 'w20']}",
+      "stored": {
+        "always_include": [
+          "tokyo",
+          "kyoto"
+        ]
+      }
+    },
+    {
+      "ok": {
+        "region_focus": "japan"
+      },
+      "input": "{'region_focus': 'Japan'}",
+      "stored": {
+        "region_focus": "japan"
+      }
+    },
+    {
+      "error": "Region focus must be None or Japan.",
+      "input": "{'region_focus': 'france'}",
+      "stored": {
+        "region_focus": "japan"
+      }
+    },
+    {
+      "ok": {
+        "default_city": "Kyoto",
+        "default_country": "Japan"
+      },
+      "input": "{'default_city': 'Kyoto', 'default_country': 'Japan'}",
+      "stored": {
+        "default_city": "Kyoto",
+        "default_country": "Japan"
+      }
+    },
+    {
+      "error": "Default place, city: Write the place in English letters, for example Tokyo or Japan.",
+      "input": "{'default_city': 'Kyoto 2'}",
+      "stored": {
+        "default_city": "Kyoto",
+        "default_country": "Japan"
+      }
+    },
+    {
+      "error": "Default place, country: Keep each place name under 60 characters.",
+      "input": "{'default_country': 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'}",
+      "stored": {
+        "default_city": "Kyoto",
+        "default_country": "Japan"
+      }
+    },
+    {
+      "error": "Style settings must be a set of named values.",
+      "input": "'damaged'",
+      "stored": {
+        "default_city": "Kyoto",
+        "default_country": "Japan"
+      }
+    },
+    {
+      "error": "Style settings must be a set of named values.",
+      "input": "None",
+      "stored": {
+        "default_city": "Kyoto",
+        "default_country": "Japan"
+      }
+    }
+  ],
+  "filters": [
+    {
+      "ok": {
+        "theme_check": true,
+        "theme_partly": "flag"
+      },
+      "input": "{'theme_check': True, 'theme_partly': 'flag'}",
+      "stored": {
+        "theme_check": true,
+        "theme_partly": "flag"
+      }
+    },
+    {
+      "error": "Photos that fit the theme \"partly\" can be let through or flagged.",
+      "input": "{'theme_partly': 'sometimes'}",
+      "stored": {
+        "theme_check": true,
+        "theme_partly": "flag"
+      }
+    },
+    {
+      "ok": {
+        "theme_check": true,
+        "theme_partly": "flag",
+        "rules": [
+          {
+            "id": "r1",
+            "kind": "avoid",
+            "text": "people close up",
+            "mode": "flag"
+          },
+          {
+            "id": "r3bbbb95d",
+            "kind": "include",
+            "text": "street scenes",
+            "mode": "set_aside"
+          }
+        ]
+      },
+      "input": "{'rules': [{'id': 'r1', 'kind': 'avoid', 'text': 'people close up', 'mode': 'flag'}, {'kind': 'include', 'text': 'street scenes'}]}",
+      "stored": {
+        "theme_check": true,
+        "theme_partly": "flag",
+        "rules": [
+          {
+            "id": "r1",
+            "kind": "avoid",
+            "text": "people close up",
+            "mode": "flag"
+          },
+          {
+            "id": "r3bbbb95d",
+            "kind": "include",
+            "text": "street scenes",
+            "mode": "set_aside"
+          }
+        ]
+      }
+    },
+    {
+      "error": "Rule \"a\": choose \"Must include\" or \"Must avoid\".",
+      "input": "{'rules': [{'kind': 'bogus', 'text': 'a'}]}",
+      "stored": {
+        "theme_check": true,
+        "theme_partly": "flag",
+        "rules": [
+          {
+            "id": "r1",
+            "kind": "avoid",
+            "text": "people close up",
+            "mode": "flag"
+          },
+          {
+            "id": "r3bbbb95d",
+            "kind": "include",
+            "text": "street scenes",
+            "mode": "set_aside"
+          }
+        ]
+      }
+    },
+    {
+      "error": "Rules must be a list.",
+      "input": "{'rules': 'damaged'}",
+      "stored": {
+        "theme_check": true,
+        "theme_partly": "flag",
+        "rules": [
+          {
+            "id": "r1",
+            "kind": "avoid",
+            "text": "people close up",
+            "mode": "flag"
+          },
+          {
+            "id": "r3bbbb95d",
+            "kind": "include",
+            "text": "street scenes",
+            "mode": "set_aside"
+          }
+        ]
+      }
+    },
+    {
+      "error": "The rules settings must be a set of named values.",
+      "input": "'damaged'",
+      "stored": {
+        "theme_check": true,
+        "theme_partly": "flag",
+        "rules": [
+          {
+            "id": "r1",
+            "kind": "avoid",
+            "text": "people close up",
+            "mode": "flag"
+          },
+          {
+            "id": "r3bbbb95d",
+            "kind": "include",
+            "text": "street scenes",
+            "mode": "set_aside"
+          }
+        ]
+      }
+    }
+  ],
+  "bedrock_profile": [
+    {
+      "ok": "default",
+      "input": "'default'",
+      "stored": "default"
+    },
+    {
+      "ok": "",
+      "input": "''",
+      "stored": ""
+    },
+    {
+      "ok": "my-profile",
+      "input": "'  my-profile  '",
+      "stored": "my-profile"
+    },
+    {
+      "error": "That AWS profile name is not valid.",
+      "input": "'bad profile!'",
+      "stored": "my-profile"
+    },
+    {
+      "error": "That AWS profile name is not valid.",
+      "input": "'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'",
+      "stored": "my-profile"
+    },
+    {
+      "ok": "",
+      "input": "None",
+      "stored": ""
+    }
+  ],
+  "update_check": [
+    {
+      "ok": true,
+      "input": "True",
+      "stored": true
+    },
+    {
+      "ok": false,
+      "input": "False",
+      "stored": false
+    },
+    {
+      "ok": false,
+      "input": "0",
+      "stored": false
+    },
+    {
+      "ok": true,
+      "input": "'yes'",
+      "stored": true
+    },
+    {
+      "ok": false,
+      "input": "None",
+      "stored": false
+    }
+  ],
+  "update_cache": [
+    {
+      "ok": {
+        "version": "0.5.0",
+        "checked_at": 1700000000.0,
+        "ok": true
+      },
+      "input": "{'version': '0.5.0', 'checked_at': 1700000000, 'ok': True}",
+      "stored": {
+        "version": "0.5.0",
+        "checked_at": 1700000000.0,
+        "ok": true
+      }
+    },
+    {
+      "error": "The update cache is not valid.",
+      "input": "{'version': '0.5.0', 'checked_at': True, 'ok': True}",
+      "stored": {
+        "version": "0.5.0",
+        "checked_at": 1700000000.0,
+        "ok": true
+      }
+    },
+    {
+      "error": "The update cache is not valid.",
+      "input": "{'version': 5, 'checked_at': 1.0, 'ok': True}",
+      "stored": {
+        "version": "0.5.0",
+        "checked_at": 1700000000.0,
+        "ok": true
+      }
+    },
+    {
+      "error": "The update cache is not valid.",
+      "input": "{'version': '0.5.0', 'checked_at': 1.0, 'ok': 'yes'}",
+      "stored": {
+        "version": "0.5.0",
+        "checked_at": 1700000000.0,
+        "ok": true
+      }
+    },
+    {
+      "error": "The update cache must be a mapping.",
+      "input": "'damaged'",
+      "stored": {
+        "version": "0.5.0",
+        "checked_at": 1700000000.0,
+        "ok": true
+      }
+    }
+  ],
+  "include_gps": [
+    {
+      "ok": true,
+      "input": "True",
+      "stored": true
+    },
+    {
+      "ok": false,
+      "input": "False",
+      "stored": false
+    },
+    {
+      "ok": true,
+      "input": "1",
+      "stored": true
+    },
+    {
+      "ok": false,
+      "input": "''",
+      "stored": false
+    },
+    {
+      "ok": false,
+      "input": "None",
+      "stored": false
+    }
+  ],
+  "max_tries": [
+    {
+      "error": "Max tries per photo must be a number from 1 to 8.",
+      "input": "0",
+      "stored": "<unset>"
+    },
+    {
+      "ok": 1,
+      "input": "1",
+      "stored": 1
+    },
+    {
+      "ok": 3,
+      "input": "3",
+      "stored": 3
+    },
+    {
+      "ok": 8,
+      "input": "8",
+      "stored": 8
+    },
+    {
+      "error": "Max tries per photo must be a number from 1 to 8.",
+      "input": "9",
+      "stored": 8
+    },
+    {
+      "error": "Max tries per photo must be a number from 1 to 8.",
+      "input": "True",
+      "stored": 8
+    },
+    {
+      "ok": 3,
+      "input": "'3'",
+      "stored": 3
+    },
+    {
+      "error": "Max tries per photo must be a number from 1 to 8.",
+      "input": "'x'",
+      "stored": 3
+    },
+    {
+      "error": "Max tries per photo must be a number from 1 to 8.",
+      "input": "None",
+      "stored": 3
+    },
+    {
+      "ok": 2,
+      "input": "2.7",
+      "stored": 2
+    }
+  ],
+  "language": [
+    {
+      "ok": {
+        "english_only": true
+      },
+      "input": "{'english_only': True}",
+      "stored": {
+        "english_only": true
+      }
+    },
+    {
+      "ok": {
+        "english_only": false,
+        "language": "Japanese"
+      },
+      "input": "{'english_only': False, 'language': 'Japanese'}",
+      "stored": {
+        "english_only": false,
+        "language": "Japanese"
+      }
+    },
+    {
+      "ok": {
+        "english_only": false,
+        "language": "french"
+      },
+      "input": "{'english_only': False, 'language': '  french  '}",
+      "stored": {
+        "english_only": false,
+        "language": "french"
+      }
+    },
+    {
+      "error": "Use only letters, spaces and hyphens in the language name.",
+      "input": "{'english_only': False, 'language': 'Jap@nese!'}",
+      "stored": {
+        "english_only": false,
+        "language": "french"
+      }
+    },
+    {
+      "error": "Type the language to write in, for example Japanese.",
+      "input": "{'english_only': False, 'language': ''}",
+      "stored": {
+        "english_only": false,
+        "language": "french"
+      }
+    },
+    {
+      "error": "Keep the language name under 30 characters.",
+      "input": "{'english_only': False, 'language': 'LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL'}",
+      "stored": {
+        "english_only": false,
+        "language": "french"
+      }
+    },
+    {
+      "error": "English only must be on or off.",
+      "input": "{'english_only': 'no'}",
+      "stored": {
+        "english_only": false,
+        "language": "french"
+      }
+    },
+    {
+      "ok": {
+        "english_only": true
+      },
+      "input": "{}",
+      "stored": {
+        "english_only": true
+      }
+    },
+    {
+      "error": "The language setting must be a set of named values.",
+      "input": "'damaged'",
+      "stored": {
+        "english_only": true
+      }
+    }
+  ],
+  "unknown": {
+    "error": "Unknown setting: 'nope'."
+  },
+  "prefixed": {
+    "ok": 4
+  }
+}

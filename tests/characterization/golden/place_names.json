@@ -1,0 +1,128 @@
+{
+  "'Tokyo'": {
+    "clean_place_part": {
+      "ok": "Tokyo"
+    },
+    "usable_place_part": "Tokyo"
+  },
+  "'  Tokyo  '": {
+    "clean_place_part": {
+      "ok": "Tokyo"
+    },
+    "usable_place_part": "Tokyo"
+  },
+  "'New York'": {
+    "clean_place_part": {
+      "ok": "New York"
+    },
+    "usable_place_part": "New York"
+  },
+  "\"St. John's\"": {
+    "clean_place_part": {
+      "ok": "St. John's"
+    },
+    "usable_place_part": "St. John's"
+  },
+  "'Hakone-machi'": {
+    "clean_place_part": {
+      "ok": "Hakone-machi"
+    },
+    "usable_place_part": "Hakone-machi"
+  },
+  "'Köln'": {
+    "clean_place_part": {
+      "ok": "Koln"
+    },
+    "usable_place_part": "Koln"
+  },
+  "'Zürich'": {
+    "clean_place_part": {
+      "ok": "Zurich"
+    },
+    "usable_place_part": "Zurich"
+  },
+  "'東京'": {
+    "clean_place_part": {
+      "error": "ValueError: Write the place in English letters, for example Tokyo or Japan."
+    },
+    "usable_place_part": null
+  },
+  "'Tokyo 東京'": {
+    "clean_place_part": {
+      "error": "ValueError: Write the place in English letters, for example Tokyo or Japan."
+    },
+    "usable_place_part": "Tokyo"
+  },
+  "'Tokyo2'": {
+    "clean_place_part": {
+      "error": "ValueError: Write the place in English letters, for example Tokyo or Japan."
+    },
+    "usable_place_part": null
+  },
+  "'T'": {
+    "clean_place_part": {
+      "ok": "T"
+    },
+    "usable_place_part": null
+  },
+  "'A.'": {
+    "clean_place_part": {
+      "ok": "A."
+    },
+    "usable_place_part": null
+  },
+  "'12'": {
+    "clean_place_part": {
+      "error": "ValueError: Write the place in English letters, for example Tokyo or Japan."
+    },
+    "usable_place_part": null
+  },
+  "''": {
+    "clean_place_part": {
+      "ok": ""
+    },
+    "usable_place_part": null
+  },
+  "None": {
+    "clean_place_part": {
+      "ok": ""
+    },
+    "usable_place_part": null
+  },
+  "'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'": {
+    "clean_place_part": {
+      "ok": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+    },
+    "usable_place_part": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  },
+  "'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'": {
+    "clean_place_part": {
+      "error": "ValueError: Keep each place name under 60 characters."
+    },
+    "usable_place_part": null
+  },
+  "'-Tokyo'": {
+    "clean_place_part": {
+      "error": "ValueError: Write the place in English letters, for example Tokyo or Japan."
+    },
+    "usable_place_part": null
+  },
+  "'Tokyo!'": {
+    "clean_place_part": {
+      "error": "ValueError: Write the place in English letters, for example Tokyo or Japan."
+    },
+    "usable_place_part": null
+  },
+  "'Tokyo\\nOsaka'": {
+    "clean_place_part": {
+      "ok": "Tokyo Osaka"
+    },
+    "usable_place_part": "Tokyo Osaka"
+  },
+  "\"O'Hare\"": {
+    "clean_place_part": {
+      "ok": "O'Hare"
+    },
+    "usable_place_part": "O'Hare"
+  }
+}

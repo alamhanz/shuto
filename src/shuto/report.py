@@ -152,7 +152,9 @@ def _row(
         "default_place": _default_flag(meta.get("place")),
         "keyword_count": str(len(keywords)) if keywords else "",
         "metadata_issues": "; ".join(
-            str(i.get("text") or "") for i in meta.get("metadata_issues") or [] if isinstance(i, dict)
+            str(i.get("text") or "")
+            for i in meta.get("metadata_issues") or []
+            if isinstance(i, dict)
         ),
         "ai_model": str(flt.get("model") or ""),
         "ai_seconds": f"{ai_time[0]:.1f}" if ai_time else "",

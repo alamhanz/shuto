@@ -176,6 +176,7 @@ Note: 0.4.0 upgrades the database, so shuto 0.3.x cannot open it afterwards.
 ### More
 
 - [docs/local-models.md](docs/local-models.md): choosing a local model
+- [docs/shutterstock-metadata-guide.md](docs/shutterstock-metadata-guide.md): how titles and keywords are written and checked
 - [docs/shutterstock-restrictions.md](docs/shutterstock-restrictions.md): the rules shuto checks
 - [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md)
 - The earlier AWS version is kept at the git tag `aws-legacy`.

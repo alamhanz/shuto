@@ -26,10 +26,19 @@ from typing import Any
 import platformdirs
 
 from . import cull as cull_mod
-from . import deliver, describe, estimate, ftps, guardrails, hardware, imaging, local_models
+from . import (
+    deliver,
+    describe,
+    estimate,
+    ftps,
+    guardrails,
+    hardware,
+    imaging,
+    local_models,
+    metadata_rules,
+)
 from . import filters as filters_mod
 from . import ledger as ledger_mod
-from . import metadata_rules
 from . import report as report_mod
 from .collect import _safe_batch_name, batch_id_for, group_near_duplicates, scan_folder
 from .config import APP_NAME, Config, FilterRuleConfig, default_config_dir

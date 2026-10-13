@@ -119,6 +119,9 @@ For how the check looks in the web app, see [web-guide.md](web-guide.md).
 
 - The rules apply twice: they are put into the AI prompt, and a deterministic post-check runs
   on the model's output (for example, brand names in keywords). Both run again after any edit.
+- Titles, descriptions and keywords follow the owner's
+  [metadata guide](shutterstock-metadata-guide.md): the prompt is built from it and the checks
+  in `metadata_rules.py` enforce it (one repair call to the same model when a hard rule fails).
 - Rules are kept in `docs/shutterstock-restrictions.md` and a machine-readable copy.
 - `shuto restrictions list` shows the rules; `shuto restrictions check TEXT` tests a piece of
   text against them.

@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from shuto import filters, pipeline, report
-from shuto.llm.fake import DEFAULT_RESPONSE, FakeProvider
+from shuto.llm.fake import DEFAULT_RESPONSE, FakeProvider, vary
 from shuto.models import Status
 
 THEME = "Everyday Japan"
@@ -36,7 +36,7 @@ def _resp(fit=None, checks=None, **extra):
         out["theme_fit"] = {"reason": f"theme {fit}", "fit": fit}
     if checks is not None:
         out["checks"] = {k: {"reason": f"why {k}", "answer": v} for k, v in checks.items()}
-    return out
+    return vary(out)  # distinct per photo, so the batch duplicate check stays quiet
 
 
 def _describe(cfg, store, batch, response, **kw):

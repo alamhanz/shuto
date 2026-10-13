@@ -15,6 +15,7 @@ import threading
 import unicodedata
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from itertools import islice
 
 MIN_WORDS = 5
 KEYWORD_FLOOR = 7  # Shutterstock's minimum; below it the photo cannot be sent
@@ -51,6 +52,9 @@ class Limits:
     kw_max: int = 45
 
 
+DEFAULT_LIMITS = Limits()
+
+
 @dataclass(frozen=True)
 class Issue:
     code: str
@@ -64,7 +68,7 @@ class Issue:
         return {"code": self.code, "text": self.text, "hard": self.hard}
 
 
-def reason(code: str, limits: Limits = Limits(), count: int = 0) -> str:
+def reason(code: str, limits: Limits = DEFAULT_LIMITS, count: int = 0) -> str:
     """The plain-words reason for a problem code."""
     return {
         "too_few_words": f"Description has fewer than {MIN_WORDS} words",
@@ -157,7 +161,7 @@ def strip_caption_prefix(text: str) -> str:
 
 
 def check_description(
-    sentence: str, limits: Limits = Limits(), prefix_len: int = 0
+    sentence: str, limits: Limits = DEFAULT_LIMITS, prefix_len: int = 0
 ) -> list[Issue]:
     """Problems of the sentence. ``prefix_len`` is the length of an editorial prefix: the total
     must stay within the hard maximum, while the target range applies to the sentence alone."""
@@ -199,7 +203,7 @@ def _clean_keyword(raw: object) -> str:
 
 def clean_keywords(
     raw: Iterable[object],
-    limits: Limits = Limits(),
+    limits: Limits = DEFAULT_LIMITS,
     avoid: Iterable[str] = (),
     always_include: Iterable[str] = (),
 ) -> list[str]:
@@ -225,22 +229,29 @@ def clean_keywords(
         seen.add(key)
         out.append(kw)
     extra: list[str] = []
+    wanted: set[tuple[str, ...]] = set()
     for item in always_include:
         kw = _clean_keyword(item)
         ws = words_of(kw)
         if not ws:
             continue
         key = _keyword_key(ws)
+        wanted.add(key)
         if key not in seen:
             seen.add(key)
             extra.append(kw)
     cap = max(1, limits.kw_max)
     if len(out) + len(extra) > cap:
-        out = out[: max(0, cap - len(extra))]
+        room = max(0, cap - len(extra))
+        kept_wanted = [k for k in out if _keyword_key(words_of(k)) in wanted]
+        room_for_rest = max(0, room - len(kept_wanted))
+        rest = iter(k for k in out if k not in kept_wanted)
+        allowed = set(kept_wanted) | set(islice(rest, room_for_rest))
+        out = [k for k in out if k in allowed]
     return out + extra
 
 
-def check_keywords(keywords: Sequence[str], limits: Limits = Limits()) -> list[Issue]:
+def check_keywords(keywords: Sequence[str], limits: Limits = DEFAULT_LIMITS) -> list[Issue]:
     n = len(keywords)
     if n < KEYWORD_FLOOR:
         return [Issue("few_keywords", reason("few_keywords", limits, n))]

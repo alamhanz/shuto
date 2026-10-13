@@ -139,3 +139,101 @@ def test_japan_focus_turns_on_romaji():
     assert japan.romaji_place_names and japan.region_focus == "japan"
     _, user = build_prompt(japan, "", (), "", WHEN)
     assert "romaji" in user
+
+
+# ------------------------------------------------------------- hard-rule checks and the repair call
+
+BAD = {"description": "Street", "keywords": ["street", "tokyo"]}
+OTHER_KEYWORDS = [f"other {i}" for i in range(25)]
+
+
+def _describe(llm, **kw):
+    return describe_photo(llm, b"j", "a.jpg", style=Style(), restrictions=R, captured=WHEN, **kw)
+
+
+def test_valid_answer_makes_one_call():
+    llm = FakeProvider(response=_resp())
+    res = _describe(llm)
+    assert len(llm.calls) == 1 and res.llm.retries == 0
+    assert not [i for i in res.issues if i.hard]
+
+
+def test_repair_call_fixes_a_bad_answer():
+    llm = FakeProvider(response=[_resp(**BAD), _resp()])
+    res = _describe(llm)
+    assert len(llm.calls) == 2
+    assert "Your previous answer had problems" in llm.calls[1].prompt
+    assert "fewer than 5 words" in llm.calls[1].prompt
+    assert "Previous keywords:" in llm.calls[1].prompt
+    assert llm.calls[0].prompt in llm.calls[1].prompt
+    assert res.metadata.description == DEFAULT_RESPONSE["description"]
+    assert res.llm.retries == 1  # the repair counts as a try
+    assert res.llm.input_tokens == 200 and res.llm.output_tokens == 100
+    assert not [i for i in res.issues if i.hard]
+    assert not any("fewer than" in w for w in res.metadata.warnings)
+
+
+def test_repair_still_invalid_makes_no_third_call_and_warns():
+    llm = FakeProvider(response=[_resp(**BAD), _resp(**BAD)])
+    res = _describe(llm)
+    assert len(llm.calls) == 2
+    assert any(i.code == "too_few_words" for i in res.issues)
+    assert any("at least 5 words" in w for w in res.metadata.warnings)
+
+
+def test_repair_can_be_switched_off():
+    llm = FakeProvider(response=_resp(**BAD))
+    _describe(llm, repair=False)
+    assert len(llm.calls) == 1
+
+
+def test_failed_repair_call_keeps_the_first_answer():
+    from shuto.llm.base import LLMError
+
+    def boom(_req):
+        raise LLMError("down")
+
+    llm = FakeProvider(response=[_resp(**BAD), boom])
+    res = _describe(llm)
+    assert len(llm.calls) == 2 and res.metadata.description == "Street"
+
+
+def test_near_duplicate_keywords_trigger_repair_even_in_a_burst():
+    from shuto.metadata_rules import BatchSeen
+
+    seen = BatchSeen()
+    _describe(FakeProvider(response=_resp()), seen=seen)
+    burst = _resp(description="Bicycles parked along a narrow Tokyo lane beside power lines")
+    distinct = _resp(
+        description="Rain soaked alley with wet stone steps and a lone wooden bench",
+        keywords=OTHER_KEYWORDS,
+    )
+    llm = FakeProvider(response=[burst, distinct])
+    res = _describe(llm, seen=seen)
+    assert len(llm.calls) == 2
+    assert "almost the same as another photo" in llm.calls[1].prompt
+    assert "Make it clearly different" in llm.calls[1].prompt
+    assert llm.calls[1].temperature >= 0.5
+    assert res.metadata.description.startswith("Rain soaked alley")
+    assert not [i for i in res.issues if i.hard]
+
+
+def test_near_duplicate_description_triggers_repair_and_warns_if_unchanged():
+    from shuto.metadata_rules import BatchSeen
+
+    seen = BatchSeen()
+    _describe(FakeProvider(response=_resp()), seen=seen)
+    same_text = _resp(keywords=OTHER_KEYWORDS)
+    llm = FakeProvider(response=[same_text, same_text])
+    res = _describe(llm, seen=seen)
+    assert len(llm.calls) == 2
+    assert any(i.code == "dup_description" for i in res.issues)
+    assert any("almost the same" in w for w in res.metadata.warnings)
+
+
+def test_editorial_prefix_counts_against_the_limit():
+    sentence = ("A" + " word" * 40)[:170]  # fine alone, too long once the prefix is added
+    llm = FakeProvider(response=_resp(editorial=True, caption_sentence=sentence))
+    res = _describe(llm)
+    assert len(llm.calls) == 2
+    assert any(i.code == "too_long" for i in res.issues)

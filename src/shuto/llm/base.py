@@ -11,6 +11,8 @@ from pydantic import ValidationError
 
 from .schema import PHOTO_OUTPUT_SCHEMA, PhotoOutput, repair_json
 
+_FILTER_KEYS = ("theme_fit", "checks")
+
 
 class LLMError(Exception):
     def __init__(self, message: str, retryable: bool = False):
@@ -63,14 +65,23 @@ def _parse(raw: str, native: dict | None) -> tuple[PhotoOutput, bool]:
     return PhotoOutput.model_validate(repair_json(raw)), True
 
 
-def describe_structured(llm: VisionLLM, req: LLMRequest, *, retries: int = 1) -> LLMResult:
-    """Call the provider and return validated data; retry with the error appended."""
+def describe_structured(
+    llm: VisionLLM,
+    req: LLMRequest,
+    *,
+    retries: int = 1,
+    schema: dict = PHOTO_OUTPUT_SCHEMA,
+) -> LLMResult:
+    """Call the provider and return validated data; retry with the error appended.
+
+    Only the core fields can trigger a retry; the optional filter fields never do.
+    """
     t0 = time.monotonic()
     in_tok = out_tok = 0
     current = req
     last_err = ""
     for attempt in range(retries + 1):
-        raw, native, i, o = llm.complete(current, PHOTO_OUTPUT_SCHEMA)
+        raw, native, i, o = llm.complete(current, schema)
         in_tok += i or 0
         out_tok += o or 0
         try:
@@ -90,7 +101,9 @@ def describe_structured(llm: VisionLLM, req: LLMRequest, *, retries: int = 1) ->
             )
             continue
         return LLMResult(
-            data=out.model_dump(),
+            data={
+                k: v for k, v in out.model_dump().items() if not (k in _FILTER_KEYS and v is None)
+            },
             raw_text=raw,
             provider=llm.name,
             model=llm.model,

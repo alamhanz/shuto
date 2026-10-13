@@ -388,10 +388,13 @@ def cmd_doctor(ctx: Ctx) -> int:
     )
     out(f"Models in: {report.models_dir} ({free})")
     out(f"Provider:  {report.provider}")
-    out(f"Model:     {report.selected or '(not chosen)'}")
+    if report.selection_unreadable:
+        out("Model:     (the AI model choice could not be read)")
+    else:
+        out(f"Model:     {report.selected or '(not chosen)'}")
     out(f"Model choice file: {pipeline.model_choice_path()}")
     out(f"Benchmark cache:   {pipeline.benchmark_cache_path()}")
-    if report.selected is None and report.provider == "ollama":
+    if report.selected is None and report.provider == "ollama" and not report.selection_unreadable:
         out()
         out(no_model_message())
         out()

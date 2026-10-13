@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}shuto - remove a model{% endblock %}
+{% block content %}
+<h1>Remove {{ tag }}?</h1>
+<p>{{ tag }} will be deleted from this computer. You can download it again later.</p>
+<form method="post" action="/settings/model/remove">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <input type="hidden" name="tag" value="{{ tag }}">
+  <input type="hidden" name="return_to" value="{{ return_to }}">
+  <input type="hidden" name="confirm" value="yes">
+  <button type="submit" class="danger">Remove from this computer</button>
+  <a href="{{ return_to }}">Keep it</a>
+</form>
+{% endblock %}

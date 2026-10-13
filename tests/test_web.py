@@ -1087,7 +1087,7 @@ def test_replace_queued_then_model_chosen_deletes_nothing(web, cfg, ollama, monk
 
     _setup_three(web, ollama, tmp_path, monkeypatch)
     gate = threading.Event()
-    blocker = web.state.runner.submit("describe", "other-batch", lambda ctx: gate.wait(10))
+    blocker = web.state.runner.submit("export", "other-batch", lambda ctx: gate.wait(10))
     try:
         r = web.post(
             "/settings/pull", {"tag": "qwen3-vl:8b", "replace": "gemma3:12b", "confirm": "yes"}

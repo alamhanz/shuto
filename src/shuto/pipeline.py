@@ -12,6 +12,7 @@ import importlib
 import importlib.util
 import os
 import re
+import sqlite3
 import threading
 from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -502,6 +503,7 @@ class DoctorReport:
     provider: str
     config_path: str | None
     workspace: str
+    selection_unreadable: bool = False
 
 
 def doctor(
@@ -524,12 +526,15 @@ def doctor(
         local_models.load_benchmarks(benchmark_cache_path()),
         free,
     )
+    unreadable = False
     try:
         selection = resolve_selection(cfg, store)
         selected: str | None = f"{selection.provider}:{selection.model}"
         provider = selection.provider
     except local_models.ModelChoiceRequired:
         selected, provider = None, cfg.llm.provider
+    except (PipelineError, sqlite3.Error):  # what resolve_selection raises; bugs still surface
+        selected, provider, unreadable = None, cfg.llm.provider, True
     return DoctorReport(
         profile.to_dict(),
         status,
@@ -540,6 +545,7 @@ def doctor(
         provider,
         str(config_path) if config_path else None,
         str(cfg.workspace_dir),
+        unreadable,
     )
 
 

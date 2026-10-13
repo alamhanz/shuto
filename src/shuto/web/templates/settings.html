@@ -12,6 +12,7 @@
 <h2 id="h-model">AI model</h2>
 <p>Now using: <strong>{{ selected or "nothing chosen yet" }}</strong>
 {% if not selected %}<span class="hint"> Pick one below. shuto never picks a model for you.</span>{% endif %}</p>
+{% if report.selection_unreadable %}<p class="flash warn" role="note">{{ icon('alert') }}<span>shuto can't tell which AI model is set. Choose one below.</span></p>{% endif %}
 {% if model_status.state == 'unknown' %}<p class="flash warn" role="note">{{ icon('alert') }}<span>{{ model_status.message }}</span></p>{% endif %}
 <p class="snip">Times are a rough guess until you press "Measure speed" on a downloaded model.</p>
 {% with use_action="/settings/use", return_to="/settings", show_bench=true, open_online=false %}

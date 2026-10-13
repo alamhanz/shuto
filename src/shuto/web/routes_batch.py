@@ -494,7 +494,8 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
             fixes = len(s.prepare.problems) + len(s.upload.failed) - len(lost)
             if fixes or lost:
                 # Partial success: keep what was sent and still write its CSV.
-                exported = s.export or pipeline.export_batch(cfg, store, batch_id)
+                if s.export is None:
+                    pipeline.export_batch(cfg, store, batch_id)
                 text = f"Uploaded {sent}."
                 if fixes:
                     text = f"Uploaded {sent}; {fixes} need a fix in Review."

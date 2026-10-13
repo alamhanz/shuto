@@ -89,7 +89,7 @@ def test_resolve_place_order_file_then_ai_then_default():
     assert resolve_place(OSAKA, "Kyoto", "Japan", gps)["source"] == "gps"
     file_only = {"city": "Kamakura", "country": None, "source": "file"}
     got = resolve_place(OSAKA, "Kyoto", "Japan", file_only)
-    assert (got["city"], got["country"], got["source"]) == ("KAMAKURA", "JAPAN", "file")
+    assert (got["city"], got["country"], got["source"]) == ("KAMAKURA", "JAPAN", "file + AI")
     assert resolve_place(OSAKA, "Kyoto", "Japan")["source"] == "ai"
     assert resolve_place(NO_LOC, "Kyoto", "Japan")["source"] == "default"
     assert resolve_place(NO_LOC, "Kyoto", "Japan", {"country": "Japan", "source": "gps"}) == {

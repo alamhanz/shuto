@@ -22,6 +22,7 @@ llm:
   max_tokens: 1500
   temperature: 0.2
   json_retries: 1
+  max_tries: 8  # at most this many model calls per photo (first answer + repairs)
   timeout_s: 300
   ollama: {url: "http://127.0.0.1:11434", keep_alive: 10m}
   bedrock: {region: null, profile: null}

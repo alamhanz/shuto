@@ -92,6 +92,44 @@ def _segment(marker: int, payload: bytes) -> bytes:
     return bytes([0xFF, marker]) + struct.pack(">H", len(payload) + 2) + payload
 
 
+def strip_gps(jpeg: bytes) -> bytes:
+    """The JPEG without the EXIF GPS block (the bytes are returned unchanged when it has none).
+
+    Used at upload time as a last check. An EXIF segment that cannot be read is dropped
+    entirely, so a location can never slip through.
+    """
+    if jpeg[:2] != b"\xff\xd8":
+        raise ValueError("not a JPEG")
+    out: list[bytes] = [jpeg[:2]]
+    pos = 2
+    while pos + 4 <= len(jpeg) and jpeg[pos] == 0xFF:
+        marker = jpeg[pos + 1]
+        if marker == SOS:
+            break
+        if marker == 0xFF:  # fill byte
+            out.append(jpeg[pos : pos + 1])
+            pos += 1
+            continue
+        if marker == 0x01 or 0xD0 <= marker <= 0xD7:
+            out.append(jpeg[pos : pos + 2])
+            pos += 2
+            continue
+        (length,) = struct.unpack(">H", jpeg[pos + 2 : pos + 4])
+        seg = jpeg[pos : pos + 2 + length]
+        payload = seg[4:]
+        pos += 2 + length
+        if marker == APP1 and payload.startswith(EXIF_HEADER):
+            clean = exif_without_gps(payload)
+            if clean is None:
+                continue
+            if clean is not payload:
+                seg = _segment(APP1, clean)
+        out.append(seg)
+    out.append(jpeg[pos:])
+    result = b"".join(out)
+    return jpeg if result == jpeg else result
+
+
 def embed_metadata(
     jpeg: bytes, title: str, description: str, keywords: list[str], strip_gps: bool = False
 ) -> bytes:

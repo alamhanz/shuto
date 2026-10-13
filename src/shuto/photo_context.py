@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from . import geo
+from .metadata_rules import english_only
 from .photo_meta import PhotoMeta, read_photo_meta
 
 MAX_HINTS_CHARS = 300
@@ -44,7 +45,9 @@ def compute_file_facts(path: str | Path) -> dict[str, Any]:
 
 
 def _clean_text(value: object, limit: int) -> str:
-    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    """One line of English text: accents folded, words in other scripts left out (the prompt
+    asks for English only, so a Japanese title in the file must not leak into the answer)."""
+    text = english_only(re.sub(r"\s+", " ", str(value or "")).strip())
     return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
 
 

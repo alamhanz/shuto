@@ -380,7 +380,11 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
                 }
             )
         list_updated, list_old = local_models.catalog_staleness()
+        small_warning = None
+        if report.selected and report.selected.startswith("ollama:"):
+            small_warning = local_models.small_model_warning(report.selected[7:], report.rows)
         return {
+            "small_warning": small_warning,
             "list_updated": list_updated,
             "list_old": list_old,
             "cards": rows,

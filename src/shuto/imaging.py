@@ -47,6 +47,27 @@ def _register_heif() -> None:
     pillow_heif.register_heif_opener()
 
 
+HEIC_SUFFIXES = (".heic", ".heif")
+HEIC_NO_SUPPORT = "HEIC photo could not be read - install HEIC support"
+HEIC_DAMAGED = "HEIC photo could not be read - the file may be damaged"
+
+
+def heic_support() -> bool:
+    """True when the optional pillow-heif package is installed."""
+    try:
+        import pillow_heif  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
+def unreadable_message(path: str | Path, exc: BaseException | None = None) -> str | None:
+    """The plain-words reason for a HEIC/HEIF file that cannot be opened; None for other files."""
+    if Path(path).suffix.lower() not in HEIC_SUFFIXES:
+        return None
+    return HEIC_DAMAGED if heic_support() else HEIC_NO_SUPPORT
+
+
 def open_image(path: str | Path | bytes) -> Image.Image:
     """Open lazily (no pixel decode yet). Accepts a path or encoded bytes."""
     _register_heif()

@@ -182,7 +182,12 @@ def test_creds_missing_names_both(monkeypatch):
 
 def test_write_csv_is_one_file_per_batch(tmp_path):
     rows = [
-        {"filename": "a-001.jpg", "description": "日本, café", "keywords": ["x"], "categories": []},
+        {
+            "filename": "a-001.jpg",
+            "description": "Nihon, café",
+            "keywords": ["x"],
+            "categories": [],
+        },
         {
             "filename": "b-002.jpg",
             "description": "d",
@@ -201,7 +206,7 @@ def test_write_csv_is_one_file_per_batch(tmp_path):
         "Filename,Description,Keywords,Categories,Editorial,Mature content,illustration"
     )
     parsed = list(csv.reader(io.StringIO(raw.decode("utf-8"), newline="")))
-    assert parsed[1] == ["a-001.jpg", "日本, café", "x", "", "no", "no", "no"]
+    assert parsed[1] == ["a-001.jpg", "Nihon, café", "x", "", "no", "no", "no"]
     assert parsed[2] == ["b-002.jpg", "d", "y,z w", "Nature,Travel", "yes", "no", "no"]
     assert '"y,z w"' in raw.decode("utf-8")  # keywords stay one quoted cell
     again = deliver.write_csv("2026-W14/x", rows[:1], tmp_path / "csv")

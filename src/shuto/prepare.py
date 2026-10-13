@@ -11,6 +11,7 @@ from typing import Any
 
 from . import embed, imaging
 from .metadata import is_editorial_caption
+from .metadata_rules import has_foreign_script
 
 MAX_NAME_CHARS = 80
 
@@ -83,6 +84,10 @@ def release_check(
         problems.append('Editorial caption must look like "CITY, COUNTRY - MONTH D, YYYY: text".')
     if not meta.get("keywords"):
         problems.append("No keywords.")
+    texts = [str(meta.get(k) or "") for k in ("title", "description")]
+    texts += [str(k) for k in meta.get("keywords") or []]
+    if any(has_foreign_script(t) for t in texts):
+        problems.append("Text is not in English: Shutterstock needs English, Latin letters.")
     return problems
 
 

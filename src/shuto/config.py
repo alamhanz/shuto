@@ -73,6 +73,7 @@ class LLMConfig(_Section):
     max_tokens: int = 1500
     temperature: float = 0.2
     json_retries: int = 1
+    max_tries: int = Field(8, ge=1, le=20)  # model calls per photo: first answer + repairs
     timeout_s: int = 300
     ollama: OllamaConfig = Field(default_factory=OllamaConfig)
     bedrock: BedrockConfig = Field(default_factory=BedrockConfig)

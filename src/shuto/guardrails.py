@@ -196,8 +196,13 @@ def rule_action(r: Restrictions, rule: Rule) -> str:
     return r.levels[rule.level]
 
 
-def prompt_summary(r: Restrictions, region_hint: str | None = None, max_items: int = 60) -> str:
-    """Compact text for the LLM prompt: what to avoid, what makes a photo editorial."""
+def prompt_summary(
+    r: Restrictions, region_hint: str | None = None, max_items: int = 60, short: bool = False
+) -> str:
+    """Compact text for the LLM prompt: what to avoid, what makes a photo editorial.
+
+    ``short`` is for small-context models: only the lists, and only the first 24 rules (the
+    region's own come first). The general rules are already in the short prompt."""
     hint = (region_hint or "").casefold()
 
     def rank(rule: Rule) -> int:
@@ -209,17 +214,20 @@ def prompt_summary(r: Restrictions, region_hint: str | None = None, max_items: i
             return 1
         return 2
 
-    ordered = sorted(r.rules, key=rank)[: max(0, max_items)]
+    ordered = sorted(r.rules, key=rank)[: max(0, min(max_items, 24) if short else max_items)]
     groups: dict[str, list[str]] = {"force_editorial": [], "block": [], "review": []}
     for rule in ordered:
         groups[rule_action(r, rule)].append(rule.name)
-    lines = [
-        "Shutterstock restrictions (non-exhaustive):",
-        "- Never put brand names, business names or trademarked terms in the title or keywords.",
-        "- Visible logos, shop signs and recognizable people without releases mean editorial only.",
-        f"- Commercial titles: complete English sentences, {MIN_COMMERCIAL_WORDS}+ words.",
-        "- Editorial captions: CITY, COUNTRY - MONTH DAY, YEAR: Factual sentence.",
-    ]
+    lines = ["Shutterstock restrictions (non-exhaustive):"]
+    if not short:
+        lines += [
+            "- Never put brand names, business names or trademarked terms in the title or "
+            "keywords.",
+            "- Visible logos, shop signs and recognizable people without releases mean editorial "
+            "only.",
+            f"- Commercial titles: complete English sentences, {MIN_COMMERCIAL_WORDS}+ words.",
+            "- Editorial captions: CITY, COUNTRY - MONTH DAY, YEAR: Factual sentence.",
+        ]
     if groups["force_editorial"]:
         lines.append(
             "Editorial only (flag editorial=true): " + "; ".join(groups["force_editorial"])

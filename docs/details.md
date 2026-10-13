@@ -142,7 +142,28 @@ For how the check looks in the web app, see [web-guide.md](web-guide.md).
   on the model's output (for example, brand names in keywords). Both run again after any edit.
 - Titles, descriptions and keywords follow the owner's
   [metadata guide](shutterstock-metadata-guide.md): the prompt is built from it and the checks
-  in `metadata_rules.py` enforce it (one repair call to the same model when a hard rule fails).
+  in `metadata_rules.py` enforce it. When a hard rule fails (too few words, a word list, too
+  few keywords, a near-duplicate of another photo in the batch, text that is not English) the
+  same model is asked again with the problems listed, up to 8 model calls per photo in total
+  (`llm.max_tries`, default 8). It stops early when the answer is valid or when the model
+  repeats itself. The best answer is kept; if it is still not valid the photo goes to
+  "Needs a look" with the reason. Tries, tokens and seconds show in the batch report.
+- Short prompt for small models: a local model whose context window is 4096 tokens or less
+  (`context_tokens` in `data/models.yaml`; models not listed get the full prompt) is sent a
+  shorter prompt with the same rules and the photo facts, about 40 percent fewer tokens.
+  Settings shows a plain warning and names a bigger model when such a model is chosen.
+- English only: text sent to Shutterstock must be English. Accented Latin letters are folded to
+  ASCII (assumption: Shutterstock text is plain English letters). Any other script (Japanese,
+  Chinese, Korean, Cyrillic, Arabic and so on) in the AI's answer counts as a hard failure and is
+  repaired; if it stays, the photo is flagged, cannot be approved, prepared or put in the CSV
+  (the CSV writer also refuses it). Words in other scripts from the photo's own title, caption
+  and keywords are left out of the facts the AI sees. Place names come from the bundled GeoNames
+  ASCII names.
+- HEIC/HEIF photos need the optional `pillow-heif` package (included in the installer). A photo
+  that cannot be opened is flagged "HEIC photo could not be read" (install HEIC support, or the
+  file is damaged) and the rest of the batch carries on.
+- At upload time shuto removes any GPS location still inside a prepared copy (for example one
+  made by 0.4.x) unless Settings -> Privacy allows it; a copy it cannot check is not sent.
 - Rules are kept in `docs/shutterstock-restrictions.md` and a machine-readable copy.
 - `shuto restrictions list` shows the rules; `shuto restrictions check TEXT` tests a piece of
   text against them.
@@ -228,7 +249,7 @@ what the answer was.
 - **Columns:** file, batch, quality and its reasons, which Shutterstock rules were hit, theme and
   how well the photo fits it (with the reason), one column per rule of yours (pass, fail or
   unknown; blank when the photo was not checked with that rule), the reasons for your rules,
-  what set it aside, whether you approved it by hand, status, title, the place used in the caption, where it came from (gps, file, ai, default, partly default,
+  what set it aside, whether you approved it by hand, status, title, the place used in the caption, where it came from (gps, file, gps + AI, file + AI, ai, default, partly default,
   unknown) and whether it is the default place (yes or no), number of keywords, the AI
   model, how many seconds and tries the AI needed, and the dates it was checked, approved, uploaded, submitted, accepted or rejected
   (with the rejection reason).
@@ -265,8 +286,9 @@ and the tests run on Linux, macOS and Windows.
 
 Known limits:
 
-- GPS location is removed from the photo copies shuto uploads (Settings -> Privacy lets you
-  keep it). It is not removed from anything else you share yourself.
+- GPS location is removed from the photo copies shuto uploads, also from copies prepared by
+  older versions (Settings -> Privacy lets you keep it). It is not removed from anything else
+  you share yourself.
 - The sizes, speeds and prices in the model list are approximate and need re-checking from time
   to time. See [local-models.md](local-models.md) for choosing a local model.
 

@@ -17,6 +17,8 @@ import csv
 import io
 from collections.abc import Iterable
 
+from .metadata_rules import has_foreign_script
+
 HEADERS = [
     "Filename",
     "Description",
@@ -28,6 +30,10 @@ HEADERS = [
 ]
 
 
+class NotEnglishError(ValueError):
+    """A CSV cell has non-Latin text. Shutterstock needs English; the file is not written."""
+
+
 def _yn(v) -> str:
     return "yes" if bool(v) else "no"
 
@@ -37,15 +43,16 @@ def build_csv(items: Iterable[dict]) -> str:
     writer = csv.writer(buf, quoting=csv.QUOTE_MINIMAL, lineterminator="\n")
     writer.writerow(HEADERS)
     for it in items:
-        writer.writerow(
-            [
-                it["filename"],
-                it["description"],
-                ",".join(it["keywords"]),
-                ",".join(it["categories"]),
-                _yn(it.get("editorial")),
-                _yn(it.get("mature")),
-                _yn(it.get("illustration")),
-            ]
-        )
+        row = [
+            it["filename"],
+            it["description"],
+            ",".join(it["keywords"]),
+            ",".join(it["categories"]),
+            _yn(it.get("editorial")),
+            _yn(it.get("mature")),
+            _yn(it.get("illustration")),
+        ]
+        if any(has_foreign_script(cell) for cell in row[:4]):
+            raise NotEnglishError(f"{it['filename']}: the text is not in English")
+        writer.writerow(row)
     return buf.getvalue()

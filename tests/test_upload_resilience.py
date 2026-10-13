@@ -37,7 +37,7 @@ def _files(tmp_path, n):
     out = []
     for i in range(n):
         p = tmp_path / f"p{i}.jpg"
-        p.write_bytes(b"data")
+        p.write_bytes(b"\xff\xd8\xff\xda")  # a JPEG stub: uploads re-check it for GPS
         out.append(p)
     return out
 

@@ -1,7 +1,8 @@
 """Deterministic checks and fixes for the description and keywords (the Shutterstock guide).
 
 Pure module: no LLM, no database, no config files. ``describe`` applies the fixes, asks the
-model for at most one repair when a hard rule still fails, and reports what is left.
+model to repair its answer (up to ``MAX_TRIES`` model calls per photo) while a hard rule still
+fails, and reports what is left.
 
 Hard problems (a repair is worth a slow model call) are listed in ``HARD``. Everything else is
 only a note: too few keywords for the 25 to 45 sweet spot, a short or long description, a
@@ -23,9 +24,18 @@ DESC_JACCARD = 0.9
 KEYWORD_JACCARD = 0.85
 MAX_KEYWORD_WORDS = 6
 MAX_KEYWORD_CHARS = 50
+MAX_TRIES = 8  # model calls per photo: the first answer plus repairs
 
 HARD = frozenset(
-    {"too_few_words", "too_long", "comma_list", "few_keywords", "dup_description", "dup_keywords"}
+    {
+        "too_few_words",
+        "too_long",
+        "comma_list",
+        "few_keywords",
+        "dup_description",
+        "dup_keywords",
+        "non_english",
+    }
 )
 
 _STOP = frozenset(
@@ -78,6 +88,7 @@ def reason(code: str, limits: Limits = DEFAULT_LIMITS, count: int = 0) -> str:
         "light_keywords": f"Only {count} keywords (aim for {limits.kw_min} to {limits.kw_max})",
         "dup_description": "Description is almost the same as another photo in this batch",
         "dup_keywords": "Keywords are almost the same as another photo in this batch",
+        "non_english": "Text is not in English (only English, Latin letters are allowed)",
         "repeated_words": "Description repeats a word",
         "short_description": (
             f"Description is short (aim for {limits.desc_target_min} to "
@@ -88,6 +99,57 @@ def reason(code: str, limits: Limits = DEFAULT_LIMITS, count: int = 0) -> str:
             f"{limits.desc_target_max} characters)"
         ),
     }.get(code, code.replace("_", " ").capitalize())
+
+
+# ------------------------------------------------------------------------------ English only
+
+_LATIN_EXTRA = str.maketrans(
+    {"ß": "ss", "æ": "ae", "Æ": "AE", "œ": "oe", "Œ": "OE", "ø": "o", "Ø": "O", "đ": "d", "ł": "l"}
+)
+
+
+def ascii_fold(text: str | None) -> str:
+    """Latin letters with accents become plain ASCII (café -> cafe, Kyōto -> Kyoto, ß -> ss).
+
+    Only Latin letters are touched. Other scripts (kana, kanji, Cyrillic, ...) are returned
+    exactly as they came, so they can be detected and reported rather than silently altered.
+    """
+    out: list[str] = []
+    for ch in unicodedata.normalize("NFC", str(text or "")):
+        if ch.isascii():
+            out.append(ch)
+            continue
+        if not unicodedata.name(ch, "").startswith(("LATIN", "FULLWIDTH LATIN")):
+            out.append(ch)
+            continue
+        plain = "".join(
+            c for c in unicodedata.normalize("NFKD", ch.translate(_LATIN_EXTRA)) if not c.isspace()
+        )
+        plain = "".join(c for c in plain if not unicodedata.combining(c))
+        out.append(plain if plain.isascii() else ch)
+    return "".join(out)
+
+
+def has_foreign_script(text: str | None) -> bool:
+    """True when the text has letters or digits that are not plain ASCII after ``ascii_fold``.
+
+    Assumption: Shutterstock text is English written with ASCII letters; normal accents are
+    folded to ASCII first, anything else (Japanese, Chinese, Korean, Cyrillic, Arabic, ...)
+    counts as foreign.
+    """
+    return any(not c.isascii() and (c.isalpha() or c.isdecimal()) for c in ascii_fold(text))
+
+
+def english_only(text: str | None) -> str:
+    """The text with accents folded and every word that has non-Latin letters left out."""
+    words = [w for w in ascii_fold(text).split() if not has_foreign_script(w)]
+    return re.sub(r"\s+", " ", " ".join(words)).strip()
+
+
+def check_english(description: str, keywords: Sequence[str]) -> list[Issue]:
+    if has_foreign_script(description) or any(has_foreign_script(k) for k in keywords):
+        return [Issue("non_english", reason("non_english"))]
+    return []
 
 
 # ----------------------------------------------------------------------------- text fixes

@@ -858,6 +858,8 @@ def cmd_export(ctx: Ctx) -> int:
         return 0
     for f in summary.files:
         out(f"Wrote {f}")
+    if summary.skipped:
+        out(f"{len(summary.skipped)} photo(s) left out: the text is not in English.")
     if not summary.files:
         out("Nothing to export (photos must be uploaded first).")
         return 0

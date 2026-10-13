@@ -29,6 +29,7 @@ from . import cull as cull_mod
 from . import (
     deliver,
     describe,
+    embed,
     estimate,
     ftps,
     guardrails,
@@ -213,7 +214,7 @@ def import_folder(
     errors = summary.errors
 
     def on_error(p: Path, exc: Exception) -> None:
-        errors.append(f"{p}: {exc}")
+        errors.append(f"{p}: {imaging.unreadable_message(p, exc) or exc}")
 
     new_items: dict[str, list[tuple[int, Any]]] = {}
     seen: set[str] = set()
@@ -924,6 +925,16 @@ def _estimate_tokens(cfg: Config) -> dict[str, int]:
     }
 
 
+NOT_ENGLISH_TEXT = metadata_rules.reason("non_english")
+
+
+def not_english(data: dict[str, Any]) -> bool:
+    """True when the title, description or a keyword has non-Latin letters (never sent on)."""
+    return any(
+        metadata_rules.has_foreign_script(str(data.get(k) or "")) for k in ("title", "description")
+    ) or any(metadata_rules.has_foreign_script(str(k)) for k in data.get("keywords") or [])
+
+
 def _status_for(
     meta: PhotoMetadata,
     gr: guardrails.GuardrailResult,
@@ -957,6 +968,8 @@ def _evaluate(
         has_property_release=has_property,
     )
     meta.warnings.extend(m for m in gr.messages if m not in meta.warnings)
+    if not_english(data):
+        meta.warnings.append(NOT_ENGLISH_TEXT)
     return meta, gr, _status_for(meta, gr, photo.filters)
 
 
@@ -982,6 +995,11 @@ def _drop_prepared(store: Store, photo: Photo) -> None:
             pass
         assert photo.id is not None
         store.update_photo(photo.id, prepared_path=None, submit_name=None)
+
+
+def use_condensed_prompt(llm: VisionLLM) -> bool:
+    """The short prompt is for local models whose context window is small (see local_models)."""
+    return llm.name == "ollama" and local_models.is_small_context(llm.model)
 
 
 def describe_batch(
@@ -1017,11 +1035,36 @@ def describe_batch(
         om = other.metadata or {}
         if other.id not in redo and om.get("description"):
             seen.add(str(om["description"]), om.get("keywords") or [])
+    condensed = use_condensed_prompt(llm)
     side = cfg.llm.image_max_side or llm.default_image_side
     conc = max(1, cfg.llm.concurrency or llm.default_concurrency)
     lock = threading.Lock()
     stop = threading.Event()
     consecutive = [0]
+
+    def _flag_unreadable(photo: Photo, why: str) -> tuple[Photo, Status | None, str | None]:
+        """A photo the app cannot open is flagged with the reason; the batch carries on."""
+        pid = photo.id
+        assert pid is not None
+        meta = {
+            "filename": photo.orig_name,
+            "description": "",
+            "keywords": [],
+            "categories": [],
+            "editorial": False,
+            "mature": False,
+            "illustration": False,
+            "warnings": [why],
+            **_file_facts(photo.metadata),
+        }
+        _drop_prepared(store, photo)
+        if photo.status != Status.READY:
+            store.set_status(pid, Status.READY)
+        store.update_photo(pid, metadata=meta)
+        store.set_status(pid, Status.NEEDS_REVIEW)
+        with lock:
+            summary.errors.append((pid, why))
+        return photo, Status.NEEDS_REVIEW, None
 
     def work(photo: Photo) -> tuple[Photo, Status | None, str | None]:
         if stop.is_set() or (cancel and cancel()):
@@ -1029,7 +1072,13 @@ def describe_batch(
         pid = photo.id
         assert pid is not None
         try:
-            image = imaging.preview_jpeg(photo.src_path, side)
+            try:
+                image = imaging.preview_jpeg(photo.src_path, side)
+            except Exception as exc:
+                why = imaging.unreadable_message(photo.src_path, exc)
+                if why is None:
+                    raise
+                return _flag_unreadable(photo, why)
             facts = photo_context(photo)
             has_model, has_property = _release_flags(photo.release_ids)
             res = describe.describe_photo(
@@ -1051,6 +1100,8 @@ def describe_batch(
                 at=_now_iso(),
                 seen=seen,
                 facts=facts,
+                condensed=condensed,
+                max_tries=cfg.llm.max_tries,
             )
         except LLMError as exc:
             store.log_llm_call(
@@ -1256,6 +1307,9 @@ def approve(
         if photo.status not in (Status.DESCRIBED, Status.NEEDS_REVIEW, Status.SET_ASIDE):
             summary.refused[pid] = f"status is {photo.status.value}"
             continue
+        if not_english(photo.metadata or {}):
+            summary.refused[pid] = NOT_ENGLISH_TEXT + ": edit it to English first"
+            continue
         meta, gr, _ = _evaluate(cfg, store, photo, photo.metadata or {})
         if gr.action == "block":
             store.update_photo(pid, guardrail=gr.to_dict())
@@ -1400,6 +1454,18 @@ class UploadSummary:
         )
 
 
+def _strip_gps_file(path: Path) -> bool:
+    """Remove the GPS location from a prepared copy in place; True when something changed."""
+    data = path.read_bytes()
+    clean = embed.strip_gps(data)
+    if clean == data:
+        return False
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_bytes(clean)
+    os.replace(tmp, path)
+    return True
+
+
 def _megabytes(n: int) -> str:
     return f"{n / 1_000_000:.1f}"
 
@@ -1442,6 +1508,14 @@ def upload_batch(
         if (photo.guardrail or {}).get("action") == "block" or not photo.prepared_path:
             summary.skipped_blocked.append(photo.orig_name)
             continue
+        if not cfg.prepare.include_gps:  # copies prepared before 0.5 may still hold a location
+            try:
+                _strip_gps_file(Path(photo.prepared_path))
+            except (OSError, ValueError) as exc:
+                summary.failed[Path(photo.prepared_path).name] = (
+                    f"could not remove the GPS location, so it was not sent: {exc}"
+                )
+                continue
         by_name[Path(photo.prepared_path).name] = photo
         files.append(Path(photo.prepared_path))
     if not files:
@@ -1619,6 +1693,7 @@ class ExportSummary:
     files: list[Path] = field(default_factory=list)
     rows: list[dict[str, Any]] = field(default_factory=list)
     dry_run: bool = False
+    skipped: dict[int, str] = field(default_factory=dict)  # photo id -> why it is not in the CSV
 
 
 def export_rows(photos: Iterable[Photo]) -> list[dict[str, Any]]:
@@ -1653,8 +1728,17 @@ def export_batch(
     """
     photos = [p for p in store.list_photos(batch_id, [Status.UPLOADED, Status.EXPORTED])]
     photos = [p for p in photos if p.submit_name]
+    skipped: dict[int, str] = {}
+    for p in photos:  # last guard: the CSV never carries non-Latin text (flagged, not altered)
+        if not_english(p.metadata or {}):
+            assert p.id is not None
+            skipped[p.id] = NOT_ENGLISH_TEXT
+    if skipped and not dry_run:
+        for pid, why in skipped.items():
+            store.log_event("export_skipped", photo_id=pid, batch_id=batch_id, detail={"why": why})
+    photos = [p for p in photos if p.id not in skipped]
     rows = export_rows(photos)
-    summary = ExportSummary(rows=rows, dry_run=dry_run)
+    summary = ExportSummary(rows=rows, dry_run=dry_run, skipped=skipped)
     if dry_run or not rows:
         return summary
     dest = deliver.write_csv(batch_id, rows, batch_dir(cfg, batch_id))

@@ -3,6 +3,9 @@
 {% if not cards %}
 <p class="flash warn">{{ icon('alert') }}<span>No AI model on this list fits this computer. Use an online AI below.</span></p>
 {% endif %}
+{% if small_warning %}
+<p class="flash warn" role="note">{{ icon('alert') }}<span>{{ small_warning }}</span></p>
+{% endif %}
 {% if list_updated %}
 <p class="snip">Model list last updated: {{ list_updated }}</p>
 {% if list_old %}<p class="flash warn" role="note">{{ icon('alert') }}<span>This list is more than six months old, so better AI models may exist by now. A newer version of shuto will have a fresher list.</span></p>{% endif %}

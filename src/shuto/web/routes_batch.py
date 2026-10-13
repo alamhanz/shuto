@@ -700,7 +700,13 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
                 s = pipeline.export_batch(cfg, store, batch_id)
                 if not s.files:
                     return "Nothing to export: upload prepared photos first."
-                return f"Wrote the Shutterstock CSV for {len(s.rows)} photo(s)."
+                text = f"Wrote the Shutterstock CSV for {len(s.rows)} photo(s)."
+                if s.skipped:
+                    text += (
+                        f" {len(s.skipped)} left out because the text is not in English;"
+                        " edit them in Review."
+                    )
+                return text
 
         return ctx.start_job(request, action, batch_id, run)
 

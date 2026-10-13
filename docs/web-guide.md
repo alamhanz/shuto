@@ -1,6 +1,6 @@
 # shuto web guide
 
-This guide matches shuto version 0.3.2. Screens may differ slightly in other versions.
+This guide matches shuto version 0.4.0. Screens may differ slightly in other versions.
 
 shuto is a web page that runs on your own computer. Open it by double-clicking the **shuto**
 icon (or go to <http://127.0.0.1:8765>). The menu at the top has **Home**, **Add photos**,

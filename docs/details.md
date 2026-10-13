@@ -205,7 +205,7 @@ the workspace folder first if you may want to go back.
 
 ## Status and roadmap
 
-shuto is an early version (0.3.2). The pipeline, command line and local web app work end to end,
+shuto is an early version (0.4.0). The pipeline, command line and local web app work end to end,
 and the tests run on Linux, macOS and Windows.
 
 Known limits:

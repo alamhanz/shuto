@@ -1,0 +1,14 @@
+{% from "_ui.html" import icon %}
+{%- set what = tag or ('the AI model' if job.kind == 'pull' else 'AI models') -%}
+{%- set pct = (job.done * 100 / job.total)|int if job.total else None -%}
+<div class="dl-bar {{ job.state }}" id="dl-bar"{% if active %} hx-get="/downloads/bar?job={{ job.id }}" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
+  {%- if job.state == 'done' %}{{ icon('check') }}<span role="status">{{ result or ('Downloaded ' ~ what ~ '.') }}</span>
+  {%- elif job.state == 'failed' %}{{ icon('alert') }}<span role="alert">{% set f = friendly(job.error, job.kind) %}{{ f.what }} {{ f.todo }}</span>
+  {%- elif job.state == 'cancelled' %}{{ icon('stop') }}<span role="status">The download of {{ what }} was stopped.</span>
+  {%- else %}<span class="spin">{{ icon('spinner') }}</span>
+  <span>{% if job.kind == 'pull' %}Downloading {{ what }}{% else %}Moving {{ what }}{% endif %}{% if status %}: {{ status }}{% endif %}{% if pct is not none %} ({{ pct }}%, {{ job.done }} of {{ job.total }} MB){% endif %}</span>
+  <progress aria-label="Download progress"{% if job.total %} max="{{ job.total }}" value="{{ job.done }}"{% endif %}></progress>
+  {%- endif %}
+  {% if not active %}<button type="button" class="secondary" hx-get="/downloads/bar" hx-target="#dl-bar" hx-swap="outerHTML">Dismiss</button>
+  {% if job.state == 'done' and job.kind == 'pull' %}<a href="{{ href }}">Choose it</a>{% endif %}{% endif %}
+</div>

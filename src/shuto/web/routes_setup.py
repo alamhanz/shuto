@@ -112,6 +112,15 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
     state.templates.env.globals["app_version"] = _version()
     import_results: dict[int, list[tuple[str, int]]] = {}
     pull_return: list[str] = ["/settings"]
+    pull_state: dict = {"job": None, "tag": "", "status": ""}  # latest model download, for the bar
+
+    def pulling_tag() -> str | None:
+        """Tag of the model being downloaded right now, if any."""
+        active = ctx.runner.active_job(MODELS_JOB_KEY)
+        job = ctx.runner.get(active) if active else None
+        if job is not None and job.kind == "pull" and pull_state["job"] == job.id:
+            return str(pull_state["tag"])
+        return None
 
     def job_extras(job_id: int) -> dict:
         job = ctx.runner.get(job_id)
@@ -306,6 +315,7 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             "providers": providers,
             "selected": report.selected,
             "chosen": report.selected is not None,
+            "pulling": pulling_tag(),
         }
 
     def storage_context() -> dict:
@@ -361,6 +371,10 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
                 extra.update(model_context(report))
             if step == 3:
                 extra["ms"] = storage_context()
+                active = ctx.runner.active_job(MODELS_JOB_KEY)
+                extra.update(
+                    job=ctx.runner.get(active) if active else None, job_active=bool(active)
+                )
         if step in (4, 6):
             extra["login"] = pipeline.ftps_login_status(ctx.cfg)
         if step == 5:
@@ -466,6 +480,29 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
     @app.get("/jobs/{job_id}", response_class=HTMLResponse)
     def job_status(request: Request, job_id: int):
         return ctx.job_fragment(request, job_id, **job_extras(job_id))
+
+    @app.get("/downloads/bar", response_class=HTMLResponse)
+    def download_bar(request: Request, job: int = 0):
+        """Small progress bar for the running model download, shown on every page (read-only)."""
+        job_id = ctx.runner.active_job(MODELS_JOB_KEY) or job
+        found = ctx.runner.get(job_id) if job_id else None
+        if found is None or found.kind not in ("pull", "models_dir"):
+            return HTMLResponse("")
+        active = found.state in ("queued", "running")
+        if not active and job != found.id:
+            return HTMLResponse("")  # finished earlier: only the page that saw it run says so
+        result = ctx.runner.result(found.id)
+        mine = pull_state["job"] == found.id
+        return ctx.render(
+            request,
+            "_download_bar.html",
+            job=found,
+            active=active,
+            result=result if isinstance(result, str) else None,
+            tag=pull_state["tag"] if mine else "",
+            status=pull_state["status"] if mine else "",
+            href=pull_return[0],
+        )
 
     @app.post("/jobs/{job_id}/cancel", response_class=HTMLResponse)
     def job_cancel(request: Request, job_id: int, form: PostForm):
@@ -730,6 +767,8 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
                 if mark == last[0]:
                     return  # one database write per percent, not per Ollama event
                 last[0] = mark
+                if pull_state["job"] == job.job_id:
+                    pull_state["status"] = mark[0]
                 job.progress(int(done / 1_000_000), int(total / 1_000_000), mark[0])
 
             try:
@@ -743,7 +782,7 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             removed = f" {replace} was removed." if victim is not None else ""
             return f"Downloaded {tag}.{removed} Go back and press Use this."
 
-        return submit_models_job(request, "pull", run, back)
+        return submit_models_job(request, "pull", run, back, tag)
 
     @app.post("/settings/model/remove")
     def settings_model_remove(request: Request, form: PostForm):
@@ -783,13 +822,14 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             return go(back, None, msg, request)
         return go(back, f"{tag} was removed from this computer.", None, request)
 
-    def submit_models_job(request: Request, kind: str, run, back: str):
+    def submit_models_job(request: Request, kind: str, run, back: str, tag: str = ""):
         """Start a models job; the page to return to is only remembered once it really started."""
         try:
             job_id = ctx.runner.submit(kind, MODELS_JOB_KEY, run)
         except JobBusy as exc:
             return ctx.message_fragment(request, str(exc))
         pull_return[0] = back
+        pull_state.update(job=job_id, tag=tag, status="")
         return ctx.job_fragment(request, job_id, next_href=back)
 
     def change_models_dir(request: Request, form: PostForm, reset: bool):

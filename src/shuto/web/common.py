@@ -6,6 +6,7 @@ import hmac
 import re
 import secrets as _stdlib_secrets
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, Any
 from urllib.parse import quote
@@ -15,7 +16,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from starlette.datastructures import FormData
 
-from .. import pipeline
+from .. import hardware, local_models, pipeline
 from ..categories import SHUTTERSTOCK_CATEGORIES
 from ..config import Config
 from ..jobs import JobBusy, JobContext, JobRunner
@@ -42,6 +43,29 @@ def split_lines(text: str | None) -> list[str]:
 
 def short(text: str, limit: int = 300) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "..."
+
+
+CHECK_TIMEOUT_S = 3.0  # asking Ollama whether the chosen model is there must stay quick
+
+
+@dataclass(frozen=True)
+class ModelStatus:
+    """Can the AI write text right now? state: ready | missing | unknown (cannot tell)."""
+
+    state: str
+    message: str = ""
+
+    @property
+    def ready(self) -> bool:
+        return self.state == "ready"
+
+
+NO_MODEL = (
+    "No AI model is set. shuto can't write titles and keywords until you choose one in Settings."
+)
+LOCAL_AI_UNREACHABLE = (
+    "shuto can't reach the local AI right now. Open the Ollama app, wait a moment and try again."
+)
 
 
 class WebState:
@@ -101,6 +125,53 @@ class WebCtx:
     @property
     def runner(self) -> JobRunner:
         return self.state.runner
+
+    def model_status(self, request: Request | None = None) -> ModelStatus:
+        """Is a usable AI model chosen? Looked up once per request, with a short timeout.
+
+        An unreachable local AI is `unknown`, not `missing`: the app-wide banner stays quiet.
+        """
+        cached = getattr(request.state, "model_status", None) if request else None
+        if cached is not None:
+            return cached
+        status = self._model_status()
+        if request is not None:
+            request.state.model_status = status
+        return status
+
+    def _model_status(self) -> ModelStatus:
+        cfg = self.cfg
+        try:
+            sel = pipeline.resolve_selection(cfg, self.store)
+        except local_models.ModelChoiceRequired:
+            return ModelStatus("missing", NO_MODEL)
+        except Exception:
+            return ModelStatus("missing", NO_MODEL)
+        if sel.provider == "ollama":
+            client = pipeline.ollama_client(cfg)
+            if hasattr(client, "timeout"):
+                client.timeout = min(client.timeout, CHECK_TIMEOUT_S)
+            found = hardware.ollama_status(client)
+            if not found.running:
+                return ModelStatus("unknown", LOCAL_AI_UNREACHABLE)
+            have = {hardware.normalize_tag(p) for p in found.pulled}
+            if hardware.normalize_tag(sel.model) not in have:
+                return ModelStatus(
+                    "missing", f"The AI model {sel.model} is not downloaded yet. Open Settings."
+                )
+            return ModelStatus("ready")
+        if pipeline.describe_preflight(cfg, sel):
+            return ModelStatus(
+                "missing",
+                f"The online AI {sel.provider} is not ready yet. "
+                "Open Settings to finish setting it up.",
+            )
+        return ModelStatus("ready")
+
+    def model_block(self, request: Request) -> str | None:
+        """Plain-words reason not to start an AI job now, or None when it can go ahead."""
+        status = self.model_status(request)
+        return None if status.ready else status.message
 
     def render(
         self, request: Request, name: str, status_code: int = 200, **ctx: Any

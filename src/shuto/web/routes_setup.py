@@ -374,6 +374,8 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             if step in (3, 6):
                 extra.update(model_context(report))
             if step == 3:
+                extra["model_status"] = ctx.model_status(request)
+                extra["later"] = bool(request.query_params.get("later"))
                 extra["ms"] = storage_context()
                 active = ctx.runner.active_job(MODELS_JOB_KEY)
                 extra.update(
@@ -404,6 +406,10 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             spec = str(form.get("spec") or "")
             if spec:
                 notice, error = apply_model(spec)
+            elif form.get("later") == "yes":
+                return go(nxt, "You can choose the AI model later in Settings.", None)
+            else:
+                return go(here, None, "Choose an AI model first, or pick Set up later.")
         elif step == 4:
             notice, error = save_login(form)
         elif step == 5:
@@ -484,6 +490,18 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
     @app.get("/jobs/{job_id}", response_class=HTMLResponse)
     def job_status(request: Request, job_id: int):
         return ctx.job_fragment(request, job_id, **job_extras(job_id))
+
+    @app.get("/model/banner", response_class=HTMLResponse)
+    def model_banner(request: Request):
+        """App-wide 'No AI model set' note. Quiet while the download bar shows, in the setup
+        wizard, and when the local AI simply can't be reached (read-only)."""
+        if "/welcome" in request.headers.get("hx-current-url", ""):
+            return HTMLResponse("")
+        if ctx.runner.active_job(MODELS_JOB_KEY):
+            return HTMLResponse("")
+        if ctx.model_status(request).state != "missing":
+            return HTMLResponse("")
+        return ctx.render(request, "_model_banner.html")
 
     @app.get("/downloads/bar", response_class=HTMLResponse)
     def download_bar(request: Request, job: int = 0):
@@ -678,6 +696,7 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             usage=usage,
             job=ctx.runner.get(active) if active else None,
             job_active=bool(active),
+            model_status=ctx.model_status(request),
             ms=storage_context(),
             **model_context(report),
         )

@@ -10,5 +10,25 @@
 {% with use_action="/welcome/3", return_to="/welcome?step=3", show_bench=false, open_online=request.query_params.get('online') %}
 {% include "_model_cards.html" %}
 {% endwith %}
-<p class="next-action"><a class="btn primary" href="/welcome?step=4">Continue {{ icon('arrow') }}</a></p>
-<p><a href="/welcome?step=2">Back</a> &middot; <a href="/welcome?step=4">Skip this step</a></p>
+{% if model_status.state == 'unknown' %}<p class="flash warn" role="note">{{ icon('alert') }}<span>{{ model_status.message }}</span></p>{% endif %}
+{% if later %}
+<section class="panel" id="later" aria-labelledby="h-later">
+  <h2 id="h-later">Set up the AI model later?</h2>
+  <p>Without an AI model, shuto can't write titles and keywords. You can still add and check photos. Choose a model in Settings whenever you are ready.</p>
+  <form method="post" action="/welcome/3">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <input type="hidden" name="later" value="yes">
+    <button type="submit" class="secondary">Yes, set up later</button>
+    <a class="btn secondary" href="/welcome?step=3">No, go back</a>
+  </form>
+</section>
+{% endif %}
+<p class="next-action">
+{% if model_status.state == 'missing' %}
+  <button type="button" class="btn primary" disabled aria-describedby="why-wait">Continue {{ icon('arrow') }}</button>
+  <span class="hint" id="why-wait">Choose an AI model above first. Continue unlocks when one is ready to use.</span>
+{% else %}
+  <a class="btn primary" href="/welcome?step=4">Continue {{ icon('arrow') }}</a>
+{% endif %}
+</p>
+<p><a href="/welcome?step=2">Back</a> &middot; <a href="/welcome?step=3&amp;later=1#later">Set up later</a></p>

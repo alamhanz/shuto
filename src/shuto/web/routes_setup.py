@@ -594,7 +594,7 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             return HTMLResponse("")
         return ctx.render(request, "_model_banner.html")
 
-    def bar_response(request: Request, job_id: int) -> HTMLResponse:
+    def bar_response(request: Request, job_id: int, started: bool = False) -> HTMLResponse:
         found = ctx.runner.get(job_id)
         if found is None:
             return HTMLResponse("")
@@ -616,15 +616,17 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             href=pull_return[0],
             in_use=in_use,
         )
-        # a download started or ended: pages showing its state (the setup buttons) refresh
-        resp.headers["HX-Trigger"] = "shuto:models-changed"
+        if started or not active:
+            # a download started or ended (not every 2 s poll): pages showing its state refresh
+            resp.headers["HX-Trigger"] = "shuto:models-changed"
         if found.state == "done" and found.kind == "pull" and found.id not in announced_done:
-            announced_done.add(found.id)  # once per download: the reloaded page must not loop
             here = urlparse(request.headers.get("hx-current-url", ""))
             need = REFRESH_ON_DOWNLOAD_DONE.get(here.path, "")
             if here.path in REFRESH_ON_DOWNLOAD_DONE and (
                 need is None or need in here.query.split("&")
             ):
+                # once per download, and only used up by a page that really reloads
+                announced_done.add(found.id)
                 resp.headers["HX-Refresh"] = "true"
         return resp
 
@@ -1070,7 +1072,7 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
         pull_state[0] = (job_id, info if info is not None else {"tag": "", "status": ""})
         if kind in BAR_KINDS:
             # always the one slot at the top of the page, whichever page started the job
-            resp = bar_response(request, job_id)
+            resp = bar_response(request, job_id, started=True)
             resp.headers["HX-Retarget"] = "#dl-slot"
             resp.headers["HX-Reswap"] = "innerHTML"
             return resp

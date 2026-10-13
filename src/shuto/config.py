@@ -8,7 +8,7 @@ from typing import Literal
 
 import platformdirs
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from .metadata import clean_place_part
 
@@ -79,11 +79,25 @@ class LLMConfig(_Section):
 
 
 class KeywordStyle(_Section):
-    min: int = 25
-    max: int = 50
+    min: int = 25  # below this only a note (the sweet spot is 25 to 45)
+    max: int = 45  # Shutterstock allows 50; padding to 50 looks like spam
     always_include: list[str] = []
     romaji_place_names: bool = False
     seasonal_terms: bool = True
+
+
+class DescriptionStyle(_Section):
+    """Lengths for the one-sentence description (Shutterstock has no separate title)."""
+
+    target_min: int = Field(70, ge=20, le=200)  # shorter is only a note
+    target_max: int = Field(150, ge=40, le=200)  # longer is only a note
+    max: int = Field(200, ge=60, le=200)  # longer is a problem and is sent back to the AI once
+
+    @model_validator(mode="after")
+    def _ordered(self) -> DescriptionStyle:
+        if not self.target_min <= self.target_max <= self.max:
+            raise ValueError("description lengths must satisfy target_min <= target_max <= max")
+        return self
 
 
 class DefaultPlace(_Section):
@@ -107,6 +121,7 @@ class StyleConfig(_Section):
     avoid: list[str] = ["beautiful", "amazing", "stunning"]
     extra_instructions: str = ""
     default_place: DefaultPlace = Field(default_factory=DefaultPlace)
+    description: DescriptionStyle = Field(default_factory=DescriptionStyle)
 
 
 class FilterRuleConfig(_Section):

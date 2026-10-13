@@ -44,6 +44,7 @@ FIXED_AFTER = (
     "place_source",
     "default_place",
     "keyword_count",
+    "metadata_issues",
     "ai_model",
     "ai_seconds",
     "ai_tries",
@@ -150,6 +151,9 @@ def _row(
         "place_source": str((meta.get("place") or {}).get("source") or ""),
         "default_place": _default_flag(meta.get("place")),
         "keyword_count": str(len(keywords)) if keywords else "",
+        "metadata_issues": "; ".join(
+            str(i.get("text") or "") for i in meta.get("metadata_issues") or [] if isinstance(i, dict)
+        ),
         "ai_model": str(flt.get("model") or ""),
         "ai_seconds": f"{ai_time[0]:.1f}" if ai_time else "",
         "ai_tries": str(ai_time[1]) if ai_time else "",

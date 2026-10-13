@@ -9,17 +9,18 @@ from __future__ import annotations
 import re
 import unicodedata
 from collections.abc import Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from typing import Any
 
 from . import filters as filters_mod
 from . import guardrails
+from . import metadata_rules as rules
 from .categories import SHUTTERSTOCK_CATEGORIES
 from .filters import FilterResult, FilterSpec
-from .llm.base import LLMRequest, LLMResult, VisionLLM, describe_structured
+from .llm.base import LLMError, LLMRequest, LLMResult, VisionLLM, describe_structured
 from .llm.schema import PhotoOutput, photo_schema
-from .metadata import MAX_DESCRIPTION_CHARS, PhotoMetadata, normalize
+from .metadata import PhotoMetadata, normalize
 
 MONTHS = (
     "JANUARY FEBRUARY MARCH APRIL MAY JUNE JULY AUGUST SEPTEMBER OCTOBER NOVEMBER DECEMBER"
@@ -33,7 +34,7 @@ class Style:
     language: str = "en"
     region_focus: str = ""
     keywords_min: int = 25
-    keywords_max: int = 50
+    keywords_max: int = 45
     always_include: list[str] = field(default_factory=list)
     romaji_place_names: bool = False
     seasonal_terms: bool = True
@@ -41,6 +42,18 @@ class Style:
     extra_instructions: str = ""
     default_city: str = ""
     default_country: str = ""
+    desc_target_min: int = 70
+    desc_target_max: int = 150
+    desc_max: int = 200
+
+    def limits(self) -> rules.Limits:
+        return rules.Limits(
+            desc_target_min=self.desc_target_min,
+            desc_target_max=self.desc_target_max,
+            desc_max=self.desc_max,
+            kw_min=self.keywords_min,
+            kw_max=self.keywords_max,
+        )
 
     @classmethod
     def from_config(cls, style: Any) -> Style:
@@ -61,6 +74,9 @@ class Style:
             extra_instructions=style.extra_instructions,
             default_city=style.default_place.city,
             default_country=style.default_place.country,
+            desc_target_min=style.description.target_min,
+            desc_target_max=style.description.target_max,
+            desc_max=style.description.max,
         )
 
 
@@ -73,6 +89,7 @@ class DescribeResult:
     llm: LLMResult
     filters: FilterResult | None = None
     place: dict = field(default_factory=dict)
+    issues: list[rules.Issue] = field(default_factory=list)
 
 
 def _ascii_upper(text: str | None) -> str:
@@ -168,15 +185,24 @@ def build_prompt(
     captured: datetime | None = None,
     filter_lines: Iterable[str] = (),
 ) -> tuple[str, str]:
-    """Return (system, user). The JSON shape is also spelled out for weaker local models."""
+    """Return (system, user). The JSON shape is also spelled out for weaker local models.
+
+    Written for small vision models: the rules that matter most come first, each one short and
+    concrete, with one good and one bad example. Shutterstock has one Description field that is
+    both title and description, so "description" is the headline sentence.
+    """
     system = (
-        "You are a stock-photo metadata expert writing for Shutterstock buyers. "
-        "You look at one photo and answer with a single JSON object and nothing else."
+        "You are a stock-photo metadata writer for Shutterstock. You look at one photo and "
+        "answer with a single JSON object and nothing else. Describe only what is visible; "
+        "never invent details."
     )
+    lim = style.limits()
     kw_rules = [
-        f"{style.keywords_min}-{style.keywords_max} lowercase keywords or short phrases, "
-        "most relevant first (subject, setting, concepts, colors, mood, place).",
-        "No brand names, trademarks or people's names.",
+        f"{style.keywords_min}-{style.keywords_max} lowercase English keywords, most relevant "
+        "first. Never pad with weak words; fewer strong ones beat filler.",
+        "Mix: the literal subject, setting and place, composition (aerial view, close-up, "
+        "copy space, no people), mood or concept, and multi-word phrases.",
+        "No repeats and no singular/plural twins. No brand names, trademarks or people's names.",
     ]
     if style.romaji_place_names:
         kw_rules.append("Use romaji for Japanese place names (e.g. kyoto, shibuya).")
@@ -196,11 +222,15 @@ def build_prompt(
         ),
         "",
         "Return a JSON object with exactly these fields:",
-        f'- "description": one natural sentence, at most {MAX_DESCRIPTION_CHARS} characters, '
-        "that a buyer would search for. Concrete subject, setting, mood. At least 5 words. "
-        "No keyword stuffing.",
-        '- "caption_sentence": one factual sentence saying what is happening, in the style of '
-        "a news caption (used only if the photo ends up editorial).",
+        '- "description": ONE plain English sentence, like a news headline: who or what, '
+        f"where, when, mood. {lim.desc_target_min}-{lim.desc_target_max} characters "
+        f"(8-20 words), never over {lim.desc_max}. Not a list of words, no emoji or symbols, "
+        "no repeated words.",
+        '  Good: "Cyclists ride along a quiet river path at sunrise with mist over the water"',
+        '  Bad: "river, bicycle, sunrise, mist, path, nature"',
+        '- "caption_sentence": the same kind of sentence for a news caption, saying what is '
+        "happening, without any date or place (those are added). Used only if the photo "
+        "ends up editorial.",
         '- "keywords": a list of strings. ' + " ".join(kw_rules),
         '- "categories": a list of 1 or 2 values chosen only from: '
         + ", ".join(SHUTTERSTOCK_CATEGORIES)
@@ -242,25 +272,26 @@ def build_prompt(
     return system, "\n".join(parts)
 
 
-def _apply_style_keywords(keywords: list[str], style: Style) -> list[str]:
-    avoid = {a.strip().lower() for a in style.avoid if a.strip()}
-    out: list[str] = []
-    for kw in keywords:
-        words = set(re.findall(r"[\w']+", kw.lower()))
-        if avoid and (words & avoid):
-            continue
-        out.append(kw)
-    have = {k.lower() for k in out}
-    extra: list[str] = []
-    for kw in style.always_include:
-        k = kw.strip().lower()
-        if k and k not in have:
-            extra.append(k)
-            have.add(k)
-    mx = max(1, style.keywords_max)
-    if len(out) + len(extra) > mx:
-        out = out[: max(0, mx - len(extra))]
-    return out + extra
+def repair_prompt(
+    prompt: str,
+    description: str,
+    keywords: list[str],
+    problems: list[rules.Issue],
+    distinct_from: Iterable[str] = (),
+) -> str:
+    """The original prompt plus what was wrong with the first answer (one repair call)."""
+    lines = [prompt, "", "Your previous answer had problems. Fix them and answer again in full:"]
+    lines += [f"- {p.text}." for p in problems]
+    lines.append(f'Previous description: "{description[:300]}"')
+    if any(p.code in ("few_keywords", "dup_keywords") for p in problems):
+        lines.append("Previous keywords: " + ", ".join(keywords[:60]))
+    for other in list(distinct_from)[:2]:
+        lines.append(f'Make it clearly different from this other photo: "{other[:200]}"')
+    return "\n".join(lines)
+
+
+# Problems that normalize() already reports in the metadata warnings.
+_WARNED_ELSEWHERE = {"too_long", "few_keywords"}
 
 
 def describe_photo(
@@ -281,6 +312,8 @@ def describe_photo(
     has_property_release: bool = False,
     filters: FilterSpec | None = None,
     at: str = "",
+    seen: rules.BatchSeen | None = None,
+    repair: bool = True,
 ) -> DescribeResult:
     system, user = build_prompt(
         style,
@@ -309,19 +342,67 @@ def describe_photo(
     out = PhotoOutput.model_validate(result.data)
     location = out.location.model_dump()
     detected = out.detected.model_dump()
-    sentence = out.caption_sentence.strip() or out.description
+    limits = style.limits()
 
-    def caption() -> str:
+    def caption(sentence: str) -> str:
         return editorial_caption(
             location, captured, sentence, style.default_city, style.default_country
         )
 
-    description = out.description
+    prefix_len = len(caption(""))
+
+    def assess(o: PhotoOutput) -> tuple[str, str, list[str], list[rules.Issue]]:
+        """(description, caption sentence, keywords, problems) of an answer after the fixes."""
+        desc, _ = rules.tidy_text(o.description)
+        cap, _ = rules.tidy_text(o.caption_sentence.strip() or o.description)
+        kws = rules.clean_keywords(o.keywords, limits, style.avoid, style.always_include)
+        active = cap if o.editorial else desc
+        found = [
+            *rules.check_description(active, limits, prefix_len if o.editorial else 0),
+            *rules.check_keywords(kws, limits),
+            *rules.check_unique(seen, active, kws),
+        ]
+        return desc, cap, kws, found
+
+    desc_text, cap_text, kws, issues = assess(out)
+    hard = [i for i in issues if i.hard]
+    if hard and repair:
+        active = cap_text if out.editorial else desc_text
+        dup = any(i.code.startswith("dup_") for i in hard)
+        asked = replace(
+            req,
+            prompt=repair_prompt(user, active, kws, hard, rules.similar_to(seen, active, kws)),
+            temperature=max(temperature, 0.5) if dup else temperature,
+        )
+        result.retries += 1  # the repair call counts as one more try
+        try:
+            second = describe_structured(
+                llm, asked, retries=0, **({} if schema is None else {"schema": schema})
+            )
+        except LLMError:
+            second = None
+        if second is not None:
+            result.input_tokens += second.input_tokens
+            result.output_tokens += second.output_tokens
+            result.seconds += second.seconds
+            out2 = PhotoOutput.model_validate(second.data)
+            fixed = out.model_copy(
+                update={
+                    "description": out2.description,
+                    "caption_sentence": out2.caption_sentence,
+                    "keywords": out2.keywords,
+                }
+            )
+            desc2, cap2, kws2, issues2 = assess(fixed)
+            if len([i for i in issues2 if i.hard]) < len(hard):
+                out, desc_text, cap_text, kws, issues = fixed, desc2, cap2, kws2, issues2
+
+    description = desc_text
     if out.editorial:
-        description = caption()
+        description = caption(cap_text)
     data = {
         "description": description,
-        "keywords": _apply_style_keywords(out.keywords, style),
+        "keywords": kws,
         "categories": out.categories,
         "editorial": out.editorial,
         "mature": out.mature,
@@ -341,7 +422,7 @@ def describe_photo(
     meta, gr = run_check(meta)
     if meta.editorial and not out.editorial:
         # Guardrails forced editorial: the description must become an editorial caption.
-        data["description"] = caption()
+        data["description"] = caption(cap_text)
         data["editorial"] = True
         data["keywords"] = meta.keywords
         meta, gr2 = run_check(normalize(filename, data))
@@ -354,6 +435,14 @@ def describe_photo(
         ]
         gr = gr2
     meta.warnings.extend(m for m in gr.messages if m not in meta.warnings)
+    for issue in issues:  # what is still wrong after the fixes and the one repair
+        skip = issue.code in _WARNED_ELSEWHERE or (
+            issue.code == "too_few_words" and not meta.editorial
+        )
+        if issue.hard and not skip and issue.text not in meta.warnings:
+            meta.warnings.append(issue.text)
+    if seen is not None:
+        seen.add(cap_text if meta.editorial else desc_text, meta.keywords)
     place = resolve_place(location, style.default_city, style.default_country)
     if meta.editorial:
         if not (place["city"] and place["country"]) and NO_PLACE_WARNING not in meta.warnings:
@@ -369,4 +458,4 @@ def describe_photo(
             model=f"{llm.name}/{llm.model}",
             at=at,
         )
-    return DescribeResult(meta, detected, location, gr, result, checked, place)
+    return DescribeResult(meta, detected, location, gr, result, checked, place, issues)

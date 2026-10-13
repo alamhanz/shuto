@@ -29,6 +29,7 @@ from . import cull as cull_mod
 from . import deliver, describe, estimate, ftps, guardrails, hardware, imaging, local_models
 from . import filters as filters_mod
 from . import ledger as ledger_mod
+from . import metadata_rules
 from . import report as report_mod
 from .collect import _safe_batch_name, batch_id_for, group_near_duplicates, scan_folder
 from .config import APP_NAME, Config, FilterRuleConfig, default_config_dir
@@ -984,6 +985,12 @@ def describe_batch(
     style = describe.Style.from_config(cfg.style)
     spec = filter_spec(cfg)
     feedback = describe.feedback_lines(store.rejection_stats(), store.recent_rejection_examples())
+    seen = metadata_rules.BatchSeen()  # what the batch already says, so no two photos match
+    redo = {p.id for p in photos}
+    for other in store.list_photos(batch_id):
+        om = other.metadata or {}
+        if other.id not in redo and om.get("description"):
+            seen.add(str(om["description"]), om.get("keywords") or [])
     side = cfg.llm.image_max_side or llm.default_image_side
     conc = max(1, cfg.llm.concurrency or llm.default_concurrency)
     lock = threading.Lock()
@@ -1015,6 +1022,7 @@ def describe_batch(
                 has_property_release=has_property,
                 filters=spec,
                 at=_now_iso(),
+                seen=seen,
             )
         except LLMError as exc:
             store.log_llm_call(
@@ -1046,6 +1054,8 @@ def describe_batch(
         meta = res.metadata.to_dict()
         meta["location"] = res.location
         meta["place"] = res.place
+        if res.issues:
+            meta["metadata_issues"] = [i.to_dict() for i in res.issues]
         found = res.filters.to_dict() if res.filters else None
         _drop_prepared(store, photo)
         if photo.status != Status.READY:

@@ -31,13 +31,17 @@ style:
   tone: "documentary, warm, factual; no hype words"
   language: en
   keywords:
-    min: 25
-    max: 50
+    min: 25                        # fewer is only a note; 25 to 45 strong keywords works best
+    max: 45                        # Shutterstock allows 50, but padding looks like spam
     always_include: []             # for example [japan] for an Everyday Japan portfolio
     romaji_place_names: false      # true adds "use romaji for Japanese place names"
     seasonal_terms: true
   avoid: [beautiful, amazing, stunning]
   extra_instructions: ""
+  description:                     # one factual sentence; Shutterstock has no separate title
+    target_min: 70                 # shorter is only a note
+    target_max: 150                # longer is only a note
+    max: 200                       # longer is sent back to the AI once, then flagged
   default_place:                   # used in editorial captions when a photo has no known place
     city: ""                       # for example Tokyo
     country: ""                    # for example Japan

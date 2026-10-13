@@ -59,6 +59,7 @@
     {% if checks_overridden %}<p class="hint">You approved this photo even though a check did not pass.</p>{% endif %}
     {% if checked_with_older_rules %}<p class="hint">Checked with your earlier theme or rules. New rules only apply to photos checked from now on.</p>{% endif %}
     {% else %}<p class="hint">Not checked with a theme or your own rules.</p>{% endif %}
+    {% if meta.metadata_issues %}<h3>Description and keywords</h3><ul>{% for i in meta.metadata_issues %}<li>{{ i.text }}</li>{% endfor %}</ul>{% endif %}
     {% if meta.warnings %}<h3>Other notes</h3><ul>{% for w in meta.warnings %}<li>{{ w }}</li>{% endfor %}</ul>{% endif %}
   </section>
 

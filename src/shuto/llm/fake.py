@@ -54,8 +54,13 @@ class FakeProvider:
         self.calls.append(req)
         self.schemas.append(schema)
         resp = self._responses[idx]
-        if resp is None:
-            resp = DEFAULT_RESPONSE
+        if resp is None:  # the stock answer differs a little per call, like a real model
+            n = len(self.calls)
+            resp = {
+                **DEFAULT_RESPONSE,
+                "description": f"{DEFAULT_RESPONSE['description']} view {n} of series {n * 7}",
+                "keywords": [*DEFAULT_RESPONSE["keywords"][:19], *(f"extra {n} {i}" for i in range(6))],
+            }
         if callable(resp):
             resp = resp(req)
         if (

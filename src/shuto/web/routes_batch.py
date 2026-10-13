@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Annotated, Any
 from urllib.parse import quote
@@ -10,7 +11,7 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 
 from .. import filters as filters_mod
-from .. import imaging, pipeline
+from .. import ftps, imaging, openfolder, pipeline
 from ..jobs import JobContext
 from ..local_models import ModelChoiceRequired
 from ..models import ALLOWED, Photo, Status
@@ -20,6 +21,8 @@ from . import ux
 from .common import PostForm, WebCtx, short, split_lines
 
 BATCH_JOBS = ("cull", "describe", "prepare", "upload", "export")  # legacy / power-user routes
+SPEED_CHOICES = ("tries", "model", "keep")
+OPEN_FOLDER_PAGES = ("review", "submit", "upload")
 PREVIEW_SIDE = 2048  # page preview size; originals can be tens of MB
 FILTERS = ("attention", "good", "aside", "all")
 WHY_FILTERS = ("quality", "copies", "theme", "rules")  # why a photo was set aside
@@ -157,6 +160,7 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
             steps=ux.steps(batch_id, counts),
             step_current=current,
             active_job=ctx.runner.active_job(batch_id),
+            batch_folder=str(pipeline.batch_dir(ctx.cfg, batch_id)),
             **extra,
         )
 
@@ -222,6 +226,38 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
             **facts,
         )
 
+    def start_live(batch_id: str):
+        """Live speed check of a local run (None for online AI), shared with the Speed routes."""
+        try:
+            live = pipeline.make_live_run(ctx.cfg, ctx.store)
+        except Exception:  # the speed check is optional: the job goes on without it
+            logging.getLogger(__name__).exception("speed check unavailable")
+            return None
+        if live is not None:
+            ctx.state.live[batch_id] = live
+        return live
+
+    @app.post("/batch/{batch_id}/speed/{choice}", response_class=HTMLResponse)
+    def speed_choice(request: Request, batch_id: str, choice: str, form: PostForm):
+        """One click on the 'this is slow' suggestion; applies to the photos not started yet."""
+        job_id = ctx.runner.active_job(batch_id)
+        live = ctx.state.live.get(batch_id)
+        if choice not in SPEED_CHOICES:
+            raise HTTPException(status_code=404, detail="Unknown choice.")
+        if live is not None:
+            if choice == "tries":
+                suggestion = live.suggestion()
+                if suggestion is not None and suggestion.tries is not None:
+                    live.set_max_tries(suggestion.tries)
+            elif choice == "model":
+                if not live.switch_model(str(form.get("model") or "")):
+                    live.notice = "That model cannot be used now. Keeping the current one."
+            else:
+                live.dismiss()
+        if job_id is None:
+            return ctx.message_fragment(request, "The check has finished.")
+        return ctx.job_fragment(request, job_id)
+
     @app.post("/batch/{batch_id}/check", response_class=HTMLResponse)
     def check_start(request: Request, batch_id: str, form: PostForm):
         cfg, store = ctx.cfg, ctx.store
@@ -234,9 +270,18 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
             return ctx.message_fragment(request, block)
 
         def run(job: JobContext) -> str:
-            s = pipeline.check_batch(
-                cfg, store, batch_id, progress=job.progress, cancel=job.cancelled
-            )
+            live = start_live(batch_id)
+            try:
+                s = pipeline.check_batch(
+                    cfg,
+                    store,
+                    batch_id,
+                    progress=job.progress_text,
+                    cancel=job.cancelled,
+                    live=live,
+                )
+            finally:
+                ctx.state.live.pop(batch_id, None)
             text = f"Quality check set aside {s.cull.culled} of {s.cull.total} new photos."
             d = s.describe
             if d is None:
@@ -255,7 +300,7 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
                 text += f" {d.failed} could not be written; press Check again to retry them."
             return text
 
-        return ctx.start_job(request, "check", batch_id, run, total=n)
+        return ctx.start_job(request, "check", batch_id, run, total=pipeline.CHECK_SCALE)
 
     # ------------------------------------------------------------------ review
 
@@ -294,6 +339,8 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
             "snippet": short(str(meta.get("description") or ""), 90),
             "editorial": bool(meta.get("editorial")),
             "gps": p.has_gps,
+            "gps_sent": p.has_gps and ctx.cfg.prepare.include_gps,
+            "default_place": bool((meta.get("place") or {}).get("default")),
         }
 
     @app.get("/batch/{batch_id}/review", response_class=HTMLResponse)
@@ -426,21 +473,31 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
     def _export_names(photos: list[Photo]) -> list[str]:
         return [Path(f).name for f in sorted({p.export_file for p in photos if p.export_file})]
 
+    def _resend_choices(photos: list[Photo]) -> dict[str, list[Photo]]:
+        """Photos the user may tell shuto were deleted on Shutterstock (accepted ones are not)."""
+        return {
+            "sent": [p for p in photos if p.status in (Status.UPLOADED, Status.EXPORTED)],
+            "submitted": [p for p in photos if p.status == Status.SUBMITTED],
+        }
+
     @app.get("/batch/{batch_id}/upload", response_class=HTMLResponse)
     def upload_page(request: Request, batch_id: str):
         ctx.get_batch_or_404(batch_id)
         summary = pipeline.batch_summary(ctx.store, batch_id)
         counts = summary["counts"]
+        photos = ctx.store.list_photos(batch_id)
         login = pipeline.ftps_login_status(ctx.cfg)
         return page(
             request,
             "batch_upload.html",
             batch_id,
             "upload",
-            n=counts.get("approved", 0) + counts.get("prepared", 0),
+            n=min(counts.get("approved", 0) + counts.get("prepared", 0), pipeline.MAX_BATCH_PHOTOS),
             size=_mb(summary["upload_bytes"]),
             login_ok=bool(login["user_set"] and login["password_set"]),
-            exports=_export_names(ctx.store.list_photos(batch_id)),
+            exports=_export_names(photos),
+            resend=_resend_choices(photos),
+            resend_page="upload",
             sent=counts.get("uploaded", 0) + counts.get("exported", 0),
             back_path=_url(batch_id, "upload"),
             submit_href=_url(batch_id, "submit"),
@@ -460,7 +517,12 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
 
         def run(job: JobContext) -> str:
             s = pipeline.deliver_batch(
-                cfg, store, batch_id, confirm=True, progress=job.progress, cancel=job.cancelled
+                cfg,
+                store,
+                batch_id,
+                confirm=True,
+                progress=job.progress_text,
+                cancel=job.cancelled,
             )
             sent = len(s.upload.uploaded) if s.upload else 0
             if s.prepare.problems and not sent:
@@ -471,25 +533,39 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
                 )
             if s.upload is None:
                 return "Stopped before uploading."
+            if s.upload.stopped:
+                return s.upload.stopped_text()
+            if job.cancelled() and s.export is not None:
+                job.mark_completed()  # the cancel came too late: everything was sent
+            lost = [e for e in s.upload.failed.values() if e.startswith(ftps.LOST_PREFIX)]
+            if lost and not sent:
+                raise PipelineError(lost[0])
             if s.upload.failed and not sent:
                 err = next(iter(s.upload.failed.values()))
                 fe = ux.friendly_error(err, context="upload")
                 raise PipelineError(
                     f"{len(s.upload.failed)} photo(s) did not upload. {fe['what']} {fe['todo']}"
                 )
-            unfinished = len(s.prepare.problems) + len(s.upload.failed)
-            if unfinished:
+            fixes = len(s.prepare.problems) + len(s.upload.failed) - len(lost)
+            if fixes or lost:
                 # Partial success: keep what was sent and still write its CSV.
-                exported = s.export or pipeline.export_batch(cfg, store, batch_id)
+                if s.export is None:
+                    pipeline.export_batch(cfg, store, batch_id)
+                text = f"Uploaded {sent}."
+                if fixes:
+                    text = f"Uploaded {sent}; {fixes} need a fix in Review."
+                if lost:
+                    text += " " + lost[0]
+                return f"{text} Wrote the Shutterstock info file."
+            if s.upload.over_limit:
                 return (
-                    f"Uploaded {sent}; {unfinished} need a fix in Review. "
-                    f"Wrote {len(exported.files)} Shutterstock info file(s)."
+                    f"Uploaded {sent} photo(s). {s.upload.over_limit} more are ready: "
+                    "press Upload again to send them."
                 )
             if s.export is None:
                 return f"Uploaded {len(s.upload.uploaded)} photo(s). Stopped before the info file."
             return (
-                f"Uploaded {len(s.upload.uploaded)} photo(s) and wrote "
-                f"{len(s.export.files)} Shutterstock info file(s)."
+                f"Uploaded {len(s.upload.uploaded)} photo(s) and wrote the Shutterstock info file."
             )
 
         return ctx.start_job(request, "deliver", batch_id, run, total=2 * n + 1)
@@ -507,6 +583,8 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
             batch_id,
             "submit",
             exports=_export_names(photos),
+            resend=_resend_choices(photos),
+            resend_page="submit",
             waiting=counts.get("exported", 0),
             finished=sum(counts.get(k, 0) for k in ("submitted", "accepted", "rejected")),
             report_href=_url(batch_id, "report.csv"),
@@ -540,6 +618,48 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
             },
         )
 
+    @app.post("/batch/{batch_id}/resend")
+    def resend_photos(batch_id: str, form: PostForm):
+        """ "These are no longer on Shutterstock": put the ticked photos back in the upload queue.
+
+        shuto cannot see the Shutterstock account, so this is the user's word. The confirm box
+        works without JavaScript."""
+        ctx.get_batch_or_404(batch_id)
+        page_name = str(form.get("page"))
+        here = _url(batch_id, page_name if page_name in ("upload", "submit") else "upload")
+        if form.get("confirm") != "yes":
+            return ctx.back(
+                here, error="Tick the box to confirm these photos are no longer on Shutterstock."
+            )
+        ids = ctx.ids_from(form)
+        if not ids:
+            return ctx.back(here, error="Tick the photos that are no longer on Shutterstock.")
+        s = pipeline.reupload_photos(ctx.cfg, ctx.store, ids, batch_id=batch_id)
+        if not s.moved:
+            return ctx.back(here, error=next(iter(s.refused.values())))
+        n = len(s.moved)
+        return ctx.back(
+            _url(batch_id, "upload"),
+            notice=f"{n} photo{'' if n == 1 else 's'} will be uploaded again. "
+            "Press Upload when you are ready.",
+            error=next(iter(s.refused.values()), None),
+        )
+
+    @app.post("/batch/{batch_id}/open-folder")
+    def open_batch_folder(batch_id: str, form: PostForm):
+        ctx.get_batch_or_404(batch_id)
+        page_name = str(form.get("page"))
+        back = _url(batch_id, page_name if page_name in OPEN_FOLDER_PAGES else "")
+        folder = pipeline.batch_dir(ctx.cfg, batch_id)  # always the batch's own folder
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            return ctx.back(back, error=openfolder.NO_DESKTOP)
+        problem = openfolder.open_folder(folder)
+        if problem:
+            return ctx.back(back, error=problem)
+        return ctx.back(back, notice="Opened the folder on this computer.")
+
     # ------------------------------------------------------------------ legacy job routes
 
     @app.post("/batch/{batch_id}/{action}", response_class=HTMLResponse)
@@ -564,9 +684,18 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
                 return ctx.message_fragment(request, block)
 
             def run(job: JobContext) -> str:
-                s = pipeline.describe_batch(
-                    cfg, store, batch_id, only_ids=only, progress=job.progress, cancel=job.cancelled
-                )
+                try:
+                    s = pipeline.describe_batch(
+                        cfg,
+                        store,
+                        batch_id,
+                        only_ids=only,
+                        progress=job.progress,
+                        cancel=job.cancelled,
+                        live=start_live(batch_id),
+                    )
+                finally:
+                    ctx.state.live.pop(batch_id, None)
                 text = (
                     f"Described {s.described + s.needs_review + s.blocked}: {s.described} clean, "
                     f"{s.needs_review} need review, {s.blocked} blocked, {s.failed} failed."
@@ -597,8 +726,18 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
 
             def run(job: JobContext) -> str:
                 s = pipeline.upload_batch(
-                    cfg, store, batch_id, confirm=True, only_ids=only, progress=job.progress
+                    cfg,
+                    store,
+                    batch_id,
+                    confirm=True,
+                    only_ids=only,
+                    progress=job.progress_text,
+                    cancel=job.cancelled,
                 )
+                if s.stopped:
+                    return s.stopped_text()
+                if job.cancelled():
+                    job.mark_completed()  # the cancel came too late: everything was sent
                 text = f"Uploaded {len(s.uploaded)} file(s)."
                 if s.failed:
                     name, err = next(iter(s.failed.items()))
@@ -613,7 +752,13 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
                 s = pipeline.export_batch(cfg, store, batch_id)
                 if not s.files:
                     return "Nothing to export: upload prepared photos first."
-                return f"Wrote {len(s.files)} CSV file(s) for {len(s.rows)} photo(s)."
+                text = f"Wrote the Shutterstock CSV for {len(s.rows)} photo(s)."
+                if s.skipped:
+                    text += (
+                        f" {len(s.skipped)} left out because the text is not in English;"
+                        " edit them in Review."
+                    )
+                return text
 
         return ctx.start_job(request, action, batch_id, run)
 
@@ -700,6 +845,7 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
             and Status.READY in ALLOWED.get(photo.status, ()),
             can_result=photo.status in (Status.EXPORTED, Status.SUBMITTED),
             releases_text="\n".join(photo.release_ids),
+            include_gps=ctx.cfg.prepare.include_gps,
         )
 
     def _older_rules(photo: Photo) -> bool:

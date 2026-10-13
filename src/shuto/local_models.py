@@ -29,6 +29,8 @@ DATA_DIR = Path(__file__).parent / "data"
 SAMPLE_PATH = DATA_DIR / "sample.jpg"
 QUALITY_LABELS = {1: "draft", 2: "basic", 3: "good", 4: "high", 5: "best"}
 DISK_HEADROOM_GB = 1.0
+SMALL_CONTEXT_TOKENS = 4096  # a model with this much room or less gets the short prompt
+NUM_CTX_TARGET = 8192  # room asked of Ollama: prompt + image + answer (+ a repair round)
 STALE_AFTER_DAYS = 183  # about six months: the model list is then worth a second look
 
 
@@ -48,6 +50,7 @@ class LocalModel:
     est_s: dict[str, float]
     notes: str = ""
     verify: bool = False
+    context_tokens: int = 0  # the model's context window (0 = not known)
 
 
 @dataclass
@@ -76,6 +79,70 @@ class Recommendation:
 # ---------------------------------------------------------------- catalog
 
 
+def context_tokens(tag: str, catalog: list[LocalModel] | None = None) -> int:
+    """The context window of a catalogue model in tokens; 0 when the tag is not listed."""
+    models = catalog if catalog is not None else load_catalog()[0]
+    wanted = normalize_tag(tag)
+    return next((m.context_tokens for m in models if normalize_tag(m.tag) == wanted), 0)
+
+
+def is_small_context(tag: str, catalog: list[LocalModel] | None = None) -> bool:
+    """True when the catalogue says the model's window is SMALL_CONTEXT_TOKENS or less.
+
+    Unknown models and models without a listed window are not small (the full prompt is used).
+    """
+    return 0 < context_tokens(tag, catalog) <= SMALL_CONTEXT_TOKENS
+
+
+def effective_num_ctx(
+    tag: str,
+    profile: HardwareProfile | None = None,
+    catalog: list[LocalModel] | None = None,
+) -> int:
+    """The context size (``num_ctx``) shuto asks Ollama for, in tokens.
+
+    NUM_CTX_TARGET, capped at the model's catalogue window; capped at SMALL_CONTEXT_TOKENS
+    when the machine is tight (the model has under 1 GB of memory to spare, so a big window
+    could push it out of memory). Ollama's own default (2048 or 4096) is too small for the
+    full prompt, the image and the answer, and it silently cuts the start of the prompt.
+    """
+    models = catalog if catalog is not None else load_catalog()[0]
+    wanted = normalize_tag(tag)
+    model = next((m for m in models if normalize_tag(m.tag) == wanted), None)
+    num_ctx = NUM_CTX_TARGET
+    if model is not None and 0 < model.context_tokens < num_ctx:
+        num_ctx = model.context_tokens
+    if model is not None and profile is not None:
+        gpu_fit = profile.usable_gpu_gb > 0 and model.size_gb * 1.2 <= profile.usable_gpu_gb
+        spare_ram = profile.ram_gb - 4 - model.min_ram_gb
+        if not gpu_fit and spare_ram < 1.0:
+            num_ctx = min(num_ctx, SMALL_CONTEXT_TOKENS)
+    return num_ctx
+
+
+def small_model_warning(tag: str, rows: list[ModelRow], catalog: list[LocalModel] | None = None):
+    """Plain-words warning for a small-context model, naming a bigger one that fits; else None."""
+    if not is_small_context(tag, catalog):
+        return None
+    pick = next(
+        (
+            r.tag
+            for r in rows
+            if r.fits_hardware and r.tag != tag and not is_small_context(r.tag, catalog)
+        ),
+        None,
+    )
+    text = (
+        f"{tag} is a small model with little memory, so shuto gives it shorter instructions "
+        "and its descriptions and keywords will usually be weaker."
+    )
+    if pick:
+        text += f" For better results choose a bigger model, for example {pick}."
+    else:
+        text += " For better results choose a bigger model or an online AI."
+    return text
+
+
 def _local(d: dict) -> LocalModel:
     return LocalModel(
         tag=str(d["tag"]),
@@ -88,6 +155,7 @@ def _local(d: dict) -> LocalModel:
         est_s={str(k): float(v) for k, v in (d.get("est_s") or {}).items()},
         notes=str(d.get("notes", "")),
         verify=bool(d.get("verify", False)),
+        context_tokens=int(d.get("context_tokens", 0) or 0),
     )
 
 

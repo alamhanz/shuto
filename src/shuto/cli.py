@@ -247,6 +247,7 @@ _WORKSPACE_ENTRIES = (
     "previews",
     "prepared",
     "exports",
+    "batches",
     "logs",
     "uploaded.csv",
 )
@@ -408,6 +409,7 @@ def cmd_doctor(ctx: Ctx) -> int:
             out(f"           {line}")
     else:
         out("Checks:    none (no theme check and no rules of your own)")
+    out(f"Place:     {report.default_place or 'no default place (editorial captions say UNKNOWN)'}")
     out(f"Model choice file: {pipeline.model_choice_path()}")
     out(f"Benchmark cache:   {pipeline.benchmark_cache_path()}")
     if report.selected is None and report.provider == "ollama" and not report.selection_unreadable:
@@ -551,7 +553,8 @@ def _print_import(summary: pipeline.ImportSummary) -> None:
     if summary.already_uploaded:
         out(
             f"{len(summary.already_uploaded)} photo(s) were uploaded before and were not "
-            "processed again (use --force to import them anyway):"
+            "processed again (--force imports look-alikes anyway; for photos you deleted on "
+            "Shutterstock use `shuto reupload BATCH --ids ...`):"
         )
         for item in summary.already_uploaded[:20]:
             out(f"  {item.text()}")
@@ -559,6 +562,8 @@ def _print_import(summary: pipeline.ImportSummary) -> None:
             out(f"  ... and {len(summary.already_uploaded) - 20} more")
     for batch, n in sorted(summary.batches.items()):
         out(f"  batch {batch}: {n}")
+    if len(summary.batches) > 1:
+        out(pipeline.batches_text(summary.batches))
     for err in summary.errors[:10]:
         out(f"  problem: {err}")
 
@@ -782,9 +787,12 @@ def cmd_approve(ctx: Ctx) -> int:
 def cmd_prepare(ctx: Ctx) -> int:
     a = ctx.args
     summary = pipeline.prepare_batch(
-        ctx.cfg, ctx.store, a.batch, only_ids=a.ids, progress=_progress_printer("prepare")
+        ctx.run_cfg, ctx.store, a.batch, only_ids=a.ids, progress=_progress_printer("prepare")
     )
-    out(f"Prepared {len(summary.prepared)} file(s) in {ctx.cfg.workspace_path('prepared')}.")
+    out(
+        f"Prepared {len(summary.prepared)} file(s) in "
+        f"{pipeline.batch_dir(ctx.cfg, a.batch) / 'prepared'}."
+    )
     for pid, problems in summary.problems.items():
         out(f"  photo {pid} skipped: " + " ".join(problems))
     return 0
@@ -794,7 +802,7 @@ def cmd_upload(ctx: Ctx) -> int:
     a = ctx.args
     try:
         summary = pipeline.upload_batch(
-            ctx.cfg,
+            ctx.run_cfg,
             ctx.store,
             a.batch,
             confirm=a.yes,
@@ -811,9 +819,38 @@ def cmd_upload(ctx: Ctx) -> int:
     return 1 if summary.failed else 0
 
 
+def cmd_reupload(ctx: Ctx) -> int:
+    """Photos deleted on Shutterstock: make them ready to upload again."""
+    a = ctx.args
+    if bool(a.ids) == bool(a.all):
+        out("error: give --ids ID [ID ...] or --all.")
+        return 2
+    if a.ids:
+        ids = list(a.ids)
+    else:
+        kinds = [Status.UPLOADED, Status.EXPORTED] + (
+            [Status.SUBMITTED] if a.include_submitted else []
+        )
+        ids = [p.id for p in ctx.store.list_photos(a.batch, kinds) if p.id is not None]
+    if not ids:
+        out("Nothing to send again: no photo of this batch is marked as sent.")
+        return 0
+    if not a.yes:
+        out(f"{len(ids)} photo(s) of batch {a.batch} would be uploaded again.")
+        out("Only do this for photos that are no longer on Shutterstock. Add --yes to confirm.")
+        return 1
+    summary = pipeline.reupload_photos(ctx.run_cfg, ctx.store, ids, batch_id=a.batch)
+    out(f"{len(summary.moved)} photo(s) will be uploaded again; {len(summary.refused)} refused.")
+    for why in summary.refused.values():
+        out(f"  {why}")
+    if summary.moved:
+        out(f"Next: shuto prepare {a.batch} (if needed), then shuto upload {a.batch} --yes")
+    return 1 if summary.refused else 0
+
+
 def cmd_export(ctx: Ctx) -> int:
     a = ctx.args
-    summary = pipeline.export_batch(ctx.cfg, ctx.store, a.batch, dry_run=a.dry_run)
+    summary = pipeline.export_batch(ctx.run_cfg, ctx.store, a.batch, dry_run=a.dry_run)
     if a.dry_run:
         out(f"Dry run: {len(summary.rows)} row(s) would be exported.")
         for row in summary.rows:
@@ -821,10 +858,14 @@ def cmd_export(ctx: Ctx) -> int:
         return 0
     for f in summary.files:
         out(f"Wrote {f}")
+    if summary.skipped:
+        out(f"{len(summary.skipped)} photo(s) left out: the text is not in English.")
     if not summary.files:
         out("Nothing to export (photos must be uploaded first).")
         return 0
-    out("Final step is manual: on shutterstock.com choose Submit and upload this CSV there.")
+    out(f"Batch folder: {pipeline.batch_dir(ctx.cfg, a.batch)}")
+    out("Final step is manual: on submit.shutterstock.com open Portfolio > Not submitted,")
+    out("press Upload CSV and choose this file, check the photos and press Submit.")
     out(f"Afterwards: shuto submitted {a.batch}")
     return 0
 
@@ -845,6 +886,7 @@ def cmd_report(ctx: Ctx) -> int:
     else:
         path = pipeline.write_report(ctx.cfg, ctx.store, a.batch)
     out(f"Report for {a.batch}: {path}")
+    out(f"Batch folder: {pipeline.batch_dir(ctx.cfg, a.batch)}")
     return 0
 
 
@@ -1045,6 +1087,7 @@ HANDLERS = {
     "approve": cmd_approve,
     "prepare": cmd_prepare,
     "upload": cmd_upload,
+    "reupload": cmd_reupload,
     "export": cmd_export,
     "submitted": cmd_submitted,
     "status": cmd_status,
@@ -1177,7 +1220,18 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--ids", type=int, nargs="+")
     s.add_argument("--yes", action="store_true", help="confirm this upload")
 
-    s = add("export", "write the Shutterstock CSV files")
+    s = add("reupload", "send photos again that you deleted on Shutterstock (needs --yes)")
+    s.add_argument("batch")
+    s.add_argument("--ids", type=int, nargs="+", help="photo ids (see `shuto review`)")
+    s.add_argument("--all", action="store_true", help="every uploaded photo of the batch")
+    s.add_argument(
+        "--include-submitted",
+        action="store_true",
+        help="with --all: also photos noted as submitted",
+    )
+    s.add_argument("--yes", action="store_true", help="confirm they are gone from Shutterstock")
+
+    s = add("export", "write the batch's Shutterstock CSV")
     s.add_argument("batch")
     s.add_argument("--dry-run", action="store_true")
 

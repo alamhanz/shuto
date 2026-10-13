@@ -1,3 +1,4 @@
+import codecs
 import csv
 import ftplib
 import io
@@ -7,7 +8,6 @@ import pytest
 from PIL import Image
 
 from shuto import deliver, ftps, prepare
-from shuto.csv_export import split_by_kind
 
 from .helpers import write_jpeg
 
@@ -153,6 +153,7 @@ def test_upload_reconnect_failure_marks_rest_failed(tmp_path):
         _files(tmp_path, ["a.jpg", "b.jpg"]),
         lambda n, e: results.__setitem__(n, e),
         connect=connect,
+        sleep=lambda _s: None,
     )
     assert all(isinstance(v, Exception) for v in results.values())
 
@@ -179,24 +180,34 @@ def test_creds_missing_names_both(monkeypatch):
     assert "v" not in repr(c).replace("host", "")
 
 
-def test_write_csvs_split_and_names(tmp_path):
+def test_write_csv_is_one_file_per_batch(tmp_path):
     rows = [
-        {"filename": "a-001.jpg", "description": "日本, café", "keywords": ["x"], "categories": []},
+        {
+            "filename": "a-001.jpg",
+            "description": "Nihon, café",
+            "keywords": ["x"],
+            "categories": [],
+        },
         {
             "filename": "b-002.jpg",
             "description": "d",
-            "keywords": ["y"],
-            "categories": [],
+            "keywords": ["y", "z w"],
+            "categories": ["Nature", "Travel"],
             "editorial": True,
         },
     ]
-    assert list(split_by_kind(rows)) == ["commercial", "editorial"]
-    paths = deliver.write_csvs("2026-W14/x", rows, tmp_path / "csv", datetime(2026, 4, 1, 9, 0, 0))
-    assert [p.name for p in paths] == [
-        "shutterstock-2026-W14-x-commercial-20260401-090000.csv",
-        "shutterstock-2026-W14-x-editorial-20260401-090000.csv",
-    ]
-    raw = paths[0].read_bytes()
-    assert b"\r\r" not in raw
+    path = deliver.write_csv("2026-W14/x", rows, tmp_path / "csv")
+    assert path.name == deliver.csv_filename("2026-W14/x")
+    assert path.name.endswith("-shutterstock.csv") and "/" not in path.name
+    assert list((tmp_path / "csv").iterdir()) == [path]
+    raw = path.read_bytes()
+    assert not raw.startswith(codecs.BOM_UTF8) and b"\r\r" not in raw  # no BOM, like the sample
+    assert raw.decode("utf-8").splitlines()[0] == (
+        "Filename,Description,Keywords,Categories,Editorial,Mature content,illustration"
+    )
     parsed = list(csv.reader(io.StringIO(raw.decode("utf-8"), newline="")))
-    assert parsed[1][:2] == ["a-001.jpg", "日本, café"]
+    assert parsed[1] == ["a-001.jpg", "Nihon, café", "x", "", "no", "no", "no"]
+    assert parsed[2] == ["b-002.jpg", "d", "y,z w", "Nature,Travel", "yes", "no", "no"]
+    assert '"y,z w"' in raw.decode("utf-8")  # keywords stay one quoted cell
+    again = deliver.write_csv("2026-W14/x", rows[:1], tmp_path / "csv")
+    assert again == path and len(path.read_text(encoding="utf-8").splitlines()) == 2

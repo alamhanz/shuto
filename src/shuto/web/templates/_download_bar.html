@@ -2,7 +2,7 @@
 {%- set what = tag or ('the AI model' if job.kind == 'pull' else 'AI models') -%}
 {%- set pct = (job.done * 100 / job.total)|int if job.total else None -%}
 <div class="dl-bar {{ job.state }}" id="dl-bar" data-job="{{ job.id }}"{% if active %} hx-get="/downloads/bar?job={{ job.id }}" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
-  {%- if job.state == 'done' %}{{ icon('check') }}<span role="status">{{ result or ('Downloaded ' ~ what ~ '.') }}</span>
+  {%- if job.state == 'done' %}{{ icon('check') }}<span role="status">{% if in_use and job.kind == 'pull' %}{{ what }} is downloaded and chosen.{% else %}{{ result or ('Downloaded ' ~ what ~ '.') }}{% endif %}</span>
   {%- elif job.state == 'failed' %}{{ icon('alert') }}<span role="alert">{% set f = friendly(job.error, job.kind) %}{{ f.what }} {{ f.todo }}</span>
   {%- elif job.state == 'cancelled' %}{{ icon('stop') }}<span role="status">{{ result or ('The download of ' ~ what ~ ' was stopped.') }}</span>
   {%- else %}<span class="spin">{{ icon('spinner') }}</span>

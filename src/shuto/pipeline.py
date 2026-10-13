@@ -14,7 +14,8 @@ import os
 import re
 import sqlite3
 import threading
-from collections.abc import Callable, Iterable
+import time
+from collections.abc import Callable, Collection, Iterable, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime
@@ -25,26 +26,40 @@ from typing import Any
 import platformdirs
 
 from . import cull as cull_mod
-from . import deliver, describe, estimate, ftps, guardrails, hardware, imaging, local_models
+from . import (
+    deliver,
+    describe,
+    embed,
+    estimate,
+    ftps,
+    guardrails,
+    hardware,
+    imaging,
+    local_models,
+    metadata_rules,
+    speedcheck,
+)
 from . import filters as filters_mod
 from . import ledger as ledger_mod
 from . import report as report_mod
 from .collect import _safe_batch_name, batch_id_for, group_near_duplicates, scan_folder
 from .config import APP_NAME, Config, FilterRuleConfig, default_config_dir
-from .csv_export import split_by_kind
 from .imaging import hamming
 from .llm import get_provider
 from .llm.base import LLMError, VisionLLM
 from .llm.fake import FakeProvider
 from .llm.ollama import OllamaClient, OllamaProvider
-from .metadata import PhotoMetadata, normalize
-from .models import REASON_CODES, UPLOADED_STATES, LLMCall, Photo, Status
+from .metadata import PhotoMetadata, clean_place_part, normalize
+from .models import REASON_CODES, REUPLOADABLE, UPLOADED_STATES, LLMCall, Photo, Status
+from .photo_context import compute_file_facts, photo_context
 from .prepare import prepare_file, release_check, safe_filename
 from .secrets import get_secret, keyring_available
 from .store import InvalidTransition, Store
 
 Progress = Callable[[int, int, str], None]
 Cancel = Callable[[], bool]
+
+MAX_BATCH_PHOTOS = 250  # Shutterstock takes at most this many photos in one submission
 
 PRE_UPLOAD_EDITABLE = (
     Status.DESCRIBED,
@@ -97,6 +112,15 @@ def _noop(done: int, total: int, message: str = "") -> None:
     return None
 
 
+# read from the photo at import, plus the AI model and max tries that wrote the text; kept on edits
+FILE_FACT_KEYS = ("file_meta", "gps_place", "ai_run")
+
+
+def _file_facts(metadata: dict | None) -> dict[str, Any]:
+    """The stored facts read from the photo file, to carry over when metadata is rewritten."""
+    return {k: metadata[k] for k in FILE_FACT_KEYS if metadata and k in metadata}
+
+
 def _parse_dt(value: str | None) -> datetime | None:
     if not value:
         return None
@@ -118,6 +142,7 @@ class AlreadyUploaded:
     submit_name: str | None
     exact: bool = False
     rejected: bool = False
+    photo_id: int | None = None  # the remembered photo (exact) or the new look-alike row
 
     def text(self) -> str:
         day = (self.uploaded_at or "")[:10] or "an earlier date"
@@ -137,6 +162,19 @@ class ImportSummary:
     errors: list[str] = field(default_factory=list)
     batches: dict[str, int] = field(default_factory=dict)
     photo_ids: list[int] = field(default_factory=list)
+
+
+def _split_base(batch: str) -> str:
+    """`trip (3)` -> `trip`: the name a folder was split from (the other names stay as they are)."""
+    m = re.fullmatch(r"(.+) \(\d+\)", batch)
+    return m.group(1) if m else batch
+
+
+def batches_text(batches: dict[str, int]) -> str:
+    """'600 photos added in 3 batches: trip: 250, trip (2): 250, trip (3): 100'."""
+    total = sum(batches.values())
+    listing = ", ".join(f"{name}: {n}" for name, n in batches.items())
+    return f"{total} photos added in {len(batches)} batches: {listing}"
 
 
 def import_folder(
@@ -178,10 +216,24 @@ def import_folder(
     errors = summary.errors
 
     def on_error(p: Path, exc: Exception) -> None:
-        errors.append(f"{p}: {exc}")
+        errors.append(f"{p}: {imaging.unreadable_message(p, exc) or exc}")
 
     new_items: dict[str, list[tuple[int, Any]]] = {}
     seen: set[str] = set()
+    room: dict[str, int] = {}  # photos in each batch, kept up to date while importing
+
+    def place_in_batch(base: str) -> str:
+        """The batch for the next new photo: `base`, or `base (2)`, `base (3)` once one is full."""
+        n = 1
+        while True:
+            name = base if n == 1 else f"{base} ({n})"
+            if name not in room:
+                room[name] = len(store.list_photos(name))
+            if room[name] < MAX_BATCH_PHOTOS:
+                room[name] += 1
+                return name
+            n += 1
+
     check_history = not (force or mark_uploaded)
     history = (
         [(p.dhash, p) for p in store.list_photos(statuses=UPLOADED_STATES) if p.dhash is not None]
@@ -207,7 +259,11 @@ def import_folder(
                 seen.add(item.sha256)
                 summary.already_uploaded.append(
                     AlreadyUploaded(
-                        item.path.name, known.uploaded_at, known.submit_name, exact=True
+                        item.path.name,
+                        known.uploaded_at,
+                        known.submit_name,
+                        exact=True,
+                        photo_id=known.id,
                     )
                 )
                 continue
@@ -238,7 +294,7 @@ def import_folder(
                 summary.already_known += 1
                 continue
             seen.add(item.sha256)
-            batch = (
+            batch = place_in_batch(
                 _safe_batch_name(batch_name)
                 if batch_name
                 else batch_id_for(item, cfg.import_.batch_by, root)
@@ -271,6 +327,9 @@ def import_folder(
                 camera=item.info.camera,
                 has_gps=item.info.has_gps,
             )
+            facts = compute_file_facts(item.path)  # file EXIF/IPTC/XMP + offline place, local only
+            if facts:
+                store.update_photo(pid, metadata=facts)
             if mark_uploaded:
                 summary.marked_uploaded += 1
                 continue
@@ -293,10 +352,11 @@ def import_folder(
                         match.uploaded_at,
                         match.submit_name,
                         rejected=match.status == Status.REJECTED,
+                        photo_id=pid,
                     )
                 )
                 continue
-            new_items.setdefault(batch, []).append((pid, item))
+            new_items.setdefault(_split_base(batch), []).append((pid, item))
             summary.imported += 1
             summary.photo_ids.append(pid)
             summary.batches[batch] = summary.batches.get(batch, 0) + 1
@@ -320,7 +380,7 @@ def import_folder(
                 if pos != best:
                     store.set_status(pid, Status.NEAR_DUPLICATE)
                     summary.near_duplicates += 1
-    _refresh_reports(cfg, store, set(summary.batches) | set(new_items))
+    _refresh_reports(cfg, store, set(summary.batches))
     return summary
 
 
@@ -344,7 +404,7 @@ def cull_batch(
     """Technical check of `imported` photos: -> `ready` or `culled` (reasons stored in cull)."""
     progress = progress or _noop
     thresholds = cull_mod.CullThresholds(**cfg.cull.model_dump())
-    photos = store.list_photos(batch_id, [Status.IMPORTED])
+    photos = store.list_photos(batch_id, [Status.IMPORTED])[:MAX_BATCH_PHOTOS]  # safety net
     summary = CullSummary(total=len(photos))
     for n, photo in enumerate(photos, 1):
         if cancel and cancel():
@@ -428,6 +488,15 @@ def ollama_client(cfg: Config) -> OllamaClient:
     return OllamaClient(cfg.llm.ollama.url, cfg.llm.timeout_s)
 
 
+def _num_ctx_for(model: str) -> int:
+    """The Ollama context size for `model` on this machine (see local_models)."""
+    try:
+        profile = hardware_profile()
+    except Exception:
+        profile = None
+    return local_models.effective_num_ctx(model, profile)
+
+
 def resolve_llm(
     cfg: Config, store: Store | None, provider: str | None = None, model: str | None = None
 ) -> VisionLLM:
@@ -442,6 +511,7 @@ def resolve_llm(
             url=cfg.llm.ollama.url,
             keep_alive=cfg.llm.ollama.keep_alive,
             timeout_s=cfg.llm.timeout_s,
+            num_ctx=_num_ctx_for(sel.model),
         )
     if sel.provider == "bedrock":
         return get_provider(
@@ -511,6 +581,7 @@ class DoctorReport:
     workspace: str
     selection_unreadable: bool = False
     checks: list[str] = field(default_factory=list)  # theme and rules that new photos get
+    default_place: str = ""  # "Tokyo, Japan" or "" when none is set
 
 
 def doctor(
@@ -554,6 +625,7 @@ def doctor(
         str(cfg.workspace_dir),
         unreadable,
         active_checks(cfg),
+        ", ".join(p for p in (cfg.style.default_place.city, cfg.style.default_place.country) if p),
     )
 
 
@@ -617,6 +689,7 @@ def bench_model(
         keep_alive=cfg.llm.ollama.keep_alive,
         timeout_s=cfg.llm.timeout_s,
         client=_client_or_default(cfg, client),
+        num_ctx=local_models.effective_num_ctx(tag, profile),
     )
     return local_models.benchmark(
         provider, local_models.sample_jpeg_bytes(), benchmark_cache_path(), profile.fingerprint
@@ -694,10 +767,12 @@ def _count(store: Store, batch_id: str, only_ids: Iterable[int] | None) -> int:
 
 
 def _describe_targets(store: Store, batch_id: str, only_ids: Iterable[int] | None) -> list[Photo]:
+    """The photos for the AI; never more than MAX_BATCH_PHOTOS in one run (safety net)."""
     if only_ids is None:
-        return store.list_photos(batch_id, [Status.READY])
+        return store.list_photos(batch_id, [Status.READY])[:MAX_BATCH_PHOTOS]
     wanted = set(only_ids)
-    return [p for p in store.list_photos(batch_id) if p.id in wanted and p.status in _REDESCRIBE]
+    found = [p for p in store.list_photos(batch_id) if p.id in wanted and p.status in _REDESCRIBE]
+    return found[:MAX_BATCH_PHOTOS]
 
 
 _REDESCRIBE = {
@@ -863,6 +938,20 @@ def _estimate_tokens(cfg: Config) -> dict[str, int]:
     }
 
 
+NOT_ENGLISH_TEXT = metadata_rules.reason("non_english")
+
+
+def not_english(data: dict[str, Any], strict: bool = True) -> bool:
+    """True when the title, description or a keyword has non-Latin letters (never sent on).
+
+    Always False when strict English is switched off (the owner chose another language)."""
+    if not strict:
+        return False
+    return any(
+        metadata_rules.has_foreign_script(str(data.get(k) or "")) for k in ("title", "description")
+    ) or any(metadata_rules.has_foreign_script(str(k)) for k in data.get("keywords") or [])
+
+
 def _status_for(
     meta: PhotoMetadata,
     gr: guardrails.GuardrailResult,
@@ -896,6 +985,8 @@ def _evaluate(
         has_property_release=has_property,
     )
     meta.warnings.extend(m for m in gr.messages if m not in meta.warnings)
+    if not_english(data, cfg.style.english_only):
+        meta.warnings.append(NOT_ENGLISH_TEXT)
     return meta, gr, _status_for(meta, gr, photo.filters)
 
 
@@ -923,6 +1014,84 @@ def _drop_prepared(store: Store, photo: Photo) -> None:
         store.update_photo(photo.id, prepared_path=None, submit_name=None)
 
 
+def use_condensed_prompt(llm: VisionLLM) -> bool:
+    """The short prompt is for local models whose context window (the num_ctx actually sent to
+    Ollama) is small (see local_models)."""
+    if llm.name != "ollama":
+        return False
+    num_ctx = getattr(llm, "num_ctx", None)
+    if isinstance(num_ctx, int) and num_ctx > 0:
+        return num_ctx <= local_models.SMALL_CONTEXT_TOKENS
+    return local_models.is_small_context(llm.model)
+
+
+def expected_seconds_per_photo(cfg: Config, model: str) -> float | None:
+    """The seconds per photo shown before a local run (estimate_check uses the same figure)."""
+    recs = local_models.recommend(
+        hardware_profile(),
+        local_models.load_catalog(),
+        [],
+        local_models.load_benchmarks(benchmark_cache_path()),
+    )
+    rec = next((r for r in recs if r.model.tag == model), None)
+    return float(rec.est_seconds_per_image) if rec else None
+
+
+def faster_model_options(cfg: Config, model: str) -> tuple[float, list[speedcheck.ModelOption]]:
+    """(expected seconds for `model`, models that fit this machine and are faster than it).
+
+    Installed ones come with `installed=True`; the others must be downloaded in Settings first.
+    """
+    try:
+        pulled = hardware.ollama_status(ollama_client(cfg)).pulled
+    except Exception:
+        pulled = []
+    recs = local_models.recommend(
+        hardware_profile(),
+        local_models.load_catalog(),
+        pulled,
+        local_models.load_benchmarks(benchmark_cache_path()),
+    )
+    here = next((r for r in recs if r.model.tag == model), None)
+    current = float(here.est_seconds_per_image) if here else 0.0
+    faster = [
+        r for r in recs if r.fits and r.model.tag != model and r.est_seconds_per_image < current
+    ]
+    faster.sort(key=lambda r: (not r.pulled, -r.model.quality, r.est_seconds_per_image))
+    options = [
+        speedcheck.ModelOption(r.model.tag, float(r.est_seconds_per_image), r.pulled)
+        for r in faster
+    ]
+    return current, options
+
+
+def make_live_run(
+    cfg: Config, store: Store | None, llm: VisionLLM | None = None
+) -> speedcheck.LiveRun | None:
+    """The live speed check for a local run; None for online AI (no check there) or when no
+    expected time is known for the model."""
+    if llm is not None:
+        provider, model = llm.name, llm.model
+    else:
+        try:
+            sel = resolve_selection(cfg, store)
+        except Exception:
+            return None
+        provider, model = sel.provider, sel.model
+    if provider != "ollama":
+        return None
+    expected = expected_seconds_per_photo(cfg, model)
+    if not expected:
+        return None
+    return speedcheck.LiveRun(
+        model=model,
+        max_tries=cfg.llm.max_tries,
+        expected_s=expected,
+        options=lambda tag: faster_model_options(cfg, tag),
+        llm_factory=lambda tag: resolve_llm(cfg, store, "ollama", tag),
+    )
+
+
 def describe_batch(
     cfg: Config,
     store: Store,
@@ -932,11 +1101,14 @@ def describe_batch(
     *,
     progress: Progress | None = None,
     cancel: Cancel | None = None,
+    live: speedcheck.LiveRun | None = None,
 ) -> DescribeSummary:
     """Describe `ready` photos (or the given ids, which are sent back to `ready` first).
 
     Culled photos never reach the model. Result per photo: described / needs_review / blocked.
     Stops early when the provider is unreachable or several calls in a row fail.
+    `live` (local models only) holds the max tries and model for the photos not started yet; it
+    is read again before each photo, so changes made while the batch runs apply at once.
     """
     progress = progress or _noop
     llm = llm or resolve_llm(cfg, store)
@@ -950,28 +1122,71 @@ def describe_batch(
     style = describe.Style.from_config(cfg.style)
     spec = filter_spec(cfg)
     feedback = describe.feedback_lines(store.rejection_stats(), store.recent_rejection_examples())
+    seen = metadata_rules.BatchSeen()  # what the batch already says, so no two photos match
+    redo = {p.id for p in photos}
+    for other in store.list_photos(batch_id):
+        om = other.metadata or {}
+        if other.id not in redo and om.get("description"):
+            seen.add(str(om["description"]), om.get("keywords") or [])
     side = cfg.llm.image_max_side or llm.default_image_side
     conc = max(1, cfg.llm.concurrency or llm.default_concurrency)
     lock = threading.Lock()
     stop = threading.Event()
     consecutive = [0]
 
+    def _flag_unreadable(photo: Photo, why: str) -> tuple[Photo, Status | None, str | None]:
+        """A photo the app cannot open is flagged with the reason; the batch carries on."""
+        pid = photo.id
+        assert pid is not None
+        meta = {
+            "filename": photo.orig_name,
+            "description": "",
+            "keywords": [],
+            "categories": [],
+            "editorial": False,
+            "mature": False,
+            "illustration": False,
+            "warnings": [why],
+            **_file_facts(photo.metadata),
+        }
+        meta.pop("ai_run", None)
+        _drop_prepared(store, photo)
+        if photo.status != Status.READY:
+            store.set_status(pid, Status.READY)
+        store.update_photo(pid, metadata=meta)
+        store.set_status(pid, Status.NEEDS_REVIEW)
+        with lock:
+            summary.errors.append((pid, why))
+        return photo, Status.NEEDS_REVIEW, None
+
     def work(photo: Photo) -> tuple[Photo, Status | None, str | None]:
         if stop.is_set() or (cancel and cancel()):
             return photo, None, None
         pid = photo.id
         assert pid is not None
+        if live is not None:
+            model_now, tries_now = live.snapshot()
+            use = live.llm_for(model_now, llm)
+        else:
+            use, tries_now = llm, cfg.llm.max_tries
         try:
-            image = imaging.preview_jpeg(photo.src_path, side)
+            try:
+                image = imaging.preview_jpeg(photo.src_path, side)
+            except Exception as exc:
+                why = imaging.unreadable_message(photo.src_path, exc)
+                if why is None:
+                    raise
+                return _flag_unreadable(photo, why)
+            facts = photo_context(photo, style.english_only, cfg.prepare.include_gps)
             has_model, has_property = _release_flags(photo.release_ids)
             res = describe.describe_photo(
-                llm,
+                use,
                 image,
                 photo.orig_name,
                 style=style,
                 restrictions=restrictions,
                 notes=notes,
-                captured=_parse_dt(photo.captured_at),
+                captured=_parse_dt(photo.captured_at) or _parse_dt(facts.get("captured")),
                 feedback=feedback,
                 max_tokens=cfg.llm.max_tokens,
                 temperature=cfg.llm.temperature,
@@ -981,10 +1196,14 @@ def describe_batch(
                 has_property_release=has_property,
                 filters=spec,
                 at=_now_iso(),
+                seen=seen,
+                facts=facts,
+                condensed=use_condensed_prompt(use),
+                max_tries=tries_now,
             )
         except LLMError as exc:
             store.log_llm_call(
-                LLMCall(llm.name, llm.model, photo_id=pid, ok=False, error=str(exc)[:500])
+                LLMCall(use.name, use.model, photo_id=pid, ok=False, error=str(exc)[:500])
             )
             with lock:
                 consecutive[0] += 1
@@ -999,8 +1218,8 @@ def describe_batch(
         r = res.llm
         store.log_llm_call(
             LLMCall(
-                llm.name,
-                llm.model,
+                use.name,
+                use.model,
                 photo_id=pid,
                 input_tokens=r.input_tokens,
                 output_tokens=r.output_tokens,
@@ -1011,6 +1230,12 @@ def describe_batch(
         )
         meta = res.metadata.to_dict()
         meta["location"] = res.location
+        meta["place"] = res.place
+        meta["language"] = style.text_language  # what the text was written in, kept per photo
+        meta.update(_file_facts(photo.metadata))
+        meta["ai_run"] = {"model": f"{use.name}/{use.model}", "max_tries": tries_now}
+        if res.issues:
+            meta["metadata_issues"] = [i.to_dict() for i in res.issues]
         found = res.filters.to_dict() if res.filters else None
         _drop_prepared(store, photo)
         if photo.status != Status.READY:
@@ -1018,7 +1243,7 @@ def describe_batch(
         store.update_photo(
             pid,
             metadata=meta,
-            metadata_source=f"llm:{llm.name}/{llm.model}",
+            metadata_source=f"llm:{use.name}/{use.model}",
             detected=res.detected,
             guardrail=res.guardrails.to_dict(),
             filters=found,
@@ -1032,6 +1257,8 @@ def describe_batch(
         with lock:
             summary.input_tokens += r.input_tokens
             summary.output_tokens += r.output_tokens
+        if live is not None:
+            live.record(r.seconds)
         return photo, status, None
 
     done = 0
@@ -1112,6 +1339,8 @@ def update_metadata(
         store.update_photo(photo_id, release_ids=list(release_ids))
         photo = get_photo(store, photo_id)
     data = dict(photo.metadata or {})
+    if description is not None:  # the user has looked at the caption: no "Default place" note
+        data.pop("place", None)
     for key, value in (
         ("description", description),
         ("title", title),
@@ -1124,7 +1353,7 @@ def update_metadata(
             data[key] = value
     meta, gr, status = _evaluate(cfg, store, photo, data)
     stored = meta.to_dict()
-    for extra in ("title", "location"):
+    for extra in ("title", "location", "place", "language", *FILE_FACT_KEYS):
         if extra in data:
             stored[extra] = data[extra]
     was = photo.status
@@ -1179,6 +1408,9 @@ def approve(
             continue
         if photo.status not in (Status.DESCRIBED, Status.NEEDS_REVIEW, Status.SET_ASIDE):
             summary.refused[pid] = f"status is {photo.status.value}"
+            continue
+        if not_english(photo.metadata or {}, cfg.style.english_only):
+            summary.refused[pid] = NOT_ENGLISH_TEXT + ": edit it to English first"
             continue
         meta, gr, _ = _evaluate(cfg, store, photo, photo.metadata or {})
         if gr.action == "block":
@@ -1246,16 +1478,17 @@ def prepare_batch(
     progress: Progress | None = None,
     cancel: Cancel | None = None,
 ) -> PrepareSummary:
-    """Approved photos -> safe-named JPEG copies in <workspace>/prepared/<batch> with IPTC/XMP."""
+    """Approved photos -> safe-named JPEG copies in <batch folder>/prepared with IPTC/XMP."""
     progress = progress or _noop
     photos = store.list_photos(batch_id, [Status.APPROVED])
     if only_ids is not None:
         wanted = set(only_ids)
         photos = [p for p in photos if p.id in wanted]
     taken = {p.submit_name.lower() for p in store.list_photos() if p.submit_name}
-    dest_dir = cfg.workspace_path("prepared", _safe_dir(batch_id))
-    if dest_dir.is_dir():
-        taken |= {f.name.lower() for f in dest_dir.iterdir()}
+    dest_dir = batch_dir(cfg, batch_id) / "prepared"
+    for existing in (dest_dir, cfg.workspace_path("prepared", _safe_dir(batch_id))):  # + 0.4.0
+        if existing.is_dir():
+            taken |= {f.name.lower() for f in existing.iterdir()}
     n = sum(1 for p in store.list_photos(batch_id) if p.submit_name)
     summary = PrepareSummary()
     for i, photo in enumerate(photos, 1):
@@ -1266,7 +1499,9 @@ def prepare_batch(
         progress(i, len(photos), photo.orig_name)
         meta = dict(photo.metadata or {})
         gr = (photo.guardrail or {}).get("action")
-        problems = release_check(meta, photo.detected, photo.release_ids)
+        problems = release_check(
+            meta, photo.detected, photo.release_ids, strict=cfg.style.english_only
+        )
         if gr == "block":
             problems.append("Blocked by guardrails.")
         if problems:
@@ -1284,7 +1519,12 @@ def prepare_batch(
         )
         try:
             dest = prepare_file(
-                Path(photo.src_path), dest_dir, name, meta, cfg.prepare.jpeg_quality
+                Path(photo.src_path),
+                dest_dir,
+                name,
+                meta,
+                cfg.prepare.jpeg_quality,
+                cfg.prepare.include_gps,
             )
         except Exception as exc:
             summary.problems[pid] = [f"prepare failed: {exc}"]
@@ -1306,6 +1546,32 @@ class UploadSummary:
     uploaded: list[str] = field(default_factory=list)
     failed: dict[str, str] = field(default_factory=dict)
     skipped_blocked: list[str] = field(default_factory=list)
+    stopped: int = 0  # photos left unsent because the upload was cancelled
+    over_limit: int = 0  # photos left for the next run (more than MAX_BATCH_PHOTOS)
+
+    def stopped_text(self) -> str:
+        """Truthful words for an upload that was stopped early."""
+        total = len(self.uploaded) + len(self.failed) + self.stopped
+        return (
+            f"Upload stopped: {len(self.uploaded)} of {total} sent. "
+            f"The other {total - len(self.uploaded)} are ready to send later."
+        )
+
+
+def _strip_gps_file(path: Path) -> bool:
+    """Remove the GPS location from a prepared copy in place; True when something changed."""
+    data = path.read_bytes()
+    clean = embed.strip_gps(data)
+    if clean == data:
+        return False
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_bytes(clean)
+    os.replace(tmp, path)
+    return True
+
+
+def _megabytes(n: int) -> str:
+    return f"{n / 1_000_000:.1f}"
 
 
 def upload_batch(
@@ -1316,10 +1582,19 @@ def upload_batch(
     confirm: bool = False,
     only_ids: Iterable[int] | None = None,
     progress: Progress | None = None,
+    cancel: Cancel | None = None,
     creds: deliver.FtpsCreds | None = None,
     connect: Callable[..., object] | None = None,
+    text_prefix: str = "",
+    waits: Sequence[float] | None = None,
+    sleep: Callable[[float], None] | None = None,
 ) -> UploadSummary:
-    """FTPS-upload prepared photos. Refused unless deliver.upload_enabled or confirm=True."""
+    """FTPS-upload prepared photos. Refused unless deliver.upload_enabled or confirm=True.
+
+    A cancel stops after the photo in transfer: the sent ones are UPLOADED, the rest stay
+    PREPARED. At most MAX_BATCH_PHOTOS go in one run (`over_limit` counts the others).
+    `text_prefix` goes in front of the progress text (e.g. "Step 2 of 2 · ").
+    """
     if not (cfg.deliver.upload_enabled or confirm):
         raise UploadRefused(
             "Uploading is disabled. Set deliver.upload_enabled: true in the config, or confirm "
@@ -1337,16 +1612,59 @@ def upload_batch(
         if (photo.guardrail or {}).get("action") == "block" or not photo.prepared_path:
             summary.skipped_blocked.append(photo.orig_name)
             continue
+        if not_english(photo.metadata or {}, cfg.style.english_only):  # e.g. a 0.4.0 copy
+            summary.failed[Path(photo.prepared_path).name] = (
+                NOT_ENGLISH_TEXT + ": edit it in Review"
+            )
+            continue
+        if not cfg.prepare.include_gps:  # copies prepared before 0.5 may still hold a location
+            try:
+                _strip_gps_file(Path(photo.prepared_path))
+            except (OSError, ValueError) as exc:
+                summary.failed[Path(photo.prepared_path).name] = (
+                    f"could not remove the GPS location, so it was not sent: {exc}"
+                )
+                continue
         by_name[Path(photo.prepared_path).name] = photo
         files.append(Path(photo.prepared_path))
     if not files:
         return summary
+    if len(files) > MAX_BATCH_PHOTOS:
+        summary.over_limit = len(files) - MAX_BATCH_PHOTOS
+        files = files[:MAX_BATCH_PHOTOS]
     creds = creds or deliver.creds_from_secrets(cfg.deliver.ftps_host)
+    count = len(files)
     done = [0]
+    began = _mono()
+    last_bytes = [0.0]
+
+    def say(extra: str = "", name: str = "") -> None:
+        text = f"{text_prefix}Uploading photo {min(done[0] + 1, count)} of {count}"
+        if name:
+            text += f" · {by_name[name].orig_name}"
+        if extra:
+            text += f" · {extra}"
+        if 0 < done[0] < count:
+            text += f" · {_time_left((_mono() - began) / done[0] * (count - done[0]))}"
+        progress(done[0], count, text)
+
+    current = [""]
+
+    def on_start(name: str) -> None:
+        current[0] = name
+        last_bytes[0] = 0.0
+        say(name=name)
+
+    def on_bytes(sent: int) -> None:
+        now = _mono()
+        if now - last_bytes[0] < 0.5:  # the callback fires per block; keep the database calm
+            return
+        last_bytes[0] = now
+        say(f"{_megabytes(sent)} MB sent", name=current[0])
 
     def on_result(name: str, exc: Exception | None) -> None:
         done[0] += 1
-        progress(done[0], len(files), name)
+        say()
         photo = by_name[name]
         assert photo.id is not None
         if exc is None:
@@ -1356,8 +1674,19 @@ def upload_batch(
         else:
             summary.failed[name] = str(exc) or type(exc).__name__
 
+    options: dict[str, Any] = {
+        "cancel": cancel,
+        "on_start": on_start,
+        "on_bytes": on_bytes,
+        "on_wait": lambda text: progress(done[0], count, text_prefix + text),
+    }
+    if waits is not None:
+        options["waits"] = waits
+    if sleep is not None:
+        options["sleep"] = sleep
     kwargs = {"connect": connect} if connect is not None else {}
-    deliver.upload_files(creds, files, on_result, **kwargs)
+    deliver.upload_files(creds, files, on_result, **kwargs, **options)
+    summary.stopped = max(count - done[0], 0)
     if summary.uploaded:
         refresh_ledger(cfg, store)
         refresh_report(cfg, store, batch_id)
@@ -1385,11 +1714,18 @@ def _ledger_rows(store: Store) -> list[ledger_mod.LedgerRow]:
     ]
 
 
-def export_ledger(store: Store, path: str | Path, *, keep_existing: bool = False) -> int:
+def export_ledger(
+    store: Store,
+    path: str | Path,
+    *,
+    keep_existing: bool = False,
+    drop: Collection[str] = (),
+) -> int:
     """Write the uploaded photos to a ledger CSV; returns the number of rows written.
 
     With `keep_existing`, rows already in the file but not in the database are kept (so a ledger
-    restored from backup is never shrunk by a workspace that is missing those photos).
+    restored from backup is never shrunk by a workspace that is missing those photos), except
+    the sha256 values in `drop` (photos the user deleted on Shutterstock and will send again).
     """
     rows = _ledger_rows(store)
     if keep_existing:
@@ -1399,6 +1735,9 @@ def export_ledger(store: Store, path: str | Path, *, keep_existing: bool = False
             ledger_mod.back_up_corrupt(path)
             old = []
         rows = ledger_mod.merge(old, rows)
+    if drop:
+        keep = {p.sha256 for p in store.list_photos(statuses=UPLOADED_STATES)}
+        rows = [r for r in rows if r.sha256 not in drop or r.sha256 in keep]
     ledger_mod.write_ledger(path, rows)
     return len(rows)
 
@@ -1463,6 +1802,7 @@ class ExportSummary:
     files: list[Path] = field(default_factory=list)
     rows: list[dict[str, Any]] = field(default_factory=list)
     dry_run: bool = False
+    skipped: dict[int, str] = field(default_factory=dict)  # photo id -> why it is not in the CSV
 
 
 def export_rows(photos: Iterable[Photo]) -> list[dict[str, Any]]:
@@ -1489,26 +1829,138 @@ def export_batch(
     batch_id: str,
     *,
     dry_run: bool = False,
-    now: datetime | None = None,
 ) -> ExportSummary:
-    """Write the Shutterstock bulk CSVs for uploaded photos (filenames = uploaded names)."""
+    """Write the batch's one Shutterstock CSV for uploaded photos (filenames = uploaded names).
+
+    The file is rewritten on every export, so it always lists every photo that is uploaded or
+    exported and not yet submitted.
+    """
     photos = [p for p in store.list_photos(batch_id, [Status.UPLOADED, Status.EXPORTED])]
     photos = [p for p in photos if p.submit_name]
+    skipped: dict[int, str] = {}
+    for p in photos:  # last guard: the CSV never carries non-Latin text (flagged, not altered)
+        if not_english(p.metadata or {}, cfg.style.english_only):
+            assert p.id is not None
+            skipped[p.id] = NOT_ENGLISH_TEXT
+    if skipped and not dry_run:
+        for pid, why in skipped.items():
+            store.log_event("export_skipped", photo_id=pid, batch_id=batch_id, detail={"why": why})
+    photos = [p for p in photos if p.id not in skipped]
     rows = export_rows(photos)
-    summary = ExportSummary(rows=rows, dry_run=dry_run)
+    summary = ExportSummary(rows=rows, dry_run=dry_run, skipped=skipped)
     if dry_run or not rows:
         return summary
-    now = now or datetime.now()
-    files = deliver.write_csvs(batch_id, rows, cfg.workspace_path("exports"), now)
-    summary.files = files
-    by_kind = {kind: f for kind, f in zip(split_by_kind(rows), files, strict=True)}
-    for photo, row in zip(photos, rows, strict=True):
+    dest = deliver.write_csv(batch_id, rows, batch_dir(cfg, batch_id), cfg.style.english_only)
+    summary.files = [dest]
+    for photo in photos:
         assert photo.id is not None
-        kind = "editorial" if row["editorial"] else "commercial"
-        store.update_photo(photo.id, exported_at=_now_iso(), export_file=str(by_kind[kind]))
+        store.update_photo(photo.id, exported_at=_now_iso(), export_file=str(dest))
         if photo.status == Status.UPLOADED:
             store.set_status(photo.id, Status.EXPORTED)
     refresh_report(cfg, store, batch_id)
+    return summary
+
+
+@dataclass
+class ReuploadSummary:
+    moved: dict[int, Status] = field(default_factory=dict)  # photo id -> its new status
+    refused: dict[int, str] = field(default_factory=dict)
+    batches: set[str] = field(default_factory=set)
+
+
+def reupload_photos(
+    cfg: Config, store: Store, photo_ids: Iterable[int], *, batch_id: str | None = None
+) -> ReuploadSummary:
+    """The user deleted these photos on Shutterstock: make them ready to be uploaded again.
+
+    Works for uploaded, exported and submitted photos (never accepted or rejected ones). Each
+    goes back to `prepared` when its upload copy still exists, else to `approved` (a new copy is
+    made) or, if it was never described here, to `ready` (it needs Check). `uploaded_at` and the
+    other send dates are cleared, a `reupload_requested` event records the time, and the
+    uploaded.csv ledger and the batch reports are rewritten so they no longer count as sent.
+    With `batch_id`, photos of other batches are refused.
+    """
+    summary = ReuploadSummary()
+    shas: set[str] = set()
+    for pid in dict.fromkeys(photo_ids):
+        photo = store.get_photo(pid)
+        if photo is None or (batch_id is not None and photo.batch_id != batch_id):
+            summary.refused[pid] = "That photo is not in this batch."
+            continue
+        if photo.status not in REUPLOADABLE:
+            answered = photo.status in (Status.ACCEPTED, Status.REJECTED)
+            summary.refused[pid] = (
+                f"{photo.orig_name}: Shutterstock already gave an answer, so it is not sent again."
+                if answered
+                else f"{photo.orig_name} is not marked as sent, so there is nothing to send again."
+            )
+            continue
+        prepared = bool(photo.prepared_path) and Path(str(photo.prepared_path)).is_file()
+        has_original = Path(photo.src_path).is_file()
+        if prepared:
+            target = Status.PREPARED
+        elif has_original and (photo.metadata or {}).get("description"):  # facts alone are not text
+            target = Status.APPROVED
+        elif has_original:
+            target = Status.READY
+        else:
+            summary.refused[pid] = (
+                f"{photo.orig_name}: shuto no longer has a copy or the original to send. "
+                "Add the original photo again from its folder."
+            )
+            continue
+        was = photo.status
+        store.update_photo(
+            pid, uploaded_at=None, exported_at=None, export_file=None, submitted_at=None
+        )
+        # `ready` (never described here) is not a normal way back after upload, so it is forced
+        store.set_status(pid, target, force=target == Status.READY, detail={"reupload": True})
+        store.log_event(
+            "reupload_requested",
+            photo_id=pid,
+            batch_id=photo.batch_id,
+            detail={"at": _now_iso(), "from": was.value, "to": target.value},
+        )
+        summary.moved[pid] = target
+        shas.add(photo.sha256)
+        if photo.batch_id:
+            summary.batches.add(photo.batch_id)
+    if summary.moved:
+        try:
+            export_ledger(store, ledger_path(cfg), keep_existing=True, drop=shas)
+        except (OSError, ValueError, csv.Error) as exc:
+            store.log_event("ledger_failed", detail={"error": str(exc)})
+        _refresh_reports(cfg, store, summary.batches)
+    return summary
+
+
+def add_anyway(cfg: Config, store: Store, photo_ids: Iterable[int]) -> ReuploadSummary:
+    """Import's "Add anyway": photos left out as 'sent before' join their batch after all.
+
+    A look-alike that was set aside as `already_uploaded` becomes a normal imported photo (it
+    still needs Check); an exact copy of a remembered photo is sent again (`reupload_photos`).
+    """
+    summary = ReuploadSummary()
+    exact: list[int] = []
+    for pid in dict.fromkeys(photo_ids):
+        photo = store.get_photo(pid)
+        if photo is None:
+            summary.refused[pid] = "That photo is no longer in shuto."
+        elif photo.status == Status.ALREADY_UPLOADED:
+            store.set_status(pid, Status.IMPORTED, force=True, detail={"forced": True})
+            summary.moved[pid] = Status.IMPORTED
+            if photo.batch_id:
+                summary.batches.add(photo.batch_id)
+        elif photo.status in REUPLOADABLE:
+            exact.append(pid)
+        else:
+            summary.refused[pid] = f"{photo.orig_name} was already added."
+    if exact:
+        again = reupload_photos(cfg, store, exact)
+        summary.moved.update(again.moved)
+        summary.refused.update(again.refused)
+        summary.batches |= again.batches
+    _refresh_reports(cfg, store, summary.batches)
     return summary
 
 
@@ -1586,9 +2038,21 @@ def batch_report(store: Store, batch_id: str | None = None) -> list[dict[str, An
 # --------------------------------------------------------------------------- batch report
 
 
+def batch_dir(cfg: Config, batch_id: str) -> Path:
+    """The one folder that holds a batch's own files: <workspace>/batches/<safe name>/.
+
+    The name is readable ("trip (2)") and uses only letters, digits, space, ( ) - _ and dot (a
+    short hash is added when the id had to be changed or has upper-case letters; see
+    `report.folder_name`), so it can never point outside the workspace.
+    Older versions kept these files in <workspace>/reports, exports and prepared; those files
+    are left where they are and still work (each photo remembers its own file paths).
+    """
+    return cfg.workspace_path("batches", report_mod.folder_name(batch_id))
+
+
 def report_path(cfg: Config, batch_id: str) -> Path:
-    """Where the always-current report CSV of a batch lives: <workspace>/reports/<name>.csv."""
-    return cfg.workspace_path("reports", report_mod.report_filename(batch_id))
+    """Where the always-current report CSV of a batch lives: <batch folder>/report.csv."""
+    return batch_dir(cfg, batch_id) / "report.csv"
 
 
 def build_report(cfg: Config, store: Store, batch_id: str) -> tuple[list[str], list[list[str]]]:
@@ -1674,6 +2138,19 @@ class CheckSummary:
     describe: DescribeSummary | None = None
 
 
+CHECK_SCALE = 1000  # units of the combined Check bar
+
+
+def _mono() -> float:
+    return time.monotonic()
+
+
+def _time_left(seconds: float) -> str:
+    if seconds < 60:
+        return "less than a minute left"
+    return f"about {round(seconds / 60)} min left"
+
+
 def check_batch(
     cfg: Config,
     store: Store,
@@ -1682,6 +2159,7 @@ def check_batch(
     progress: Progress | None = None,
     cancel: Cancel | None = None,
     llm: VisionLLM | None = None,
+    live: speedcheck.LiveRun | None = None,
 ) -> CheckSummary:
     """Quality check, then titles and keywords, with one combined progress.
 
@@ -1694,20 +2172,46 @@ def check_batch(
         if problems:
             raise PipelineError(" ".join(problems))
         llm = resolve_llm(cfg, store)
-    to_cull = len(store.list_photos(batch_id, [Status.IMPORTED]))
-    total = to_cull + len(store.list_photos(batch_id, [Status.READY]))
+    # one bar over CHECK_SCALE units: the quality check is the first tenth, the AI the rest. The AI
+    # photo count is only known after culling, so each step reports its own counter.
+    quality_units = CHECK_SCALE // 10
 
-    def cull_progress(done: int, _total: int, _message: str = "") -> None:
-        progress(done, total, "Quality check")
+    def cull_progress(done: int, count: int, name: str = "") -> None:
+        text = f"Step 1 of 2 · Quality check {done}/{count}"
+        if name and done < count:
+            text += f" (just finished: {name})"
+        progress(quality_units * done // max(count, 1), CHECK_SCALE, text)
 
-    def describe_progress(done: int, _total: int, _message: str = "") -> None:
-        progress(min(to_cull + done, total), total, "Writing titles & keywords")
+    started = [0.0]
 
+    def describe_progress(done: int, count: int, name: str = "") -> None:
+        text = f"Step 2 of 2 · Writing titles & keywords {done}/{count}"
+        if done and done < count:
+            per_photo = (time.monotonic() - started[0]) / done
+            text += f" · {_time_left((count - done) * per_photo)}"
+        if name and done < count:
+            text += f" (just finished: {name})"
+        units = quality_units + (CHECK_SCALE - quality_units) * done // max(count, 1)
+        progress(min(units, CHECK_SCALE - 1), CHECK_SCALE, text)
+
+    to_cull = min(len(store.list_photos(batch_id, [Status.IMPORTED])), MAX_BATCH_PHOTOS)
+    if to_cull:
+        cull_progress(0, to_cull)
     culled = cull_batch(cfg, store, batch_id, progress=cull_progress, cancel=cancel)
     if cancel and cancel():
         return CheckSummary(culled, None)
+    to_describe = len(_describe_targets(store, batch_id, None))
+    started[0] = time.monotonic()
+    if to_describe:
+        describe_progress(0, to_describe)
+    else:
+        progress(
+            CHECK_SCALE - 1,
+            CHECK_SCALE,
+            "No photos left for the AI after the quality check",
+        )
     described = describe_batch(
-        cfg, store, batch_id, llm=llm, progress=describe_progress, cancel=cancel
+        cfg, store, batch_id, llm=llm, progress=describe_progress, cancel=cancel, live=live
     )
     return CheckSummary(culled, described)
 
@@ -1765,8 +2269,10 @@ def deliver_batch(
     cancel: Cancel | None = None,
     creds: deliver.FtpsCreds | None = None,
     connect: Callable[..., object] | None = None,
+    waits: Sequence[float] | None = None,
+    sleep: Callable[[float], None] | None = None,
 ) -> DeliverSummary:
-    """Prepare approved photos, upload them (needs `confirm`), then write the CSV files.
+    """Prepare approved photos, upload them (needs `confirm`), then write the batch CSV.
 
     One progress range of 2n+1 (n = approved + prepared photos). Stops after upload failures
     or a cancel and returns what was done so far; uploaded photos can be exported later.
@@ -1777,11 +2283,12 @@ def deliver_batch(
             "this upload explicitly."
         )
     progress = progress or _noop
-    n = len(store.list_photos(batch_id, [Status.APPROVED, Status.PREPARED]))
+    n = min(len(store.list_photos(batch_id, [Status.APPROVED, Status.PREPARED])), MAX_BATCH_PHOTOS)
     total = 2 * n + 1
 
     def prepare_progress(done: int, _total: int, message: str = "") -> None:
-        progress(min(done, n), total, message)
+        text = f"Step 1 of 2 · Preparing photos {min(done, n)}/{n}"
+        progress(min(done, n), total, text)
 
     def upload_progress(done: int, _total: int, message: str = "") -> None:
         progress(min(n + done, 2 * n), total, message)
@@ -1797,13 +2304,17 @@ def deliver_batch(
         batch_id,
         confirm=confirm,
         progress=upload_progress,
+        cancel=cancel,
         creds=creds,
         connect=connect,
+        text_prefix="Step 2 of 2 · ",
+        waits=waits,
+        sleep=sleep,
     )
-    if summary.upload.failed or (cancel and cancel()):
+    if summary.upload.failed or summary.upload.stopped:
         return summary
     summary.export = export_batch(cfg, store, batch_id)
-    progress(total, total, "Writing the CSV files")
+    progress(total, total, "Writing the Shutterstock CSV")
     return summary
 
 
@@ -1900,6 +2411,9 @@ UI_SETTING_KEYS = (
     "bedrock_profile",
     "update_check",
     "update_cache",
+    "include_gps",
+    "max_tries",
+    "language",
 )
 PROFILE_RE = re.compile(r"^[A-Za-z0-9_.@:+=,-]{1,100}$")
 MAX_STYLE_TEXT = 200
@@ -1952,7 +2466,31 @@ def _clean_style(value: Any) -> dict[str, Any]:
         if focus not in REGION_FOCUS:
             raise PipelineError("Region focus must be None or Japan.")
         out["region_focus"] = focus
+    for key, label in (("default_city", "city"), ("default_country", "country")):
+        if key in value:
+            try:
+                out[key] = clean_place_part(value.get(key))
+            except ValueError as exc:
+                raise PipelineError(f"Default place, {label}: {exc}") from exc
     return out
+
+
+def _clean_language_setting(value: Any) -> dict[str, Any]:
+    """Validate the metadata language setting: strict English, or a language name to write in."""
+    if not isinstance(value, dict):
+        raise PipelineError("The language setting must be a set of named values.")
+    english = value.get("english_only", True)
+    if not isinstance(english, bool):
+        raise PipelineError("English only must be on or off.")
+    if english:
+        return {"english_only": True}
+    try:
+        return {
+            "english_only": False,
+            "language": metadata_rules.clean_language(value.get("language")),
+        }
+    except ValueError as exc:
+        raise PipelineError(str(exc)) from exc
 
 
 def _clean_filters(value: Any) -> dict[str, Any]:
@@ -1993,6 +2531,17 @@ def _clean_update_cache(value: Any) -> dict[str, Any]:
     return {"version": version, "checked_at": float(checked_at), "ok": ok}
 
 
+def _clean_max_tries(value: Any) -> int:
+    message = f"Max tries per photo must be a number from 1 to {metadata_rules.MAX_TRIES}."
+    try:
+        tries = int(value)
+    except (TypeError, ValueError):
+        raise PipelineError(message) from None
+    if isinstance(value, bool) or not 1 <= tries <= metadata_rules.MAX_TRIES:
+        raise PipelineError(message)
+    return tries
+
+
 def set_ui_setting(store: Store, name: str, value: Any) -> Any:
     """Save a UI setting (validated for `style`); returns the stored value."""
     key = _ui_key(name)
@@ -2009,10 +2558,14 @@ def set_ui_setting(store: Store, name: str, value: Any) -> Any:
         value = str(value or "").strip()
         if value and not PROFILE_RE.match(value):
             raise PipelineError("That AWS profile name is not valid.")
-    elif key == "ui.update_check":
+    elif key == "ui.language":
+        value = _clean_language_setting(value)
+    elif key in ("ui.update_check", "ui.include_gps"):
         value = bool(value)
     elif key == "ui.update_cache":
         value = _clean_update_cache(value)
+    elif key == "ui.max_tries":
+        value = _clean_max_tries(value)
     store.set_setting(key, value)
     return value
 
@@ -2051,6 +2604,35 @@ def apply_style_overrides(cfg: Config, store: Store) -> Config:
             }
         )
     cfg = _apply_filter_overrides(cfg, store)
+    gps = store.get_setting("ui.include_gps")
+    if isinstance(gps, bool):
+        cfg = cfg.model_copy(
+            update={"prepare": cfg.prepare.model_copy(update={"include_gps": gps})}
+        )
+    tries = store.get_setting("ui.max_tries")
+    if (
+        isinstance(tries, int)
+        and not isinstance(tries, bool)
+        and 1 <= tries <= metadata_rules.MAX_TRIES
+    ):
+        cfg = cfg.model_copy(update={"llm": cfg.llm.model_copy(update={"max_tries": tries})})
+    lang = store.get_setting("ui.language")
+    if isinstance(lang, dict) and isinstance(lang.get("english_only"), bool):
+        try:
+            saved = _clean_language_setting(lang)
+        except PipelineError:  # a damaged saved value never stops the app; strict English stays
+            saved = {}
+        if saved:
+            cfg = cfg.model_copy(
+                update={
+                    "style": cfg.style.model_copy(
+                        update={
+                            "english_only": saved["english_only"],
+                            "metadata_language": saved.get("language", ""),
+                        }
+                    )
+                }
+            )
     style = store.get_setting("ui.style") or {}
     if not style:
         return cfg
@@ -2063,6 +2645,13 @@ def apply_style_overrides(cfg: Config, store: Store) -> Config:
         update["keywords"] = cfg.style.keywords.model_copy(
             update={"always_include": list(style["always_include"])}
         )
+    place = {
+        part: style[f"default_{part}"]
+        for part in ("city", "country")
+        if isinstance(style.get(f"default_{part}"), str)
+    }
+    if place:
+        update["default_place"] = cfg.style.default_place.model_copy(update=place)
     return cfg.model_copy(update={"style": cfg.style.model_copy(update=update)})
 
 

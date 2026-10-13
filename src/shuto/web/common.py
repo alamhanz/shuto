@@ -88,6 +88,8 @@ class WebState:
         self.model_cache: dict[tuple[str, str, str], tuple[float, Any]] = {}
         # model the user started downloading in the setup wizard; chosen when the download ends
         self.pending_model: str | None = None
+        # batch id -> live speed check of the local describe job running for it
+        self.live: dict[str, Any] = {}
         self.allowed_hosts = LOOPBACK_HOSTS | {h.lower() for h in extra_hosts}
         if cfg.web.host not in ("0.0.0.0", "::"):
             self.allowed_hosts.add(hostname(cfg.web.host))
@@ -267,12 +269,17 @@ class WebCtx:
         if job is None:
             raise HTTPException(status_code=404, detail="Unknown job.")
         result = self.runner.result(job_id)
+        live = self.state.live.get(job.batch_id or "")
+        if live is not None and job.state in ("queued", "running"):
+            extra.setdefault("speed", live.suggestion())
+            extra.setdefault("speed_notice", live.notice)
         return self.render(
             request,
             "_job.html",
             job=job,
             result=result if isinstance(result, str) else None,
             active=job.state in ("queued", "running"),
+            text=self.runner.text(job_id),
             **extra,
         )
 

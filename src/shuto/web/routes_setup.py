@@ -6,7 +6,7 @@ import re
 import threading
 from importlib import metadata
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
@@ -45,6 +45,33 @@ MAX_RULES = filters_mod.MAX_RULES
 MAX_RULE_ROWS = 40  # form rows read at most; the real limit is MAX_RULES
 
 
+def language_warnings(language: str, local: bool) -> list[dict[str, str]]:
+    """The cautions shown when metadata is not strict English. The local-model one comes first
+    and is the prominent one; the Shutterstock one is phrased as a caution, not a claim."""
+    out = []
+    if local:
+        out.append(
+            {
+                "kind": "local",
+                "text": (
+                    f"A local AI model may not write {language} well: it can answer in the "
+                    "wrong language, mix languages or produce broken words. Results are best "
+                    "in English. Read every description and keyword before you approve."
+                ),
+            }
+        )
+    out.append(
+        {
+            "kind": "shutterstock",
+            "text": (
+                "Shutterstock may expect English metadata. Titles and keywords in another "
+                "language might be rejected or be found less often by buyers."
+            ),
+        }
+    )
+    return out
+
+
 def _version() -> str:
     try:
         return metadata.version("shuto")
@@ -75,6 +102,10 @@ def _helper_steps(os_name: str) -> list[str]:
 
 UPLOAD_JOB_KINDS = ("deliver", "ftps_test", "upload")
 AI_JOB_KINDS = {"check", "describe"}  # jobs that use the AI model
+# Pages that reload by themselves when a model download ends well, so the chosen model shows at
+# once. Pages with text fields (other wizard steps, Settings, Add photos) are left alone: a
+# reload would throw away what the user is typing. They get the final bar message instead.
+REFRESH_ON_DOWNLOAD_DONE = {"/": None, "/welcome": "step=3"}  # path -> required query, if any
 BAR_KINDS = ("pull", "models_dir")  # jobs shown as the download bar at the top of every page
 CANCEL_TOO_LATE = "The download finished before it could be stopped. {tag} is ready to use."
 CANCEL_STOPPED = (
@@ -124,9 +155,11 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
     state.templates.env.globals["friendly"] = _friendly
     state.templates.env.globals["app_version"] = _version()
     import_results: dict[int, list[tuple[str, int]]] = {}
+    import_known: dict[int, list[int]] = {}  # job id -> photos left out as "sent before"
     pull_return: list[str] = ["/settings"]
     # (job id, {"tag", "status"}) of the latest models job: one tuple, swapped in one step
     pull_state: list[tuple[int, dict] | None] = [None]
+    announced_done: set[int] = set()  # finished downloads whose end was already shown once
 
     def pull_info(job_id: int | None) -> dict | None:
         cur = pull_state[0]
@@ -144,6 +177,7 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
         extra: dict = {}
         if job is not None and job.kind == "import":
             extra["batches"] = import_results.get(job_id, [])
+            extra["already"] = import_known.get(job_id, [])
         if job is not None and job.kind in ("pull", "models_dir"):
             extra["next_href"] = pull_return[0]
         return extra
@@ -297,6 +331,9 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
         current["always_include"] = str(form.get("always_include") or "")
         if "region_focus" in form:
             current["region_focus"] = str(form.get("region_focus") or "")
+        for key in ("default_city", "default_country"):
+            if key in form:
+                current[key] = str(form.get(key) or "")
         try:
             pipeline.set_ui_setting(ctx.store, "style", current)
         except pipeline.PipelineError as exc:
@@ -370,7 +407,11 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
                 }
             )
         list_updated, list_old = local_models.catalog_staleness()
+        small_warning = None
+        if report.selected and report.selected.startswith("ollama:"):
+            small_warning = local_models.small_model_warning(report.selected[7:], report.rows)
         return {
+            "small_warning": small_warning,
             "list_updated": list_updated,
             "list_old": list_old,
             "cards": rows,
@@ -419,6 +460,23 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             "tone": cfg.style.tone,
             "always_include": ", ".join(cfg.style.keywords.always_include),
             "region_focus": cfg.style.region_focus,
+            "default_city": cfg.style.default_place.city,
+            "default_country": cfg.style.default_place.country,
+        }
+
+    def language_values() -> dict:
+        """The metadata language setting, with the cautions to show while strict is off."""
+        style = ctx.cfg.style
+        try:
+            local = pipeline.resolve_selection(ctx.cfg, ctx.store).provider == "ollama"
+        except Exception:  # nothing chosen yet: the default is a local model
+            local = ctx.cfg.llm.provider == "ollama"
+        name = style.metadata_language or "that language"
+        return {
+            "english_only": style.english_only,
+            "language": style.metadata_language,
+            "local": local,
+            "warnings": [] if style.english_only else language_warnings(name, local),
         }
 
     def rules_values() -> dict:
@@ -475,6 +533,11 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             **extra,
         )
 
+    @app.get("/welcome/nav", response_class=HTMLResponse)
+    def welcome_nav(request: Request):
+        """The buttons under the model step, from the current model state (read-only)."""
+        return ctx.render(request, "_wizard_model_nav.html", model_status=ctx.fresh_model_status())
+
     @app.post("/welcome/{step}")
     def welcome_post(step: int, form: PostForm):
         if not 1 <= step <= len(WIZARD_STEPS):
@@ -503,10 +566,12 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
 
     @app.get("/add", response_class=HTMLResponse)
     def add_page(request: Request):
+        last = str(pipeline.get_ui_setting(ctx.store, "last_folder") or "")
         return ctx.render(
             request,
             "add.html",
-            last_folder=pipeline.get_ui_setting(ctx.store, "last_folder") or "",
+            last_folder=last,
+            default_name=Path(last).expanduser().name[:MAX_BATCH_NAME] if last else "",
         )
 
     @app.post("/import", response_class=HTMLResponse)
@@ -542,7 +607,14 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
                 batch_name=batch_name or None,
             )
             import_results[job.job_id] = list(s.batches.items())
-            parts = [f"{s.imported} photo(s) added."]
+            import_known[job.job_id] = [
+                a.photo_id for a in s.already_uploaded if a.photo_id is not None
+            ]
+            parts = [
+                pipeline.batches_text(s.batches) + "."
+                if len(s.batches) > 1
+                else f"{s.imported} photo(s) added."
+            ]
             copies = s.duplicates + s.already_known
             if copies:
                 parts.append(f"{copies} were already in shuto as exact copies.")
@@ -558,11 +630,25 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
                 parts.append(
                     f"{len(s.already_uploaded)} look like photos you sent before and were "
                     f"left out: {shown}" + (f"; and {more} more" if more > 0 else "") + ". "
-                    'To add them anyway, tick "Add even photos I sent before" under Advanced.'
+                    'To add them anyway, press "Add anyway" below.'
                 )
             return " ".join(parts)
 
         return ctx.start_job(request, "import", IMPORT_JOB_KEY, run)
+
+    @app.post("/import/add-anyway")
+    def add_anyway(form: PostForm):
+        """ "Add anyway" on the import result: photos left out as sent before join after all."""
+        ids = ctx.ids_from(form)
+        if not ids:
+            return ctx.back("/add", error="There is nothing to add.")
+        s = pipeline.add_anyway(ctx.cfg, ctx.store, ids)
+        if not s.moved:
+            return ctx.back("/add", error=next(iter(s.refused.values()), "Nothing was added."))
+        n = len(s.moved)
+        text = f"Added {n} photo{'' if n == 1 else 's'} anyway."
+        target = "/batch/" + quote(next(iter(s.batches)), safe="") if len(s.batches) == 1 else "/"
+        return ctx.back(target, notice=text, error=next(iter(s.refused.values()), None))
 
     # ------------------------------------------------------------------ jobs
 
@@ -582,7 +668,7 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             return HTMLResponse("")
         return ctx.render(request, "_model_banner.html")
 
-    def bar_response(request: Request, job_id: int) -> HTMLResponse:
+    def bar_response(request: Request, job_id: int, started: bool = False) -> HTMLResponse:
         found = ctx.runner.get(job_id)
         if found is None:
             return HTMLResponse("")
@@ -593,7 +679,7 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             in_use = bool(info["tag"]) and hardware.normalize_tag(info["tag"]) == selected_tag()
         except RuntimeError:
             in_use = False
-        return ctx.render(
+        resp = ctx.render(
             request,
             "_download_bar.html",
             job=found,
@@ -604,6 +690,19 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             href=pull_return[0],
             in_use=in_use,
         )
+        if started or not active:
+            # a download started or ended (not every 2 s poll): pages showing its state refresh
+            resp.headers["HX-Trigger"] = "shuto:models-changed"
+        if found.state == "done" and found.kind == "pull" and found.id not in announced_done:
+            here = urlparse(request.headers.get("hx-current-url", ""))
+            need = REFRESH_ON_DOWNLOAD_DONE.get(here.path, "")
+            if here.path in REFRESH_ON_DOWNLOAD_DONE and (
+                need is None or need in here.query.split("&")
+            ):
+                # once per download, and only used up by a page that really reloads
+                announced_done.add(found.id)
+                resp.headers["HX-Refresh"] = "true"
+        return resp
 
     @app.get("/downloads/bar", response_class=HTMLResponse)
     def download_bar(request: Request, job: int = 0):
@@ -785,7 +884,10 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             ollama_url=OLLAMA_URL,
             login=pipeline.ftps_login_status(ctx.cfg),
             style=style_values(),
+            language=language_values(),
             rules=rules_values(),
+            include_gps=ctx.cfg.prepare.include_gps,
+            max_tries=ctx.cfg.llm.max_tries,
             usage=usage,
             job=ctx.runner.get(active) if active else None,
             job_active=bool(active),
@@ -1035,6 +1137,7 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
                 ctx.invalidate_model_status()  # models or their folder just changed
 
         before = state.pending_model
+        ctx.invalidate_model_status()
         if pending is not None:
             state.pending_model = pending  # before submit: a quick job may finish at once
         try:
@@ -1046,7 +1149,7 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
         pull_state[0] = (job_id, info if info is not None else {"tag": "", "status": ""})
         if kind in BAR_KINDS:
             # always the one slot at the top of the page, whichever page started the job
-            resp = bar_response(request, job_id)
+            resp = bar_response(request, job_id, started=True)
             resp.headers["HX-Retarget"] = "#dl-slot"
             resp.headers["HX-Reswap"] = "innerHTML"
             return resp
@@ -1204,10 +1307,62 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
         notice, error = save_style(form)
         return go("/settings", notice, error)
 
+    @app.post("/settings/language")
+    def settings_language(form: PostForm):
+        strict = str(form.get("english_only") or "yes") != "no"
+        value: dict = {"english_only": strict}
+        if not strict:
+            value["language"] = str(form.get("language") or "")
+        try:
+            pipeline.set_ui_setting(ctx.store, "language", value)
+        except pipeline.PipelineError as exc:
+            return go("/settings", None, str(exc))
+        state.cfg = pipeline.apply_style_overrides(state.base_cfg, ctx.store)
+        if strict:
+            return go("/settings", "Descriptions and keywords are written in English only.", None)
+        info = language_values()
+        cautions = []
+        if info["local"]:
+            cautions.append(f"a local AI model may write {info['language']} badly")
+        cautions.append("Shutterstock may expect English")
+        return go(
+            "/settings",
+            f"Saved. Descriptions and keywords will be written in {info['language']}. "
+            f"Be careful: {'; '.join(cautions)}. Details are under Metadata language.",
+            None,
+        )
+
     @app.post("/settings/rules")
     def settings_rules(form: PostForm):
         notice, error = save_rules(form)
         return go("/settings", notice, error)
+
+    @app.post("/settings/tries")
+    def settings_tries(form: PostForm):
+        try:
+            tries = pipeline.set_ui_setting(ctx.store, "max_tries", form.get("max_tries"))
+        except pipeline.PipelineError as exc:
+            return go("/settings", None, str(exc))
+        state.cfg = pipeline.apply_style_overrides(state.base_cfg, ctx.store)
+        return go(
+            "/settings",
+            f"shuto will try up to {tries} {'time' if tries == 1 else 'times'} per photo.",
+            None,
+        )
+
+    @app.post("/settings/privacy")
+    def settings_privacy(form: PostForm):
+        on = str(form.get("include_gps") or "") == "yes"
+        pipeline.set_ui_setting(ctx.store, "include_gps", on)
+        state.cfg = pipeline.apply_style_overrides(state.base_cfg, ctx.store)
+        note = (
+            "Photos you upload will include the GPS location. Photos already prepared keep "
+            "what they had; prepare them again to add it."
+            if on
+            else "The GPS location is removed from photos you upload, also from photos "
+            "already prepared."
+        )
+        return go("/settings", note, None)
 
     # ------------------------------------------------------------------ help
 

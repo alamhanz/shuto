@@ -20,9 +20,25 @@
     {%- if job.state == 'done' %}{{ icon('check') }}{% elif job.state == 'failed' %}{{ icon('alert') }}{% elif job.state == 'cancelled' %}{{ icon('stop') }}{% else %}<span class="spin">{{ icon('spinner') }}</span>{% endif %}
     <span{% if not active %} role="status"{% endif %}>{{ titles.get(job.kind, 'Working') }}{% if job.state == 'done' %}: done{% elif job.state == 'cancelled' %}: stopped{% elif job.state == 'failed' %}: did not finish{% endif %}</span>
   </div>
-  {% if job.total %}<progress max="{{ job.total }}" value="{{ job.done }}" aria-label="{{ titles.get(job.kind, 'Working') }}">{{ job.done }} of {{ job.total }}</progress>
-  <p class="hint">{{ job.done }} of {{ job.total }}</p>
+  {% if job.total %}<progress max="{{ job.total }}" value="{{ job.done }}" aria-label="{{ titles.get(job.kind, 'Working') }}">{% if text and active %}{{ text }}{% else %}{{ job.done }} of {{ job.total }}{% endif %}</progress>
+  <p class="hint">{% if text and active %}{{ text }}{% else %}{{ job.done }} of {{ job.total }}{% endif %}</p>
   {%- elif active %}<progress aria-label="{{ titles.get(job.kind, 'Working') }}"></progress>{% endif %}
+  {% if active and speed_notice %}<p class="hint" role="status">{{ speed_notice }}</p>{% endif %}
+  {% if active and speed %}
+  {%- set spath = '/batch/' ~ bid ~ '/speed/' -%}
+  <div class="panel speed-check" role="status">
+    <p><strong>This is slower than expected.</strong> It takes about {{ speed.average|round|int }} s per photo, and we expected about {{ speed.expected|round|int }} s. These choices only change the photos not started yet, and they apply right away.</p>
+    <ul>
+      {% if speed.tries %}<li>Try fewer times per photo (now up to {{ speed.current_tries }}, then up to {{ speed.tries }}). This is faster; the text may need more fixing by you.
+        <button type="button" class="btn secondary" hx-post="{{ spath }}tries" hx-target="closest .progress" hx-swap="outerHTML">Use up to {{ speed.tries }} tries</button></li>{% endif %}
+      {% for m in speed.installed_models %}<li>Switch to {{ m.tag }}, about {{ m.seconds|round|int }} s per photo. It is already on this computer.
+        <button type="button" class="btn secondary" hx-post="{{ spath }}model" hx-vals='{{ {"model": m.tag}|tojson|forceescape }}' hx-target="closest .progress" hx-swap="outerHTML">Switch to {{ m.tag }}</button></li>{% endfor %}
+      {% for m in speed.missing_models %}<li>{{ m.tag }} would be faster (about {{ m.seconds|round|int }} s per photo), but it must be downloaded first. <a href="/settings">Download it in Settings</a>, then start the check again.</li>{% endfor %}
+    </ul>
+    <p><button type="button" class="btn secondary" hx-post="{{ spath }}keep" hx-target="closest .progress" hx-swap="outerHTML">Keep going</button>
+    <span class="hint">We only ask again if it gets slower still.</span></p>
+  </div>
+  {% endif %}
   {% if job.state == 'done' and result %}<p>{{ result }}</p>{% endif %}
   {% if job.state == 'failed' %}{% set f = friendly(job.error, job.kind) %}
   <p class="bad"><strong>{{ f.what }}</strong></p>
@@ -33,6 +49,14 @@
   {% if active %}
   <p><button type="button" class="secondary" hx-post="/jobs/{{ job.id }}/cancel" hx-target="closest .progress" hx-swap="outerHTML">Cancel</button></p>
   {% elif job.state == 'done' %}
+    {% if job.kind == 'import' and already %}
+    <form method="post" action="/import/add-anyway" class="row">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      {% for pid in already %}<input type="hidden" name="ids" value="{{ pid }}">{% endfor %}
+      <button class="btn secondary" type="submit">Add anyway</button>
+      <span class="hint">Use this if you deleted these photos on Shutterstock or want them in a new batch.</span>
+    </form>
+    {% endif %}
     {% if job.kind == 'import' and batches %}
     <ul class="open-batches">
       {% for name, n in batches %}<li>{{ name }} ({{ n }} photos) <a class="btn primary" href="/batch/{{ name|urlencode }}">Open batch</a></li>{% endfor %}

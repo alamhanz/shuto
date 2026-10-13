@@ -11,6 +11,7 @@ from typing import Any
 
 from . import embed, imaging
 from .metadata import is_editorial_caption
+from .metadata_rules import has_foreign_script
 
 MAX_NAME_CHARS = 80
 
@@ -52,7 +53,10 @@ def safe_filename(
 
 
 def release_check(
-    meta: dict[str, Any], detected: dict[str, Any] | None, release_ids: list[str]
+    meta: dict[str, Any],
+    detected: dict[str, Any] | None,
+    release_ids: list[str],
+    strict: bool = True,
 ) -> list[str]:
     """Problems that block preparation (empty list = fine).
 
@@ -83,20 +87,38 @@ def release_check(
         problems.append('Editorial caption must look like "CITY, COUNTRY - MONTH D, YYYY: text".')
     if not meta.get("keywords"):
         problems.append("No keywords.")
+    texts = [str(meta.get(k) or "") for k in ("title", "description")]
+    texts += [str(k) for k in meta.get("keywords") or []]
+    if strict and any(has_foreign_script(t) for t in texts):
+        problems.append("Text is not in English: Shutterstock needs English, Latin letters.")
     return problems
 
 
 def prepare_file(
-    src: Path, dest_dir: Path, name: str, meta: dict[str, Any], jpeg_quality: int = 95
+    src: Path,
+    dest_dir: Path,
+    name: str,
+    meta: dict[str, Any],
+    jpeg_quality: int = 95,
+    include_gps: bool = False,
 ) -> Path:
-    """Write a JPEG copy of `src` named `name` with IPTC/XMP embedded. `src` is never modified."""
+    """Write a JPEG copy of `src` named `name` with IPTC/XMP embedded. `src` is never modified.
+
+    The copy has no GPS location unless `include_gps` is set; other EXIF (date, camera) stays.
+    """
     src, dest_dir = Path(src), Path(dest_dir)
     data = src.read_bytes()
     if data[:2] != b"\xff\xd8":
         data = imaging.to_jpeg_bytes(src, jpeg_quality)
     description = str(meta.get("description") or "")
     title = str(meta.get("title") or description[:64])
-    out = embed.embed_metadata(data, title, description, list(meta.get("keywords") or []))
+    out = embed.embed_metadata(
+        data,
+        title,
+        description,
+        list(meta.get("keywords") or []),
+        strip_gps=not include_gps,
+    )
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest = dest_dir / name
     tmp = dest.with_name(dest.name + ".tmp")

@@ -1,6 +1,6 @@
 # shuto web guide
 
-This guide matches shuto version 0.4.0. Screens may differ slightly in other versions.
+This guide matches shuto version 0.5.0. Screens may differ slightly in other versions.
 
 shuto is a web page that runs on your own computer. Open it by double-clicking the **shuto**
 icon (or go to <http://127.0.0.1:8765>). The menu at the top has **Home**, **Add photos**,
@@ -62,7 +62,9 @@ let through and shown with its reason.
 
 Changes only apply to photos you check from then on; photos already checked keep their results.
 Every batch also has a **report** (a CSV file you can open in Excel) listing every check and
-its reason: download it from Review or Submit, or find it in `reports` in your workspace.
+its reason: download it from Review or Submit, or press **Open folder** there. Each batch has
+one folder in your workspace (`batches`) holding its report, its Shutterstock info file and the
+photo copies that get uploaded.
 Going back to shuto 0.3.x after updating to 0.4.0 is not possible, because the database is
 upgraded.
 
@@ -97,7 +99,7 @@ When you are done, click **Go to Upload**.
 
 Check the number of approved photos and your Shutterstock login, tick **Yes, upload these
 photos to Shutterstock**, and click the upload button. shuto prepares copies of your photos
-(your originals stay as they are), uploads them and creates the Shutterstock info files (CSV).
+(your originals stay as they are), uploads them and creates the Shutterstock info file (CSV), one per batch.
 If something fails, a message says what happened and a **Try again** button appears.
 <!-- screenshot: the upload step (images/web-upload.png) -->
 
@@ -105,15 +107,22 @@ If something fails, a message says what happened and a **Try again** button appe
 
 shuto never submits for you. The **Submit** page lists the steps:
 
-1. Open the Shutterstock contributor site and sign in.
-2. Upload the info file (CSV) you downloaded from shuto.
-3. Check your photos and press **Submit**.
-4. Back in shuto, click **I submitted this batch**.
+1. Open submit.shutterstock.com and sign in.
+2. Go to **Portfolio, Not submitted** (in the menu: Portfolio, Submit content). Your uploaded
+   photos are there; it can take a few minutes after uploading for them to appear.
+3. Click **Upload CSV** (top right) and choose the batch's info file
+   (`<batch>-shutterstock.csv`, also in the batch folder shown on the page).
+4. Check the photos, then press **Submit**. They move to **Portfolio, Pending**.
+5. Back in shuto, click **I submitted this batch**.
 
 <!-- screenshot: the submit step (images/web-submit.png) -->
 
 Later, open a photo and record whether it was **Accepted** or **Rejected** (and why). shuto
 uses the reasons to do better next time.
+
+If you deleted photos on Shutterstock and want to upload them again, open **Deleted photos on
+Shutterstock?** on the Upload or Submit page, tick them and confirm. See "If you deleted photos
+on Shutterstock" in the details guide.
 
 ## Settings and Help
 

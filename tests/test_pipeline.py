@@ -102,7 +102,9 @@ def test_blocked_photo_is_never_approved(cfg, store, photos_dir):
 def test_full_flow_with_fake_ftp(cfg, store, photos_dir, monkeypatch):
     batch, prep = _to_prepared(cfg, store, photos_dir)
     assert len(prep.prepared) == 3 and not prep.problems
-    assert all(cfg.workspace_path("prepared", batch, n).exists() for n in prep.prepared)
+    assert all(
+        pipeline.batch_dir(cfg, batch).joinpath("prepared", n).exists() for n in prep.prepared
+    )
 
     with pytest.raises(pipeline.UploadRefused):
         pipeline.upload_batch(cfg, store, batch)
@@ -117,6 +119,8 @@ def test_full_flow_with_fake_ftp(cfg, store, photos_dir, monkeypatch):
     dry = pipeline.export_batch(cfg, store, batch, dry_run=True)
     assert not dry.files and len(dry.rows) == 3
     exp = pipeline.export_batch(cfg, store, batch)
+    assert len(exp.files) == 1 and exp.files[0].name.endswith("-shutterstock.csv")
+    assert exp.files[0].parent == pipeline.batch_dir(cfg, batch)
     text = "\n".join(f.read_text(encoding="utf-8") for f in exp.files)
     assert all(name in text for name in prep.prepared)
     assert {r["filename"] for r in exp.rows} == set(ftp.stored)

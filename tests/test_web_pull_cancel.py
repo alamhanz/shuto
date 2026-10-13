@@ -166,7 +166,7 @@ def test_wizard_continue_opens_and_model_is_chosen_when_the_download_ends(cfg, m
         gate.set()
         assert web.state.runner.wait(job_id).state == "done"
         assert web.state.store.get_setting("llm.model") == tag
-        assert "now the AI model shuto uses" in web.get(f"/downloads/bar?job={job_id}").text
+        assert "is downloaded and chosen" in web.get(f"/downloads/bar?job={job_id}").text
         assert web.state.pending_model is None
     finally:
         gate.set()

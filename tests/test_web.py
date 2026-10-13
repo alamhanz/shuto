@@ -248,7 +248,7 @@ def test_photo_escapes_html_and_shows_gps_warning(web, described):
     text = web.get(f"/photo/{photo.id}").text
     assert "<script>alert(1)</script>" not in text
     assert "&lt;script&gt;" in text
-    assert "GPS" in text and "does not strip GPS" in text
+    assert "GPS" in text and "removes it from the copy" in text
 
 
 def test_approve_and_ready_actions(web, described):

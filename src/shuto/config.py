@@ -8,7 +8,10 @@ from typing import Literal
 
 import platformdirs
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
+
+from .metadata import clean_place_part
+from .metadata_rules import clean_language
 
 APP_NAME = "shuto"
 CONFIG_FILENAME = "shuto.yaml"
@@ -71,27 +74,68 @@ class LLMConfig(_Section):
     max_tokens: int = 1500
     temperature: float = 0.2
     json_retries: int = 1
+    max_tries: int = Field(8, ge=1, le=8)  # model calls per photo: first answer + repairs
     timeout_s: int = 300
     ollama: OllamaConfig = Field(default_factory=OllamaConfig)
     bedrock: BedrockConfig = Field(default_factory=BedrockConfig)
 
 
 class KeywordStyle(_Section):
-    min: int = 25
-    max: int = 50
+    min: int = 25  # below this only a note (the sweet spot is 25 to 45)
+    max: int = 45  # Shutterstock allows 50; padding to 50 looks like spam
     always_include: list[str] = []
     romaji_place_names: bool = False
     seasonal_terms: bool = True
+
+
+class DescriptionStyle(_Section):
+    """Lengths for the one-sentence description (Shutterstock has no separate title)."""
+
+    target_min: int = Field(70, ge=20, le=200)  # shorter is only a note
+    target_max: int = Field(150, ge=40, le=200)  # longer is only a note
+    max: int = Field(200, ge=60, le=200)  # longer is a problem and is sent back to the AI once
+
+    @model_validator(mode="after")
+    def _ordered(self) -> DescriptionStyle:
+        if not self.target_min <= self.target_max <= self.max:
+            raise ValueError("description lengths must satisfy target_min <= target_max <= max")
+        return self
+
+
+class DefaultPlace(_Section):
+    """Used in editorial captions when a photo has no known city or country."""
+
+    city: str = ""
+    country: str = ""
+
+    @field_validator("city", "country")
+    @classmethod
+    def _check_part(cls, v: str) -> str:
+        return clean_place_part(v)
 
 
 class StyleConfig(_Section):
     theme: str = ""
     tone: str = "documentary, warm, factual; no hype words"
     language: str = "en"
+    english_only: bool = True  # strict English metadata; off = write in `metadata_language`
+    metadata_language: str = ""  # used only when english_only is off, e.g. "Japanese"
     region_focus: Literal["", "japan"] = ""  # "japan": romaji, Japan-first rules, house rules
     keywords: KeywordStyle = Field(default_factory=KeywordStyle)
     avoid: list[str] = ["beautiful", "amazing", "stunning"]
     extra_instructions: str = ""
+    default_place: DefaultPlace = Field(default_factory=DefaultPlace)
+    description: DescriptionStyle = Field(default_factory=DescriptionStyle)
+
+    @model_validator(mode="after")
+    def _check_metadata_language(self) -> StyleConfig:
+        if self.english_only:
+            return self
+        try:
+            self.metadata_language = clean_language(self.metadata_language)
+        except ValueError as exc:
+            raise ValueError(f"style.metadata_language: {exc}") from exc
+        return self
 
 
 class FilterRuleConfig(_Section):
@@ -131,6 +175,7 @@ class PrepareConfig(_Section):
     filename_pattern: str = "{date:%Y%m%d}-{slug}-{n:03d}"
     slug_words: int = 5
     jpeg_quality: int = Field(95, ge=1, le=100)
+    include_gps: bool = False  # keep the GPS location in the copy that is uploaded
 
 
 class ReleasesConfig(_Section):

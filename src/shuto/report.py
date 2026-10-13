@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from .ledger import safe_cell
-from .models import Photo
+from .models import UPLOADED_STATES, Photo
 
 FIXED_BEFORE = (
     "file",
@@ -40,10 +40,16 @@ FIXED_AFTER = (
     "status",
     "status_label",
     "title",
+    "place",
+    "place_source",
+    "default_place",
     "keyword_count",
+    "metadata_issues",
+    "metadata_language",
     "ai_model",
     "ai_seconds",
     "ai_tries",
+    "ai_max_tries",
     "checked_at",
     "approved_at",
     "uploaded_at",
@@ -74,6 +80,19 @@ def _described_at(p: Photo, times: dict[str, str]) -> str:
         return ""
     found = [times[s] for s in ("described", "needs_review", "blocked", "set_aside") if s in times]
     return max(found, default="")
+
+
+def _place_text(place: Any) -> str:
+    """'TOKYO, JAPAN' from a stored place; blank when no part is known."""
+    if not isinstance(place, dict):
+        return ""
+    return ", ".join(str(place[k]) for k in ("city", "country") if place.get(k))
+
+
+def _default_flag(place: Any) -> str:
+    if not isinstance(place, dict):
+        return ""
+    return "yes" if place.get("default") else "no"
 
 
 def _row(
@@ -109,6 +128,7 @@ def _row(
         if name and name not in hits:
             hits.append(name)
     status = str(p.status)
+    sent = p.status in UPLOADED_STATES  # a photo sent again has no earlier upload time
     rejected_at, rejected_why = rejection or ("", "")
     keywords = meta.get("keywords") or []
 
@@ -130,14 +150,24 @@ def _row(
         "status": status,
         "status_label": labels(status),
         "title": str(meta.get("title") or ""),
+        "place": _place_text(meta.get("place")),
+        "place_source": str((meta.get("place") or {}).get("source") or ""),
+        "default_place": _default_flag(meta.get("place")),
         "keyword_count": str(len(keywords)) if keywords else "",
+        "metadata_issues": "; ".join(
+            str(i.get("text") or "")
+            for i in meta.get("metadata_issues") or []
+            if isinstance(i, dict)
+        ),
+        "metadata_language": str(meta.get("language") or ""),
         "ai_model": str(flt.get("model") or ""),
         "ai_seconds": f"{ai_time[0]:.1f}" if ai_time else "",
         "ai_tries": str(ai_time[1]) if ai_time else "",
+        "ai_max_tries": str((meta.get("ai_run") or {}).get("max_tries") or ""),
         "checked_at": str(flt.get("at") or _described_at(p, times)),
         "approved_at": times.get("approved", ""),
-        "uploaded_at": p.uploaded_at or times.get("uploaded", ""),
-        "submitted_at": p.submitted_at or times.get("submitted", ""),
+        "uploaded_at": p.uploaded_at or (times.get("uploaded", "") if sent else ""),
+        "submitted_at": p.submitted_at or (times.get("submitted", "") if sent else ""),
         "accepted_at": times.get("accepted", ""),
         "rejected_at": rejected_at or times.get("rejected", ""),
         "rejection_reason": rejected_why,
@@ -221,3 +251,38 @@ def report_filename(batch_id: str) -> str:
     if safe != batch_id:
         safe += "-" + hashlib.sha1(batch_id.encode("utf-8")).hexdigest()[:8]
     return safe + ".csv"
+
+
+_FOLDER_UNSAFE = re.compile(r"[^A-Za-z0-9 ()._-]")
+_RESERVED_NAMES = frozenset(
+    {
+        "CON",
+        "PRN",
+        "AUX",
+        "NUL",
+        *(f"COM{n}" for n in range(1, 10)),
+        *(f"LPT{n}" for n in range(1, 10)),
+    }
+)
+FOLDER_NAME_MAX = 80
+
+
+def folder_name(batch_id: str) -> str:
+    """A readable, safe folder name for a batch: "trip (2)" stays "trip (2)".
+
+    Keeps ASCII letters, digits, space, ( ) - _ and dot; anything else becomes `_`. Repeated
+    spaces collapse, spaces and dots are stripped at both ends, the length is capped at 80 and
+    Windows device names (nul, con.txt, COM1 ...) get a `_` in front. A short hash of the exact
+    batch id is added when the name had to change or has upper-case letters, so ids that differ
+    only by case ("Kyoto" and "kyoto") never share a folder on Windows or macOS.
+    """
+    name = _FOLDER_UNSAFE.sub("_", batch_id)
+    name = re.sub(" {2,}", " ", name).strip(" .")[:FOLDER_NAME_MAX].strip(" .")
+    changed = name != batch_id
+    if name.split(".")[0].rstrip(" ").upper() in _RESERVED_NAMES:
+        name, changed = "_" + name, True
+    if not name:
+        name, changed = "batch", True
+    if changed or name != name.lower():
+        name += "-" + hashlib.sha1(batch_id.encode("utf-8")).hexdigest()[:8]
+    return name

@@ -13,6 +13,7 @@ from typing import Any
 from .base import LLMError, LLMRequest
 
 DEFAULT_URL = "http://127.0.0.1:11434"
+DEFAULT_NUM_CTX = 8192  # Ollama's own default (2048/4096) cuts the start of a long prompt
 
 
 def _close(resp: Any) -> None:
@@ -166,9 +167,11 @@ class OllamaProvider:
         keep_alive: str | None = "10m",
         timeout_s: float = 300,
         client: OllamaClient | None = None,
+        num_ctx: int | None = None,
         **_: Any,
     ):
         self.model = model
+        self.num_ctx = int(num_ctx) if num_ctx else DEFAULT_NUM_CTX
         self.keep_alive = keep_alive
         self.client = client or OllamaClient(url, timeout_s)
 
@@ -187,7 +190,11 @@ class OllamaProvider:
             self.model,
             messages,
             format=schema,
-            options={"temperature": req.temperature, "num_predict": req.max_tokens},
+            options={
+                "temperature": req.temperature,
+                "num_predict": req.max_tokens,
+                "num_ctx": self.num_ctx,
+            },
             keep_alive=self.keep_alive,
             timeout=req.timeout_s,
         )

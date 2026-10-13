@@ -1,5 +1,4 @@
 {% from "_ui.html" import icon %}
-{% from "_wizard_nav.html" import wizard_nav %}
 <h1>Choose an AI model</h1>
 <p>The model is the AI that writes your titles and keywords. These fit this computer best. Downloads are large, and nothing is downloaded until you confirm.</p>
 {% if chosen %}<p class="flash ok" role="status">{{ icon('check') }}<span>In use now: <strong>{% if selected.startswith('ollama:') %}{{ selected[7:] }} (on this computer){% else %}{{ selected }}{% endif %}</strong></span></p>{% endif %}
@@ -24,11 +23,4 @@
   </form>
 </section>
 {% endif %}
-{% set later_href = '/welcome?step=3&later=1#later' %}
-{% if model_status.state == 'missing' %}
-{{ wizard_nav('Continue', disabled=True, back='/welcome?step=2', skip='Set up later', skip_href=later_href, hint='Choose an AI model above first. Continue unlocks when one is ready to use.') }}
-{% elif model_status.state == 'downloading' %}
-{{ wizard_nav('Continue', href='/welcome?step=4', back='/welcome?step=2', skip='Set up later', skip_href=later_href, hint=model_status.message ~ ' You can carry on with the next steps while it downloads.') }}
-{% else %}
-{{ wizard_nav('Continue', href='/welcome?step=4', back='/welcome?step=2', skip='Set up later', skip_href=later_href) }}
-{% endif %}
+<div id="wizard-nav" hx-get="/welcome/nav" hx-trigger="shuto:models-changed from:body" hx-swap="innerHTML">{% include "_wizard_model_nav.html" %}</div>

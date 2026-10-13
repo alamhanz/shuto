@@ -213,6 +213,9 @@ details > summary { cursor: pointer; font-weight: 600; min-height: 32px; }
 .dl-bar.done { border-color: var(--ok); background: var(--ok-bg); }
 .dl-bar.failed { border-color: var(--danger); background: var(--danger-bg); color: var(--danger); }
 .dl-bar button { min-height: 32px; padding: .1rem .7rem; }
+/* the download bar stays in view while scrolling; an empty slot takes no room */
+#dl-slot { position: sticky; top: 0; z-index: 20; background: var(--bg); }
+#dl-slot:empty { display: none; }
 
 .model-banner { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; padding: .45rem .9rem; margin: .6rem 0; border-radius: var(--radius); background: var(--danger-bg); color: var(--danger); border: 2px solid var(--danger); }
 .model-banner a { color: var(--danger); font-weight: 600; }

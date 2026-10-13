@@ -1,7 +1,8 @@
 """Write title/description/keywords into a JPEG's IPTC (APP13) and XMP (APP1) segments.
 
 Lossless: only metadata segments are rewritten, the compressed image data is untouched.
-Existing IPTC and XMP blocks are replaced; EXIF and ICC profiles are kept.
+Existing IPTC and XMP blocks are replaced (so any GPS fields in them are gone); EXIF and ICC
+profiles are kept. With ``strip_gps`` the EXIF GPS block is removed too.
 Shutterstock (like most agencies) reads these fields when the file arrives over FTPS.
 """
 
@@ -63,13 +64,75 @@ def build_xmp(title: str, description: str, keywords: list[str]) -> bytes:
     return XMP_HEADER + xml.encode("utf-8")
 
 
+_GPS_IFD = 0x8825
+
+
+def exif_without_gps(payload: bytes) -> bytes | None:
+    """An EXIF APP1 payload (starting with "Exif\0\0") without the GPS block.
+
+    Returns the payload unchanged when it has no GPS, and None when it cannot be read: the
+    caller then drops the whole EXIF segment rather than risk leaking the location.
+    """
+    from PIL import Image
+
+    try:
+        exif = Image.Exif()
+        exif.load(payload)
+        if _GPS_IFD not in exif:
+            return payload
+        del exif[_GPS_IFD]
+        return exif.tobytes()
+    except Exception:
+        return None
+
+
 def _segment(marker: int, payload: bytes) -> bytes:
     if len(payload) + 2 > 0xFFFF:
         raise ValueError("metadata segment too large")
     return bytes([0xFF, marker]) + struct.pack(">H", len(payload) + 2) + payload
 
 
-def embed_metadata(jpeg: bytes, title: str, description: str, keywords: list[str]) -> bytes:
+def strip_gps(jpeg: bytes) -> bytes:
+    """The JPEG without the EXIF GPS block (the bytes are returned unchanged when it has none).
+
+    Used at upload time as a last check. An EXIF segment that cannot be read is dropped
+    entirely, so a location can never slip through.
+    """
+    if jpeg[:2] != b"\xff\xd8":
+        raise ValueError("not a JPEG")
+    out: list[bytes] = [jpeg[:2]]
+    pos = 2
+    while pos + 4 <= len(jpeg) and jpeg[pos] == 0xFF:
+        marker = jpeg[pos + 1]
+        if marker == SOS:
+            break
+        if marker == 0xFF:  # fill byte
+            out.append(jpeg[pos : pos + 1])
+            pos += 1
+            continue
+        if marker == 0x01 or 0xD0 <= marker <= 0xD7:
+            out.append(jpeg[pos : pos + 2])
+            pos += 2
+            continue
+        (length,) = struct.unpack(">H", jpeg[pos + 2 : pos + 4])
+        seg = jpeg[pos : pos + 2 + length]
+        payload = seg[4:]
+        pos += 2 + length
+        if marker == APP1 and payload.startswith(EXIF_HEADER):
+            clean = exif_without_gps(payload)
+            if clean is None:
+                continue
+            if clean is not payload:
+                seg = _segment(APP1, clean)
+        out.append(seg)
+    out.append(jpeg[pos:])
+    result = b"".join(out)
+    return jpeg if result == jpeg else result
+
+
+def embed_metadata(
+    jpeg: bytes, title: str, description: str, keywords: list[str], strip_gps: bool = False
+) -> bytes:
     if jpeg[:2] != b"\xff\xd8":
         raise ValueError("not a JPEG")
     head: list[bytes] = []  # leading APP0 / EXIF / ICC segments (kept in place)
@@ -97,6 +160,11 @@ def embed_metadata(jpeg: bytes, title: str, description: str, keywords: list[str
         is_iptc = marker == APP13 and payload.startswith(PS_HEADER)
         if is_xmp or is_iptc:
             continue  # replaced below
+        if strip_gps and marker == APP1 and payload.startswith(EXIF_HEADER):
+            clean = exif_without_gps(payload)
+            if clean is None:
+                continue
+            seg = _segment(APP1, clean)
         is_head = (
             marker == APP0
             or (marker == APP1 and payload.startswith(EXIF_HEADER))

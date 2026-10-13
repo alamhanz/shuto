@@ -1,0 +1,29 @@
+{% from "_ui.html" import button with context %}
+{% if resend and (resend.sent or resend.submitted) %}
+<section class="panel" aria-labelledby="resend-title">
+  <h2 id="resend-title">Deleted photos on Shutterstock?</h2>
+  <details>
+    <summary>Upload some photos again</summary>
+    <p class="hint">shuto cannot see your Shutterstock account, so it relies on you. If you deleted photos there, or they never showed up, tick them below. shuto then forgets it sent them and sends them again the next time you press Upload.</p>
+    <form method="post" action="/batch/{{ batch.id|urlencode }}/resend" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <input type="hidden" name="page" value="{{ resend_page }}">
+      {% if resend.sent %}
+      <fieldset>
+        <legend>Uploaded photos</legend>
+        {% for p in resend.sent %}<label class="inline"><input type="checkbox" name="ids" value="{{ p.id }}"> {{ p.orig_name }}{% if p.submit_name %} <span class="hint">(sent as {{ p.submit_name }})</span>{% endif %}</label><br>{% endfor %}
+      </fieldset>
+      {% endif %}
+      {% if resend.submitted %}
+      <fieldset>
+        <legend>Already marked as submitted</legend>
+        <p class="hint">Only tick these if you also deleted them from your Shutterstock library.</p>
+        {% for p in resend.submitted %}<label class="inline"><input type="checkbox" name="ids" value="{{ p.id }}"> {{ p.orig_name }}</label><br>{% endfor %}
+      </fieldset>
+      {% endif %}
+      <label class="inline"><input type="checkbox" name="confirm" value="yes"> Yes, the photos I ticked are no longer on Shutterstock</label>
+      {{ button('These are no longer on Shutterstock: upload them again', 'secondary') }}
+    </form>
+  </details>
+</section>
+{% endif %}

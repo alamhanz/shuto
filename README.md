@@ -154,13 +154,14 @@ shuto                      # start the web app
 | `models` | `list`, `pull TAG`, `use SPEC`, `bench [MODEL]` |
 | `import`, `cull`, `describe`, `run` | the early stages, or all three with `run` |
 | `review`, `edit`, `approve` | inspect and change metadata |
+| `reupload` | send photos again that you deleted on Shutterstock (`--ids` or `--all`, needs `--yes`) |
 | `prepare`, `upload`, `export`, `submitted` | delivery (`upload` is off unless `deliver.upload_enabled` or `--yes`) |
 | `status`, `accept`, `reject` | tracking |
 | `ledger export/import` | back up or restore the already-uploaded list (`uploaded.csv`) |
 | `secrets set NAME`, `check-ftps` | store a secret (the web app does this in Settings); test the upload login |
 | `restrictions` | `list` rules or `check TEXT` |
 | `rules` | your own photo rules: `list`, `add --avoid/--include TEXT [--flag]`, `remove ID`, `clear`, `mode ID set-aside/flag`, `theme on/off`, `partly pass/flag` (shared with the web app; applies to photos described from now on) |
-| `report BATCH` | write the batch report CSV (`reports/<batch>.csv`) and print its path |
+| `report BATCH` | write the batch report CSV (`batches/<batch>/report.csv`) and print its path |
 | `shortcut`, `uninstall` | create or remove icons; uninstall shuto |
 
 ### Configuration and secrets
@@ -176,9 +177,13 @@ Note: 0.4.0 upgrades the database, so shuto 0.3.x cannot open it afterwards.
 ### More
 
 - [docs/local-models.md](docs/local-models.md): choosing a local model
+- [docs/shutterstock-metadata-guide.md](docs/shutterstock-metadata-guide.md): how titles and keywords are written and checked
 - [docs/shutterstock-restrictions.md](docs/shutterstock-restrictions.md): the rules shuto checks
 - [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md)
 - The earlier AWS version is kept at the git tag `aws-legacy`.
+- Place names for offline GPS lookup come from [GeoNames](https://www.geonames.org), licensed
+  [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); see
+  [src/shuto/data/GEONAMES_NOTICE.md](src/shuto/data/GEONAMES_NOTICE.md).
 - The benchmark image `src/shuto/data/sample.jpg` is CC0; see
   [src/shuto/data/SAMPLE_CREDIT.md](src/shuto/data/SAMPLE_CREDIT.md).
 

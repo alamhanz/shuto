@@ -36,7 +36,7 @@
   <form hx-post="/batch/{{ batch.id|urlencode }}/deliver" hx-target="#job-area" hx-swap="innerHTML" class="stack">
     <input type="hidden" name="csrf_token" value="{{ csrf }}">
     <label class="inline"><input type="checkbox" name="confirm" value="yes"> Yes, upload these {{ n }} photo{{ '' if n == 1 else 's' }} to Shutterstock</label>
-    {{ button('Upload whole batch', attrs={'disabled': 'disabled'} if not login_ok else {}) }}
+    {{ button('Upload the remaining ' ~ n if sent else 'Upload whole batch', attrs={'disabled': 'disabled'} if not login_ok else {}) }}
     {% if not login_ok %}<p class="hint">Save your login above first.</p>{% endif %}
   </form>
 </div>
@@ -47,13 +47,15 @@
 {% endif %}
 {% if exports %}
 <section class="panel" aria-labelledby="files-title">
-  <h2 id="files-title">Shutterstock info files (CSV)</h2>
+  <h2 id="files-title">Shutterstock info file (CSV)</h2>
   <p class="hint">{{ HELP.csv }}</p>
   <div class="row">
   {% for f in exports %}<a class="btn secondary" href="/batch/{{ batch.id|urlencode }}/exports/{{ f|urlencode }}">{{ icon('download') }}Download {{ f }}</a>{% endfor %}
   </div>
+  {% include "_files_note.html" %}
 </section>
 {% endif %}
+{% include "_resend.html" %}
 {% endblock %}
 {% block next %}
 {% if sent %}{{ next_action('Go to Submit', submit_href) }}{% elif n %}<p class="hint next-action">When the upload finishes, go on to <a href="{{ submit_href }}">Submit</a>.</p>{% endif %}

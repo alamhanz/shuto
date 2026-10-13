@@ -247,6 +247,7 @@ _WORKSPACE_ENTRIES = (
     "previews",
     "prepared",
     "exports",
+    "batches",
     "logs",
     "uploaded.csv",
 )
@@ -786,7 +787,10 @@ def cmd_prepare(ctx: Ctx) -> int:
     summary = pipeline.prepare_batch(
         ctx.cfg, ctx.store, a.batch, only_ids=a.ids, progress=_progress_printer("prepare")
     )
-    out(f"Prepared {len(summary.prepared)} file(s) in {ctx.cfg.workspace_path('prepared')}.")
+    out(
+        f"Prepared {len(summary.prepared)} file(s) in "
+        f"{pipeline.batch_dir(ctx.cfg, a.batch) / 'prepared'}."
+    )
     for pid, problems in summary.problems.items():
         out(f"  photo {pid} skipped: " + " ".join(problems))
     return 0
@@ -826,6 +830,7 @@ def cmd_export(ctx: Ctx) -> int:
     if not summary.files:
         out("Nothing to export (photos must be uploaded first).")
         return 0
+    out(f"Batch folder: {pipeline.batch_dir(ctx.cfg, a.batch)}")
     out("Final step is manual: on shutterstock.com choose Submit and upload this CSV there.")
     out(f"Afterwards: shuto submitted {a.batch}")
     return 0
@@ -847,6 +852,7 @@ def cmd_report(ctx: Ctx) -> int:
     else:
         path = pipeline.write_report(ctx.cfg, ctx.store, a.batch)
     out(f"Report for {a.batch}: {path}")
+    out(f"Batch folder: {pipeline.batch_dir(ctx.cfg, a.batch)}")
     return 0
 
 

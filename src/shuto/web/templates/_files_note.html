@@ -1,0 +1,6 @@
+<form method="post" action="/batch/{{ batch.id|urlencode }}/open-folder" class="files-note row">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <input type="hidden" name="page" value="{{ step_current }}">
+  <span class="hint">These files are also saved on this computer in: <code>{{ batch_folder }}</code></span>
+  <button class="btn secondary" type="submit">Open folder</button>
+</form>

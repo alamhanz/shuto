@@ -52,6 +52,7 @@
   <div class="row">
   {% for f in exports %}<a class="btn secondary" href="/batch/{{ batch.id|urlencode }}/exports/{{ f|urlencode }}">{{ icon('download') }}Download {{ f }}</a>{% endfor %}
   </div>
+  {% include "_files_note.html" %}
 </section>
 {% endif %}
 {% endblock %}

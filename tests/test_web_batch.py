@@ -446,3 +446,51 @@ def test_deliver_lost_internet_is_plain(web, described, monkeypatch):
     )
     job = web.run_job(f"/batch/{described}/deliver", {"confirm": "yes"})
     assert job.state == "failed" and "press Upload to send them" in job.error
+
+
+def test_pages_show_the_files_note_and_path(web, described):
+    folder = str(pipeline.batch_dir(web.state.cfg, described))
+    for page in ("review", "submit"):
+        text = web.get(f"/batch/{described}/{page}").text
+        assert "These files are also saved on this computer in:" in text
+        assert "Open folder" in text and "Download report" in text
+        assert f"/batch/{described}/open-folder" in text
+        assert folder in text.replace("&amp;", "&")
+
+
+def test_open_folder_needs_csrf_and_opens_only_the_batch_folder(web, described, monkeypatch):
+    from shuto import openfolder
+
+    opened = []
+    monkeypatch.setattr(openfolder, "open_folder", lambda p: opened.append(p))
+    assert web.get(f"/batch/{described}/open-folder").status_code in (404, 405)
+    assert web.client.post(f"/batch/{described}/open-folder", data={}).status_code == 403
+    assert not opened
+    r = web.post(
+        f"/batch/{described}/open-folder",
+        {"page": "review", "path": "C:/Windows", "folder": "/"},
+    )
+    assert r.status_code == 303 and "/review" in r.headers["location"]
+    assert opened == [pipeline.batch_dir(web.state.cfg, described)] and opened[0].is_dir()
+    other = web.post(f"/batch/{described}/open-folder", {"page": "https://evil.example"})
+    assert other.headers["location"].startswith(f"/batch/{described}")
+    assert "evil" not in other.headers["location"]
+    assert web.post("/batch/nope/open-folder").status_code == 404
+
+
+def test_open_folder_fails_softly(web, described, monkeypatch):
+    from shuto import openfolder
+
+    monkeypatch.setattr(openfolder, "open_folder", lambda p: openfolder.NO_DESKTOP)
+    r = web.post(f"/batch/{described}/open-folder", {"page": "submit"})
+    assert r.status_code == 303 and "error=" in r.headers["location"]
+
+
+def test_old_export_files_stay_downloadable(web, described):
+    photo = _photos(web, described, Status.DESCRIBED)[0]
+    old_csv = web.state.cfg.workspace_path("exports", "old.csv")
+    old_csv.parent.mkdir(parents=True)
+    old_csv.write_text("Filename\n", encoding="utf-8")
+    web.state.store.update_photo(photo.id, export_file=str(old_csv))
+    r = web.get(f"/batch/{described}/exports/old.csv")
+    assert r.status_code == 200 and r.text.startswith("Filename")

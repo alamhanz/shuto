@@ -1278,16 +1278,17 @@ def prepare_batch(
     progress: Progress | None = None,
     cancel: Cancel | None = None,
 ) -> PrepareSummary:
-    """Approved photos -> safe-named JPEG copies in <workspace>/prepared/<batch> with IPTC/XMP."""
+    """Approved photos -> safe-named JPEG copies in <batch folder>/prepared with IPTC/XMP."""
     progress = progress or _noop
     photos = store.list_photos(batch_id, [Status.APPROVED])
     if only_ids is not None:
         wanted = set(only_ids)
         photos = [p for p in photos if p.id in wanted]
     taken = {p.submit_name.lower() for p in store.list_photos() if p.submit_name}
-    dest_dir = cfg.workspace_path("prepared", _safe_dir(batch_id))
-    if dest_dir.is_dir():
-        taken |= {f.name.lower() for f in dest_dir.iterdir()}
+    dest_dir = batch_dir(cfg, batch_id) / "prepared"
+    for existing in (dest_dir, cfg.workspace_path("prepared", _safe_dir(batch_id))):  # + 0.4.0
+        if existing.is_dir():
+            taken |= {f.name.lower() for f in existing.iterdir()}
     n = sum(1 for p in store.list_photos(batch_id) if p.submit_name)
     summary = PrepareSummary()
     for i, photo in enumerate(photos, 1):
@@ -1595,7 +1596,7 @@ def export_batch(
     if dry_run or not rows:
         return summary
     now = now or datetime.now()
-    files = deliver.write_csvs(batch_id, rows, cfg.workspace_path("exports"), now)
+    files = deliver.write_csvs(batch_id, rows, batch_dir(cfg, batch_id), now)
     summary.files = files
     by_kind = {kind: f for kind, f in zip(split_by_kind(rows), files, strict=True)}
     for photo, row in zip(photos, rows, strict=True):
@@ -1682,9 +1683,20 @@ def batch_report(store: Store, batch_id: str | None = None) -> list[dict[str, An
 # --------------------------------------------------------------------------- batch report
 
 
+def batch_dir(cfg: Config, batch_id: str) -> Path:
+    """The one folder that holds a batch's own files: <workspace>/batches/<safe name>/.
+
+    The name keeps only letters, digits, dot, underscore and hyphen (a short hash is added when
+    the batch id had other characters), so it can never point outside the workspace.
+    Older versions kept these files in <workspace>/reports, exports and prepared; those files
+    are left where they are and still work (each photo remembers its own file paths).
+    """
+    return cfg.workspace_path("batches", report_mod.report_filename(batch_id)[: -len(".csv")])
+
+
 def report_path(cfg: Config, batch_id: str) -> Path:
-    """Where the always-current report CSV of a batch lives: <workspace>/reports/<name>.csv."""
-    return cfg.workspace_path("reports", report_mod.report_filename(batch_id))
+    """Where the always-current report CSV of a batch lives: <batch folder>/report.csv."""
+    return batch_dir(cfg, batch_id) / "report.csv"
 
 
 def build_report(cfg: Config, store: Store, batch_id: str) -> tuple[list[str], list[list[str]]]:

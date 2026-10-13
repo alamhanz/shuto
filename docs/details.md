@@ -168,9 +168,17 @@ Every batch has one report file that shuto keeps up to date after each step (add
 approve, edit, upload, export, submit, results). It lists, for each photo, what was checked and
 what the answer was.
 
-- **Where:** `reports/<batch>.csv` inside your shuto workspace. In the web app press
-  **Download report** on the Review or Submit page. On the command line, `shuto report BATCH`
-  writes it and prints the path (`--out PATH` writes a copy somewhere else).
+- **Where:** `batches/<batch>/report.csv` inside your shuto workspace. Every batch has one
+  folder that holds all of its own files: `report.csv`, the Shutterstock CSV files and a
+  `prepared/` folder with the photo copies that get uploaded. Your original photo folder is
+  never written to. In the web app press **Download report** on the Review or Submit page, or
+  **Open folder** next to it to see the files. On the command line, `shuto report BATCH`
+  writes the report and prints its path and the batch folder (`--out PATH` writes a copy
+  somewhere else). Folder names keep only letters, digits and `. _ -`; other characters become
+  `_` and a short code is added so two batches never share a folder.
+- **Older versions:** files made by 0.4.0 and earlier (`reports/`, `exports/`, `prepared/` in
+  the workspace) are not moved or deleted. They keep working, download buttons still find
+  them, and new files go to the batch folder.
 - **Columns:** file, batch, quality and its reasons, which Shutterstock rules were hit, theme and
   how well the photo fits it (with the reason), one column per rule of yours (pass, fail or
   unknown; blank when the photo was not checked with that rule), the reasons for your rules,

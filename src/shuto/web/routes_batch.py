@@ -10,7 +10,7 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 
 from .. import filters as filters_mod
-from .. import ftps, imaging, pipeline
+from .. import ftps, imaging, openfolder, pipeline
 from ..jobs import JobContext
 from ..local_models import ModelChoiceRequired
 from ..models import ALLOWED, Photo, Status
@@ -20,6 +20,7 @@ from . import ux
 from .common import PostForm, WebCtx, short, split_lines
 
 BATCH_JOBS = ("cull", "describe", "prepare", "upload", "export")  # legacy / power-user routes
+OPEN_FOLDER_PAGES = ("review", "submit", "upload")
 PREVIEW_SIDE = 2048  # page preview size; originals can be tens of MB
 FILTERS = ("attention", "good", "aside", "all")
 WHY_FILTERS = ("quality", "copies", "theme", "rules")  # why a photo was set aside
@@ -157,6 +158,7 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
             steps=ux.steps(batch_id, counts),
             step_current=current,
             active_job=ctx.runner.active_job(batch_id),
+            batch_folder=str(pipeline.batch_dir(ctx.cfg, batch_id)),
             **extra,
         )
 
@@ -558,6 +560,21 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
                 "Cache-Control": "no-store",
             },
         )
+
+    @app.post("/batch/{batch_id}/open-folder")
+    def open_batch_folder(batch_id: str, form: PostForm):
+        ctx.get_batch_or_404(batch_id)
+        page_name = str(form.get("page"))
+        back = _url(batch_id, page_name if page_name in OPEN_FOLDER_PAGES else "")
+        folder = pipeline.batch_dir(ctx.cfg, batch_id)  # always the batch's own folder
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            return ctx.back(back, error=openfolder.NO_DESKTOP)
+        problem = openfolder.open_folder(folder)
+        if problem:
+            return ctx.back(back, error=problem)
+        return ctx.back(back, notice="Opened the folder on this computer.")
 
     # ------------------------------------------------------------------ legacy job routes
 

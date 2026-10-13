@@ -197,6 +197,9 @@ details > summary { cursor: pointer; font-weight: 600; min-height: 32px; }
 .dl-bar button { min-height: 32px; padding: .1rem .7rem; }
 body:has(#job-area .progress, #job-resume .progress) .dl-bar { display: none; }
 
+.model-banner { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; padding: .45rem .9rem; margin: .6rem 0; border-radius: var(--radius); background: var(--danger-bg); color: var(--danger); border: 2px solid var(--danger); }
+.model-banner a { color: var(--danger); font-weight: 600; }
+
 /* update banner */
 .update-banner { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; padding: .45rem .9rem; margin: .6rem 0; border-radius: var(--radius); background: var(--secondary); color: var(--on-secondary); }
 .update-banner a { color: var(--on-secondary); font-weight: 600; }

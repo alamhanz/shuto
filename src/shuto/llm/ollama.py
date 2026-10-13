@@ -83,10 +83,10 @@ class OllamaClient:
             raise LLMError("Ollama returned a non-JSON response", retryable=True) from e
 
     def version(self) -> str:
-        return str(self._json("/api/version", timeout=5).get("version", ""))
+        return str(self._json("/api/version", timeout=min(5, self.timeout)).get("version", ""))
 
     def tags(self) -> list[dict]:
-        return list(self._json("/api/tags", timeout=10).get("models", []))
+        return list(self._json("/api/tags", timeout=min(10, self.timeout)).get("models", []))
 
     def delete(self, tag: str) -> None:
         """Remove a downloaded model from this computer (Ollama frees its files)."""

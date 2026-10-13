@@ -80,7 +80,7 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
 
     # ------------------------------------------------------------------ check
 
-    def check_facts(batch_id: str, counts: dict[str, int]) -> dict[str, Any]:
+    def check_facts(request: Request, batch_id: str, counts: dict[str, int]) -> dict[str, Any]:
         """Estimate, model name and plain-words problems for the Check page."""
         facts: dict[str, Any] = {"estimate": None, "model": None, "problems": []}
         if not (counts.get("imported", 0) + counts.get("ready", 0)):
@@ -89,18 +89,20 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
             sel = pipeline.resolve_selection(ctx.cfg, ctx.store)
             facts["model"] = f"{sel.provider} / {sel.model}"
             facts["estimate"] = pipeline.estimate_check(ctx.cfg, ctx.store, batch_id).text
-            facts["problems"] = pipeline.describe_preflight(ctx.cfg, sel)
         except ModelChoiceRequired:
-            facts["problems"] = ["No AI model is chosen yet."]
+            pass
         except PipelineError as exc:
             facts["problems"] = [ux.friendly_error(exc)["what"]]
+        if not facts["problems"]:
+            block = ctx.model_block(request)
+            facts["problems"] = [block] if block else []
         return facts
 
     @app.get("/batch/{batch_id}/check", response_class=HTMLResponse)
     def check_page(request: Request, batch_id: str):
         ctx.get_batch_or_404(batch_id)
         counts = _counts(ctx.store.list_photos(batch_id))
-        facts = check_facts(batch_id, counts)
+        facts = check_facts(request, batch_id, counts)
         stage = ux.stage(counts)
         return page(
             request,
@@ -120,14 +122,9 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
         n = len(store.list_photos(batch_id, [Status.IMPORTED, Status.READY]))
         if not n:
             return ctx.message_fragment(request, "There are no new photos to check.")
-        try:
-            problems = pipeline.describe_preflight(cfg, pipeline.resolve_selection(cfg, store))
-        except ModelChoiceRequired:
-            problems = ["No AI model is ready yet. Open Settings, pick a model and download it."]
-        except PipelineError as exc:
-            problems = [" ".join(ux.friendly_error(exc).values())]
-        if problems:
-            return ctx.message_fragment(request, " ".join(problems))
+        block = ctx.model_block(request)
+        if block:
+            return ctx.message_fragment(request, block)
 
         def run(job: JobContext) -> str:
             s = pipeline.check_batch(
@@ -404,17 +401,9 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
                 return f"Cull done: {s.ready} ready, {s.culled} culled (of {s.total} new)."
 
         elif action == "describe":
-            try:
-                sel = pipeline.resolve_selection(cfg, store)
-            except ModelChoiceRequired:
-                return ctx.message_fragment(
-                    request, "Choose a local model on the Settings page first."
-                )
-            except PipelineError as exc:
-                return ctx.message_fragment(request, str(exc))
-            problems = pipeline.describe_preflight(cfg, sel)
-            if problems:
-                return ctx.message_fragment(request, " ".join(problems))
+            block = ctx.model_block(request)
+            if block:
+                return ctx.message_fragment(request, block)
 
             def run(job: JobContext) -> str:
                 s = pipeline.describe_batch(
@@ -625,15 +614,9 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
         if not photo.batch_id:
             return ctx.message_fragment(request, "This photo is not part of a batch.")
         batch_id = photo.batch_id
-        try:
-            sel = pipeline.resolve_selection(cfg, ctx.store)
-        except ModelChoiceRequired:
-            return ctx.message_fragment(
-                request, "No AI model is ready yet. Open Settings, pick a model and download it."
-            )
-        problems = pipeline.describe_preflight(cfg, sel)
-        if problems:
-            return ctx.message_fragment(request, " ".join(problems))
+        block = ctx.model_block(request)
+        if block:
+            return ctx.message_fragment(request, block)
 
         def run(job: JobContext) -> str:
             s = pipeline.describe_batch(

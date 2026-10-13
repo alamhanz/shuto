@@ -1,6 +1,7 @@
 {% from "_ui.html" import field, icon, chip %}
 <h1>Shutterstock upload login (optional)</h1>
-<p>To send photos to Shutterstock, shuto needs the email and password you use there. They are saved in this computer's secure password store, and never shown again.</p>
+<p>shuto sends your finished photos to Shutterstock's photo upload server, which asks for the email and password you use there. shuto does not use any Shutterstock API and never signs in to the website for you; the login is only used in the Upload step.</p>
+<p>They are saved in this computer's secure password store, and never shown again. You can skip this now and add it later in Settings or right before your first upload.</p>
 <p>{% if login.user_set and login.password_set %}{{ chip('ok', 'A login is saved') }}{% else %}{{ chip('neutral', 'No login saved yet') }}{% endif %}
    {% if not login.keyring_ok %}<span class="hint"> This computer has no secure password store available. Saving may fail.</span>{% endif %}</p>
 <form method="post" action="/welcome/4" class="stack">

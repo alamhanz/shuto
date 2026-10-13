@@ -49,8 +49,7 @@ from .llm.fake import FakeProvider
 from .llm.ollama import OllamaClient, OllamaProvider
 from .metadata import PhotoMetadata, clean_place_part, normalize
 from .models import REASON_CODES, REUPLOADABLE, UPLOADED_STATES, LLMCall, Photo, Status
-from .photo_context import compute_file_facts
-from .photo_context import photo_context as photo_context  # noqa: F401  (public interface)
+from .photo_context import compute_file_facts, photo_context
 from .prepare import prepare_file, release_check, safe_filename
 from .secrets import get_secret, keyring_available
 from .store import InvalidTransition, Store
@@ -109,6 +108,14 @@ def _now_iso() -> str:
 
 def _noop(done: int, total: int, message: str = "") -> None:
     return None
+
+
+FILE_FACT_KEYS = ("file_meta", "gps_place")  # read from the photo at import, kept across edits
+
+
+def _file_facts(metadata: dict | None) -> dict[str, Any]:
+    """The stored facts read from the photo file, to carry over when metadata is rewritten."""
+    return {k: metadata[k] for k in FILE_FACT_KEYS if metadata and k in metadata}
 
 
 def _parse_dt(value: str | None) -> datetime | None:
@@ -1023,6 +1030,7 @@ def describe_batch(
         assert pid is not None
         try:
             image = imaging.preview_jpeg(photo.src_path, side)
+            facts = photo_context(photo)
             has_model, has_property = _release_flags(photo.release_ids)
             res = describe.describe_photo(
                 llm,
@@ -1031,7 +1039,7 @@ def describe_batch(
                 style=style,
                 restrictions=restrictions,
                 notes=notes,
-                captured=_parse_dt(photo.captured_at),
+                captured=_parse_dt(photo.captured_at) or _parse_dt(facts.get("captured")),
                 feedback=feedback,
                 max_tokens=cfg.llm.max_tokens,
                 temperature=cfg.llm.temperature,
@@ -1042,6 +1050,7 @@ def describe_batch(
                 filters=spec,
                 at=_now_iso(),
                 seen=seen,
+                facts=facts,
             )
         except LLMError as exc:
             store.log_llm_call(
@@ -1073,6 +1082,7 @@ def describe_batch(
         meta = res.metadata.to_dict()
         meta["location"] = res.location
         meta["place"] = res.place
+        meta.update(_file_facts(photo.metadata))
         if res.issues:
             meta["metadata_issues"] = [i.to_dict() for i in res.issues]
         found = res.filters.to_dict() if res.filters else None
@@ -1190,7 +1200,7 @@ def update_metadata(
             data[key] = value
     meta, gr, status = _evaluate(cfg, store, photo, data)
     stored = meta.to_dict()
-    for extra in ("title", "location", "place"):
+    for extra in ("title", "location", "place", *FILE_FACT_KEYS):
         if extra in data:
             stored[extra] = data[extra]
     was = photo.status
@@ -1351,7 +1361,12 @@ def prepare_batch(
         )
         try:
             dest = prepare_file(
-                Path(photo.src_path), dest_dir, name, meta, cfg.prepare.jpeg_quality
+                Path(photo.src_path),
+                dest_dir,
+                name,
+                meta,
+                cfg.prepare.jpeg_quality,
+                cfg.prepare.include_gps,
             )
         except Exception as exc:
             summary.problems[pid] = [f"prepare failed: {exc}"]
@@ -1691,7 +1706,7 @@ def reupload_photos(
         has_original = Path(photo.src_path).is_file()
         if prepared:
             target = Status.PREPARED
-        elif has_original and photo.metadata:
+        elif has_original and (photo.metadata or {}).get("description"):  # facts alone are not text
             target = Status.APPROVED
         elif has_original:
             target = Status.READY
@@ -2202,6 +2217,7 @@ UI_SETTING_KEYS = (
     "bedrock_profile",
     "update_check",
     "update_cache",
+    "include_gps",
 )
 PROFILE_RE = re.compile(r"^[A-Za-z0-9_.@:+=,-]{1,100}$")
 MAX_STYLE_TEXT = 200
@@ -2317,7 +2333,7 @@ def set_ui_setting(store: Store, name: str, value: Any) -> Any:
         value = str(value or "").strip()
         if value and not PROFILE_RE.match(value):
             raise PipelineError("That AWS profile name is not valid.")
-    elif key == "ui.update_check":
+    elif key in ("ui.update_check", "ui.include_gps"):
         value = bool(value)
     elif key == "ui.update_cache":
         value = _clean_update_cache(value)
@@ -2359,6 +2375,11 @@ def apply_style_overrides(cfg: Config, store: Store) -> Config:
             }
         )
     cfg = _apply_filter_overrides(cfg, store)
+    gps = store.get_setting("ui.include_gps")
+    if isinstance(gps, bool):
+        cfg = cfg.model_copy(
+            update={"prepare": cfg.prepare.model_copy(update={"include_gps": gps})}
+        )
     style = store.get_setting("ui.style") or {}
     if not style:
         return cfg

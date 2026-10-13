@@ -87,16 +87,30 @@ def release_check(
 
 
 def prepare_file(
-    src: Path, dest_dir: Path, name: str, meta: dict[str, Any], jpeg_quality: int = 95
+    src: Path,
+    dest_dir: Path,
+    name: str,
+    meta: dict[str, Any],
+    jpeg_quality: int = 95,
+    include_gps: bool = False,
 ) -> Path:
-    """Write a JPEG copy of `src` named `name` with IPTC/XMP embedded. `src` is never modified."""
+    """Write a JPEG copy of `src` named `name` with IPTC/XMP embedded. `src` is never modified.
+
+    The copy has no GPS location unless `include_gps` is set; other EXIF (date, camera) stays.
+    """
     src, dest_dir = Path(src), Path(dest_dir)
     data = src.read_bytes()
     if data[:2] != b"\xff\xd8":
         data = imaging.to_jpeg_bytes(src, jpeg_quality)
     description = str(meta.get("description") or "")
     title = str(meta.get("title") or description[:64])
-    out = embed.embed_metadata(data, title, description, list(meta.get("keywords") or []))
+    out = embed.embed_metadata(
+        data,
+        title,
+        description,
+        list(meta.get("keywords") or []),
+        strip_gps=not include_gps,
+    )
     dest_dir.mkdir(parents=True, exist_ok=True)
     dest = dest_dir / name
     tmp = dest.with_name(dest.name + ".tmp")

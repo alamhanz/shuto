@@ -228,7 +228,7 @@ what the answer was.
 - **Columns:** file, batch, quality and its reasons, which Shutterstock rules were hit, theme and
   how well the photo fits it (with the reason), one column per rule of yours (pass, fail or
   unknown; blank when the photo was not checked with that rule), the reasons for your rules,
-  what set it aside, whether you approved it by hand, status, title, the place used in the caption, where it came from (ai, default, partly default,
+  what set it aside, whether you approved it by hand, status, title, the place used in the caption, where it came from (gps, file, ai, default, partly default,
   unknown) and whether it is the default place (yes or no), number of keywords, the AI
   model, how many seconds and tries the AI needed, and the dates it was checked, approved, uploaded, submitted, accepted or rejected
   (with the rejection reason).
@@ -260,19 +260,18 @@ the workspace folder first if you may want to go back.
 
 ## Status and roadmap
 
-shuto is an early version (0.4.0). The pipeline, command line and local web app work end to end,
+shuto is an early version (0.5.0). The pipeline, command line and local web app work end to end,
 and the tests run on Linux, macOS and Windows.
 
 Known limits:
 
-- GPS location data inside photos is not removed in this version. The review page warns you
-  when a photo contains it.
+- GPS location is removed from the photo copies shuto uploads (Settings -> Privacy lets you
+  keep it). It is not removed from anything else you share yourself.
 - The sizes, speeds and prices in the model list are approximate and need re-checking from time
   to time. See [local-models.md](local-models.md) for choosing a local model.
 
 Ideas for later:
 
-- Removing GPS data automatically.
 - An OpenAI provider (planned) and other AI providers.
 - Richer reports on why photos get rejected.
 

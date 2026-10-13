@@ -839,6 +839,7 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             login=pipeline.ftps_login_status(ctx.cfg),
             style=style_values(),
             rules=rules_values(),
+            include_gps=ctx.cfg.prepare.include_gps,
             usage=usage,
             job=ctx.runner.get(active) if active else None,
             job_active=bool(active),
@@ -1262,6 +1263,18 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
     def settings_rules(form: PostForm):
         notice, error = save_rules(form)
         return go("/settings", notice, error)
+
+    @app.post("/settings/privacy")
+    def settings_privacy(form: PostForm):
+        on = str(form.get("include_gps") or "") == "yes"
+        pipeline.set_ui_setting(ctx.store, "include_gps", on)
+        state.cfg = pipeline.apply_style_overrides(state.base_cfg, ctx.store)
+        note = (
+            "Photos you upload will include the GPS location."
+            if on
+            else "The GPS location is removed from photos you upload."
+        )
+        return go("/settings", note + " Photos already prepared keep what they had.", None)
 
     # ------------------------------------------------------------------ help
 

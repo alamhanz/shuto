@@ -296,6 +296,7 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
             "snippet": short(str(meta.get("description") or ""), 90),
             "editorial": bool(meta.get("editorial")),
             "gps": p.has_gps,
+            "gps_sent": p.has_gps and ctx.cfg.prepare.include_gps,
             "default_place": bool((meta.get("place") or {}).get("default")),
         }
 
@@ -786,6 +787,7 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
             and Status.READY in ALLOWED.get(photo.status, ()),
             can_result=photo.status in (Status.EXPORTED, Status.SUBMITTED),
             releases_text="\n".join(photo.release_ids),
+            include_gps=ctx.cfg.prepare.include_gps,
         )
 
     def _older_rules(photo: Photo) -> bool:

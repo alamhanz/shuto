@@ -4,7 +4,7 @@
 {% block content %}
 <h1>Settings</h1>
 <nav aria-label="Settings sections"><p class="chips">
-  <a class="chip" href="#model">AI model</a><a class="chip" href="#storage">AI storage</a><a class="chip" href="#shutterstock">Shutterstock login</a><a class="chip" href="#style">Style</a><a class="chip" href="#rules">Your photo rules</a><a class="chip" href="#computer">This computer</a><a class="chip" href="#updates">Updates</a><a class="chip" href="#advanced">Advanced</a>
+  <a class="chip" href="#model">AI model</a><a class="chip" href="#storage">AI storage</a><a class="chip" href="#shutterstock">Shutterstock login</a><a class="chip" href="#style">Style</a><a class="chip" href="#privacy">Privacy</a><a class="chip" href="#rules">Your photo rules</a><a class="chip" href="#computer">This computer</a><a class="chip" href="#updates">Updates</a><a class="chip" href="#advanced">Advanced</a>
 </p></nav>
 <p><a href="/welcome">Run setup again</a></p>
 
@@ -80,6 +80,16 @@
   <input id="default_country" name="default_country" value="{{ style.default_country }}" maxlength="60" placeholder="Japan" aria-describedby="default_country-help">
   {% endcall %}
   <p><button type="submit" class="btn primary">Save style</button></p>
+</form>
+</section>
+
+<section id="privacy" aria-labelledby="h-privacy">
+<h2 id="h-privacy">Privacy</h2>
+<form method="post" action="/settings/privacy" class="stack">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <label class="inline"><input type="checkbox" name="include_gps" value="yes"{% if include_gps %} checked{% endif %}> Include GPS location in uploaded photos</label>
+  <p class="hint">Off by default: the exact place where a photo was taken is removed from the copy shuto sends. Your original photos are never changed. Photos you already prepared keep what they had; prepare them again after changing this.</p>
+  <p><button type="submit" class="btn primary">Save</button></p>
 </form>
 </section>
 

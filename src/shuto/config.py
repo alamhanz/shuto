@@ -161,6 +161,7 @@ class PrepareConfig(_Section):
     filename_pattern: str = "{date:%Y%m%d}-{slug}-{n:03d}"
     slug_words: int = 5
     jpeg_quality: int = Field(95, ge=1, le=100)
+    include_gps: bool = False  # keep the GPS location in the copy that is uploaded
 
 
 class ReleasesConfig(_Section):

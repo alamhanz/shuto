@@ -10,8 +10,10 @@
 <h1>{{ photo.orig_name }}</h1>
 <p>{{ chip(bucket(photo.status) if bucket(photo.status) in ('good', 'attention', 'aside') else 'neutral', label(photo.status)) }}{% if (meta.place or {}).default %} <span class="chip review" title="The place in the caption is your default place. Check that it is right for this photo.">Default place</span>{% endif %}</p>
 
-{% if photo.has_gps %}
-<p class="flash warn" role="alert">{{ icon('alert') }}<span>This photo contains the place where it was taken (GPS). shuto does not strip GPS data from the copy it sends, so remove it from the photo first if you do not want to publish where this was taken.</span></p>
+{% if photo.has_gps and include_gps %}
+<p class="flash warn" role="alert">{{ icon('alert') }}<span>This photo contains the place where it was taken (GPS), and your settings send it with the photo. Turn off "Include GPS location in uploaded photos" in <a href="/settings#privacy">Settings</a> if you do not want to publish where this was taken.</span></p>
+{% elif photo.has_gps %}
+<p class="hint">This photo contains the place where it was taken (GPS). shuto removes it from the copy it sends. Your original file is not changed.</p>
 {% endif %}
 
 <div class="photo-layout">

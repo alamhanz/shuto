@@ -38,7 +38,9 @@ def _yn(v) -> str:
     return "yes" if bool(v) else "no"
 
 
-def build_csv(items: Iterable[dict]) -> str:
+def build_csv(items: Iterable[dict], strict: bool = True) -> str:
+    """The Shutterstock CSV text. ``strict`` (English only) refuses non-Latin cells; with
+    strict off (another metadata language) the cells are written as they are, in UTF-8."""
     buf = io.StringIO()
     writer = csv.writer(buf, quoting=csv.QUOTE_MINIMAL, lineterminator="\n")
     writer.writerow(HEADERS)
@@ -52,7 +54,7 @@ def build_csv(items: Iterable[dict]) -> str:
             _yn(it.get("mature")),
             _yn(it.get("illustration")),
         ]
-        if any(has_foreign_script(cell) for cell in row[:4]):
+        if strict and any(has_foreign_script(cell) for cell in row[:4]):
             raise NotEnglishError(f"{it['filename']}: the text is not in English")
         writer.writerow(row)
     return buf.getvalue()

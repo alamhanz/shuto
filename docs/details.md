@@ -159,6 +159,17 @@ For how the check looks in the web app, see [web-guide.md](web-guide.md).
   (the CSV writer also refuses it). Words in other scripts from the photo's own title, caption
   and keywords are left out of the facts the AI sees. Place names come from the bundled GeoNames
   ASCII names.
+- Metadata language (Settings -> Metadata language; config `style.english_only` and
+  `style.metadata_language`, web app setting `ui.language`): strict English is the default. With
+  it off, `describe.language_rule` puts "Write the description and keywords in <language>" in
+  both prompts, photo-file hints keep their scripts, `ascii_fold`, the `non_english` check,
+  `pipeline.not_english` (approve, prepare, export) and the CSV guard are skipped, and the word
+  count ignores text in scripts written without spaces (Japanese, Thai). The CSV stays UTF-8
+  without a BOM as before. The name is validated by `metadata_rules.clean_language` (letters,
+  spaces, hyphens, 30 characters) because it goes into the prompt. Each photo stores
+  `metadata.language` and the report has a `metadata_language` column. Location fields stay in
+  English letters (the editorial caption prefix is a fixed English format). Cautions: local
+  models may write the language badly; Shutterstock may expect English.
 - HEIC/HEIF photos need the optional `pillow-heif` package (included in the installer). A photo
   that cannot be opened is flagged "HEIC photo could not be read" (install HEIC support, or the
   file is damaged) and the rest of the batch carries on.

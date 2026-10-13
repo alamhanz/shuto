@@ -71,13 +71,13 @@ def csv_filename(batch_id: str) -> str:
     return f"{folder_name(batch_id)}-shutterstock.csv"
 
 
-def write_csv(batch_id: str, rows: Sequence[dict], out_dir: Path) -> Path:
+def write_csv(batch_id: str, rows: Sequence[dict], out_dir: Path, strict: bool = True) -> Path:
     """Write the batch's single Shutterstock CSV (replacing an earlier one); returns its path."""
     out_dir = Path(out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
     dest = out_dir / csv_filename(batch_id)
     tmp = dest.with_name(dest.name + ".tmp")
     with open(tmp, "w", encoding="utf-8", newline="") as fh:
-        fh.write(build_csv(rows))
+        fh.write(build_csv(rows, strict))
     os.replace(tmp, dest)
     return dest

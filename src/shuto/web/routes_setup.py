@@ -45,6 +45,33 @@ MAX_RULES = filters_mod.MAX_RULES
 MAX_RULE_ROWS = 40  # form rows read at most; the real limit is MAX_RULES
 
 
+def language_warnings(language: str, local: bool) -> list[dict[str, str]]:
+    """The cautions shown when metadata is not strict English. The local-model one comes first
+    and is the prominent one; the Shutterstock one is phrased as a caution, not a claim."""
+    out = []
+    if local:
+        out.append(
+            {
+                "kind": "local",
+                "text": (
+                    f"A local AI model may not write {language} well: it can answer in the "
+                    "wrong language, mix languages or produce broken words. Results are best "
+                    "in English. Read every description and keyword before you approve."
+                ),
+            }
+        )
+    out.append(
+        {
+            "kind": "shutterstock",
+            "text": (
+                "Shutterstock may expect English metadata. Titles and keywords in another "
+                "language might be rejected or be found less often by buyers."
+            ),
+        }
+    )
+    return out
+
+
 def _version() -> str:
     try:
         return metadata.version("shuto")
@@ -435,6 +462,21 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             "region_focus": cfg.style.region_focus,
             "default_city": cfg.style.default_place.city,
             "default_country": cfg.style.default_place.country,
+        }
+
+    def language_values() -> dict:
+        """The metadata language setting, with the cautions to show while strict is off."""
+        style = ctx.cfg.style
+        try:
+            local = pipeline.resolve_selection(ctx.cfg, ctx.store).provider == "ollama"
+        except Exception:  # nothing chosen yet: the default is a local model
+            local = ctx.cfg.llm.provider == "ollama"
+        name = style.metadata_language or "that language"
+        return {
+            "english_only": style.english_only,
+            "language": style.metadata_language,
+            "local": local,
+            "warnings": [] if style.english_only else language_warnings(name, local),
         }
 
     def rules_values() -> dict:
@@ -842,6 +884,7 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             ollama_url=OLLAMA_URL,
             login=pipeline.ftps_login_status(ctx.cfg),
             style=style_values(),
+            language=language_values(),
             rules=rules_values(),
             include_gps=ctx.cfg.prepare.include_gps,
             usage=usage,
@@ -1262,6 +1305,31 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
     def settings_style(form: PostForm):
         notice, error = save_style(form)
         return go("/settings", notice, error)
+
+    @app.post("/settings/language")
+    def settings_language(form: PostForm):
+        strict = str(form.get("english_only") or "yes") != "no"
+        value: dict = {"english_only": strict}
+        if not strict:
+            value["language"] = str(form.get("language") or "")
+        try:
+            pipeline.set_ui_setting(ctx.store, "language", value)
+        except pipeline.PipelineError as exc:
+            return go("/settings", None, str(exc))
+        state.cfg = pipeline.apply_style_overrides(state.base_cfg, ctx.store)
+        if strict:
+            return go("/settings", "Descriptions and keywords are written in English only.", None)
+        info = language_values()
+        cautions = []
+        if info["local"]:
+            cautions.append(f"a local AI model may write {info['language']} badly")
+        cautions.append("Shutterstock may expect English")
+        return go(
+            "/settings",
+            f"Saved. Descriptions and keywords will be written in {info['language']}. "
+            f"Be careful: {'; '.join(cautions)}. Details are under Metadata language.",
+            None,
+        )
 
     @app.post("/settings/rules")
     def settings_rules(form: PostForm):

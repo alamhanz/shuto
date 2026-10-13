@@ -33,6 +33,8 @@ class Style:
     theme: str = ""
     tone: str = "documentary, warm, factual; no hype words"
     language: str = "en"
+    english_only: bool = True
+    language_name: str = ""  # the language to write in when english_only is off
     region_focus: str = ""
     keywords_min: int = 25
     keywords_max: int = 45
@@ -46,6 +48,11 @@ class Style:
     desc_target_min: int = 70
     desc_target_max: int = 150
     desc_max: int = 200
+
+    @property
+    def text_language(self) -> str:
+        """The language the description and keywords are written in."""
+        return rules.ENGLISH if self.english_only else self.language_name or rules.ENGLISH
 
     def limits(self) -> rules.Limits:
         return rules.Limits(
@@ -65,6 +72,8 @@ class Style:
             theme=style.theme,
             tone=style.tone,
             language=style.language,
+            english_only=bool(getattr(style, "english_only", True)),
+            language_name=str(getattr(style, "metadata_language", "") or ""),
             region_focus=focus,
             keywords_min=k.min,
             keywords_max=k.max,
@@ -219,12 +228,23 @@ ENGLISH_RULE_SHORT = (
 )
 
 
+def language_rule(style: Style, short: bool = False) -> str:
+    """The prompt rule for the written language: English only, or the language the owner chose."""
+    if style.english_only:
+        return ENGLISH_RULE_SHORT if short else ENGLISH_RULE
+    lang = style.text_language
+    rule = f"Write the description and keywords in {lang}."
+    if short:
+        return rule
+    return rule + " Place names in the location field stay in English letters."
+
+
 def _condensed_fields(style: Style, lim: rules.Limits) -> list[str]:
     """The field list of the short prompt (same rules as the full one, fewer words)."""
     kw = (
-        f"{style.keywords_min}-{style.keywords_max} lowercase English keywords, most relevant "
-        "first: subject, setting, place, composition, mood. No repeats, no singular/plural "
-        "twins, no brands or people's names."
+        f"{style.keywords_min}-{style.keywords_max} lowercase {style.text_language} keywords, "
+        "most relevant first: subject, setting, place, composition, mood. No repeats, no "
+        "singular/plural twins, no brands or people's names."
     )
     if style.romaji_place_names:
         kw += " Romaji for Japanese places."
@@ -244,8 +264,9 @@ def _condensed_fields(style: Style, lim: rules.Limits) -> list[str]:
         head,
         "",
         "JSON fields:",
-        '- "description": ONE plain English sentence like a headline (who or what, where, '
-        f"when, mood), {lim.desc_target_min}-{lim.desc_target_max} characters, never over "
+        f'- "description": ONE plain {style.text_language} sentence like a headline (who or '
+        f"what, where, when, mood), {lim.desc_target_min}-{lim.desc_target_max} characters, "
+        "never over "
         f'{lim.desc_max}. Not a word list. Example: "Cyclists ride along a quiet river path '
         'at sunrise with mist over the water"',
         '- "caption_sentence": same kind of sentence for a news caption, no date or place.',
@@ -291,8 +312,8 @@ def build_prompt(
         )
     lim = style.limits()
     kw_rules = [
-        f"{style.keywords_min}-{style.keywords_max} lowercase English keywords, most relevant "
-        "first. Never pad with weak words; fewer strong ones beat filler.",
+        f"{style.keywords_min}-{style.keywords_max} lowercase {style.text_language} keywords, "
+        "most relevant first. Never pad with weak words; fewer strong ones beat filler.",
         "Mix: the literal subject, setting and place, composition (aerial view, close-up, "
         "copy space, no people), mood or concept, and multi-word phrases.",
         "No repeats and no singular/plural twins. No brand names, trademarks or people's names.",
@@ -309,14 +330,14 @@ def build_prompt(
             for bit in (
                 f'Portfolio theme: "{style.theme}".' if style.theme else "",
                 f"Tone: {style.tone}." if style.tone else "",
-                f"Language: {style.language}.",
+                f"Language: {style.language if style.english_only else style.language_name}.",
             )
             if bit
         ),
         "",
         "Return a JSON object with exactly these fields:",
-        '- "description": ONE plain English sentence, like a news headline: who or what, '
-        f"where, when, mood. {lim.desc_target_min}-{lim.desc_target_max} characters "
+        f'- "description": ONE plain {style.text_language} sentence, like a news headline: '
+        f"who or what, where, when, mood. {lim.desc_target_min}-{lim.desc_target_max} characters "
         f"(8-20 words), never over {lim.desc_max}. Not a list of words, no emoji or symbols, "
         "no repeated words.",
         '  Good: "Cyclists ride along a quiet river path at sunrise with mist over the water"',
@@ -339,7 +360,7 @@ def build_prompt(
     ]
     if condensed:
         parts = _condensed_fields(style, lim)
-    parts += ["", ENGLISH_RULE_SHORT if condensed else ENGLISH_RULE]
+    parts += ["", language_rule(style, condensed)]
     if style.avoid:
         parts += ["", "Never use these words: " + ", ".join(style.avoid) + "."]
     if style.extra_instructions.strip():
@@ -472,18 +493,21 @@ def describe_photo(
 
     def assess(o: PhotoOutput) -> tuple[str, str, list[str], list[rules.Issue]]:
         """(description, caption sentence, keywords, problems) of an answer after the fixes."""
-        desc, _ = rules.tidy_text(rules.ascii_fold(o.description))
-        cap, _ = rules.tidy_text(rules.ascii_fold(o.caption_sentence.strip() or o.description))
+        fold = rules.ascii_fold if style.english_only else str
+        desc, _ = rules.tidy_text(fold(o.description))
+        cap, _ = rules.tidy_text(fold(o.caption_sentence.strip() or o.description))
         kws = rules.clean_keywords(
-            [rules.ascii_fold(str(k)) for k in o.keywords],
+            [fold(str(k)) for k in o.keywords],
             limits,
             style.avoid,
             style.always_include,
         )
         active = cap if o.editorial else desc
         found = [
-            *rules.check_english(f"{desc} {cap}", kws),
-            *rules.check_description(active, limits, prefix_len if o.editorial else 0),
+            *(rules.check_english(f"{desc} {cap}", kws) if style.english_only else []),
+            *rules.check_description(
+                active, limits, prefix_len if o.editorial else 0, style.english_only
+            ),
             *rules.check_keywords(kws, limits),
             *rules.check_unique(seen, active, kws),
         ]

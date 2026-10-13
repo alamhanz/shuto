@@ -146,6 +146,26 @@ def english_only(text: str | None) -> str:
     return re.sub(r"\s+", " ", " ".join(words)).strip()
 
 
+MAX_LANGUAGE_CHARS = 30
+ENGLISH = "English"
+
+
+def clean_language(value: object) -> str:
+    """A language name for the prompt: letters, spaces and hyphens only (max 30 characters).
+
+    The name goes into the model's instructions, so anything else (digits, quotes, line breaks,
+    punctuation) is refused. Raises ValueError with a plain-words message.
+    """
+    text = " ".join(str(value or "").split())
+    if not text:
+        raise ValueError("Type the language to write in, for example Japanese.")
+    if len(text) > MAX_LANGUAGE_CHARS:
+        raise ValueError(f"Keep the language name under {MAX_LANGUAGE_CHARS} characters.")
+    if not text[0].isalpha() or any(not (c.isalpha() or c in " -") for c in text):
+        raise ValueError("Use only letters, spaces and hyphens in the language name.")
+    return text
+
+
 def check_english(description: str, keywords: Sequence[str]) -> list[Issue]:
     if has_foreign_script(description) or any(has_foreign_script(k) for k in keywords):
         return [Issue("non_english", reason("non_english"))]
@@ -222,11 +242,24 @@ def strip_caption_prefix(text: str) -> str:
     return _CAPTION_PREFIX.sub("", _UNKNOWN_PREFIX.sub("", text or ""), count=1)
 
 
+_SPACELESS = ("CJK", "HIRAGANA", "KATAKANA", "THAI", "LAO", "KHMER", "MYANMAR")
+
+
+def has_spaceless_script(text: str | None) -> bool:
+    """True when the text has letters of a script written without spaces (Japanese, Thai, ...)."""
+    return any(
+        unicodedata.name(c, "").startswith(_SPACELESS) for c in text or "" if not c.isascii()
+    )
+
+
 def check_description(
-    sentence: str, limits: Limits = DEFAULT_LIMITS, prefix_len: int = 0
+    sentence: str, limits: Limits = DEFAULT_LIMITS, prefix_len: int = 0, english: bool = True
 ) -> list[Issue]:
     """Problems of the sentence. ``prefix_len`` is the length of an editorial prefix: the total
-    must stay within the hard maximum, while the target range applies to the sentence alone."""
+    must stay within the hard maximum, while the target range applies to the sentence alone.
+
+    ``english=False`` (another metadata language) skips the English word-list checks and the
+    word count of scripts that are written without spaces."""
     text = (sentence or "").strip()
     out: list[Issue] = []
 
@@ -234,13 +267,15 @@ def check_description(
         out.append(Issue(code, reason(code, limits)))
 
     n_words = len(words_of(text))
+    if not english and has_spaceless_script(text):
+        n_words = max(n_words, MIN_WORDS)
     if n_words < MIN_WORDS:
         add("too_few_words")
     if prefix_len + len(text) > limits.desc_max:
         add("too_long")
-    if is_comma_list(text):
+    if english and is_comma_list(text):
         add("comma_list")
-    if repeated_words(text):
+    if english and repeated_words(text):
         add("repeated_words")
     if n_words >= MIN_WORDS:
         if len(text) < limits.desc_target_min:
@@ -283,7 +318,12 @@ def clean_keywords(
     for item in raw or []:
         kw = _clean_keyword(item)
         ws = words_of(kw)
-        if not ws or len(ws) > MAX_KEYWORD_WORDS or len(kw) > MAX_KEYWORD_CHARS or len(kw) < 2:
+        if (
+            not ws
+            or len(ws) > MAX_KEYWORD_WORDS
+            or len(kw) > MAX_KEYWORD_CHARS
+            or (len(kw) < 2 and kw.isascii())
+        ):
             continue
         key = _keyword_key(ws)
         if key in seen or (avoid_keys and avoid_keys & {singular(w) for w in ws}):

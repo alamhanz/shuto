@@ -20,7 +20,7 @@ from pathlib import Path
 
 SPEC_RE = re.compile(
     r"shuto\[heic\] @ https://github\.com/alamhanz/shuto/releases/download/"
-    r"v(?P<v>\d+\.\d+\.\d+)/shuto-(?P=v)-py3-none-any\.whl"
+    r"v(?P<v>\d+\.\d+\.\d+)/shuto-(?P=v)-py3-none-any\.whl#sha256=[0-9a-f]{64}"
 )
 VERSION_RE = re.compile(r"\d+\.\d+\.\d+")
 LOCK_RE = re.compile(

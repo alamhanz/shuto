@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 import threading
+import urllib.error
 from pathlib import Path
 
 import pytest
@@ -10,8 +12,10 @@ import pytest
 from shuto import pipeline, updates
 from shuto.updates import Latest
 
+REAL_DIGEST = updates.fetch_wheel_digest
 REAL_FETCH = updates.fetch_latest  # the autouse fixture replaces the module attribute
 
+HASH = "ab" * 32
 TAG = "https://github.com/alamhanz/shuto/releases/tag/v0.3.0"
 
 
@@ -207,8 +211,8 @@ def cmd_kwargs(**over):
         "script": Path("/tmp/my dir/_update_helper.py"),
         "pids": [42, 43],
         "uv": "C:/Program Files/uv/uv.exe",
-        "spec": "shuto[heic] @ " + updates.wheel_url("0.3.0"),
-        "rollback_spec": "shuto[heic] @ " + updates.wheel_url("0.2.1"),
+        "spec": updates.pip_spec("0.3.0", HASH),
+        "rollback_spec": updates.pip_spec("0.2.1", HASH),
         "version": "0.3.0",
         "from_version": "0.2.1",
         "status": Path("/w s/status.json"),
@@ -236,6 +240,11 @@ def test_build_helper_cmd_rejects_foreign_sources():
     with pytest.raises(ValueError):
         updates.build_helper_cmd(**cmd_kwargs(rollback_spec="shuto @ file:///x.whl"))
     good = cmd_kwargs()["spec"]
+    for bad in (good.split("#")[0], good[:-1], good[:-1] + "G", good.replace("sha256", "md5")):
+        with pytest.raises(ValueError):
+            updates.build_helper_cmd(**cmd_kwargs(spec=bad))
+    with pytest.raises(ValueError):
+        updates.build_helper_cmd(**cmd_kwargs(rollback_spec=good.split("#")[0]))
     with pytest.raises(ValueError):
         updates.build_helper_cmd(**cmd_kwargs(spec=good + "\n"))
     with pytest.raises(ValueError):
@@ -350,12 +359,21 @@ def test_start_update_writes_status_and_spawns_once(cfg, monkeypatch):
     spawned = []
     latest = Latest("0.3.0", updates.wheel_url("0.3.0"), TAG, 0.0)
     updates.start_update(
-        cfg, latest, uv="uv", pids=[7, 8], ui_args=["ui", "--port", "9"], spawn=spawned.append
+        cfg,
+        latest,
+        uv="uv",
+        pids=[7, 8],
+        ui_args=["ui", "--port", "9"],
+        spawn=spawned.append,
+        fetch_digest=lambda v: HASH,
     )
     (cmd,) = spawned
+    assert cmd[cmd.index("--spec") + 1] == updates.pip_spec("0.3.0", HASH)
     assert [cmd[i + 1] for i, c in enumerate(cmd) if c == "--pid"] == ["7", "8"]
     assert cmd[cmd.index("--relaunch") + 1 :] == ["shuto", "ui", "--port", "9"]
-    assert cmd[cmd.index("--rollback-spec") + 1].endswith("v0.2.1/shuto-0.2.1-py3-none-any.whl")
+    assert cmd[cmd.index("--rollback-spec") + 1].endswith(
+        f"v0.2.1/shuto-0.2.1-py3-none-any.whl#sha256={HASH}"
+    )
     assert Path(cmd[2]).name == "_update_helper.py" and Path(cmd[2]).is_file()
     status = updates.read_status(cfg)
     assert status["state"] == "started" and status["to"] == "0.3.0" and status["from"] == "0.2.1"
@@ -368,9 +386,106 @@ def test_start_update_without_a_release_version_has_no_rollback(cfg, monkeypatch
     fake_start_env(monkeypatch, "dev")
     spawned = []
     latest = Latest("0.3.0", updates.wheel_url("0.3.0"), TAG, 0.0)
-    updates.start_update(cfg, latest, uv="uv", spawn=spawned.append)
+    updates.start_update(cfg, latest, uv="uv", spawn=spawned.append, fetch_digest=lambda v: HASH)
     assert "--rollback-spec" not in spawned[0]
     drop_helper_copy(spawned[0])
+
+
+def test_start_update_refuses_without_a_digest(cfg, monkeypatch):
+    fake_start_env(monkeypatch, "0.2.1")
+    spawned = []
+    latest = Latest("0.3.0", updates.wheel_url("0.3.0"), TAG, 0.0)
+    with pytest.raises(updates.UpdateError, match="Could not check the update download"):
+        updates.start_update(cfg, latest, uv="uv", spawn=spawned.append)  # conftest: no digest
+    assert spawned == [] and updates.read_status(cfg) is None
+
+
+def test_start_update_without_old_digest_has_no_rollback(cfg, monkeypatch):
+    fake_start_env(monkeypatch, "0.2.1")
+    spawned = []
+
+    def fetch(version):
+        if version == "0.2.1":
+            raise updates.UpdateError(updates.MSG_NO_DIGEST)
+        return HASH
+
+    latest = Latest("0.3.0", updates.wheel_url("0.3.0"), TAG, 0.0)
+    updates.start_update(cfg, latest, uv="uv", spawn=spawned.append, fetch_digest=fetch)
+    assert "--rollback-spec" not in spawned[0]
+    drop_helper_copy(spawned[0])
+
+
+class ApiResp:
+    def __init__(self, payload):
+        self.raw = payload if isinstance(payload, bytes) else json.dumps(payload).encode()
+
+    def read(self, n=-1):
+        return self.raw[:n] if n >= 0 else self.raw
+
+    def close(self):
+        pass
+
+
+def release_json(version="0.3.0", **asset):
+    entry = {"name": f"shuto-{version}-py3-none-any.whl", "digest": f"sha256:{HASH}", **asset}
+    return {"tag_name": f"v{version}", "assets": [{"name": "shuto-0.3.0.tar.gz"}, entry]}
+
+
+API_URL = "https://api.github.com/repos/alamhanz/shuto/releases/tags/v0.3.0"
+
+
+def test_fetch_wheel_digest_good_and_request_headers():
+    seen = {}
+
+    class Opener:
+        def open(self, req, timeout=None):
+            seen.update(url=req.full_url, headers=dict(req.header_items()), timeout=timeout)
+            return ApiResp(release_json())
+
+    assert REAL_DIGEST("0.3.0", opener=Opener()) == HASH
+    assert seen["url"] == API_URL and seen["timeout"] == updates.HTTP_TIMEOUT_S
+    assert seen["headers"]["Accept"] == "application/vnd.github+json"
+    assert seen["headers"]["User-agent"].startswith("shuto/")
+    assert updates.SPEC_RE.fullmatch(updates.pip_spec("0.3.0", HASH))
+
+
+@pytest.mark.parametrize(
+    "result",
+    [
+        {"tag_name": "v0.3.0", "assets": [{"name": "shuto-0.3.0-py3-none-any.whl"}]},
+        release_json(digest="sha256:abc"),
+        release_json(digest="md5:" + "a" * 32),
+        release_json(digest="sha256:" + "AB" * 32),
+        release_json(digest=None),
+        release_json(name="shuto-0.2.9-py3-none-any.whl"),  # asset name for another version
+        release_json("0.3.1"),  # tag mismatch
+        {"tag_name": "v0.3.0", "assets": []},
+        {"tag_name": "v0.3.0", "assets": "nope"},
+        ["not", "an", "object"],
+        b"<html>not json</html>",
+        urllib.error.HTTPError(API_URL, 403, "rate limited", {}, None),
+        urllib.error.URLError("offline"),
+        TimeoutError(),
+    ],
+)
+def test_fetch_wheel_digest_refuses_bad_answers(result):
+    routes = {API_URL: result if isinstance(result, Exception) else ApiResp(result)}
+    with pytest.raises(updates.UpdateError, match="Could not check the update download"):
+        REAL_DIGEST("0.3.0", opener=FakeOpener(routes))
+
+
+def test_fetch_wheel_digest_rejects_bad_versions_before_any_request():
+    opener = FakeOpener({})
+    for bad in ("0.3.0rc1", "../x", "0.3.0\n", ""):
+        with pytest.raises(updates.UpdateError):
+            REAL_DIGEST(bad, opener=opener)
+    assert opener.calls == []
+
+
+def test_pip_spec_rejects_a_bad_hash():
+    for bad in ("", "AB" * 32, "ab" * 31, "ab" * 32 + "\n", "../x"):
+        with pytest.raises(ValueError):
+            updates.pip_spec("0.3.0", bad)
 
 
 def test_wait_for_helper(cfg):

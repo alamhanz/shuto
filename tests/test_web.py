@@ -1155,6 +1155,7 @@ NEWER = updates.Latest(
 def upd(web, monkeypatch):
     """Web app that can see a newer release; nothing is fetched, spawned or installed."""
     monkeypatch.setattr(updates, "fetch_latest", lambda *a, **k: NEWER)
+    monkeypatch.setattr(updates, "fetch_wheel_digest", lambda version, *a, **k: "ab" * 32)
     monkeypatch.setattr(updates, "current_version", lambda: "0.2.1")
     monkeypatch.setattr(updates, "install_kind", lambda: "uv-tool")
     monkeypatch.setattr(updates, "find_uv", lambda: "uv")
@@ -1264,6 +1265,16 @@ def cleanup_helper_copies(w):
     for cmd in w.spawned:
         Path(cmd[2]).unlink(missing_ok=True)
         Path(cmd[2]).parent.rmdir()
+
+
+def test_updates_start_without_a_digest_changes_nothing(upd, monkeypatch):
+    def no_digest(*a, **k):
+        raise updates.UpdateError(updates.MSG_NO_DIGEST)
+
+    monkeypatch.setattr(updates, "fetch_wheel_digest", no_digest)
+    r = post_local(upd, "/updates/start", {"version": "9.9.9"})
+    assert "Could not check the update download" in r.text and "data-update-wait" not in r.text
+    assert upd.spawned == [] and upd.state.runner.busy() is False
 
 
 def test_updates_start_unexpected_error_is_a_message_not_a_500(upd, monkeypatch):

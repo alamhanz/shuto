@@ -10,7 +10,7 @@ import pytest
 HELPER = Path(__file__).parent.parent / "src" / "shuto" / "_update_helper.py"
 SPEC = (
     "shuto[heic] @ https://github.com/alamhanz/shuto/releases/download/v0.3.0/"
-    "shuto-0.3.0-py3-none-any.whl"
+    "shuto-0.3.0-py3-none-any.whl#sha256=" + "ab" * 32
 )
 OLD = SPEC.replace("0.3.0", "0.2.1")
 
@@ -158,7 +158,20 @@ def test_foreign_source_is_refused(helper, env):
     run = FakeRun()
     assert env.go(helper, run, spec="shuto @ https://evil.example/x.whl") == 2
     assert env.go(helper, run, spec=SPEC + chr(10)) == 2
+    assert env.go(helper, run, spec=SPEC.split("#")[0]) == 2  # no hash
+    assert env.go(helper, run, spec=SPEC[:-1] + "g") == 2  # not hex
+    assert env.go(helper, run, spec=SPEC[:-1]) == 2  # too short
+    assert env.go(helper, run, spec=SPEC.upper().replace("SHUTO", "shuto")) == 2
     assert run.cmds == [] and env.state()["state"] == "failed"
+
+
+def test_rollback_spec_without_a_hash_is_refused(helper, env):
+    run = FakeRun()
+    argv = env.argv(rollback=False)
+    at = argv.index("--version")
+    argv[at:at] = ["--rollback-spec", OLD.split("#")[0]]
+    assert helper.main(argv, run=run, wait_pid=lambda pid: True) == 2
+    assert run.cmds == []
 
 
 def test_log_is_trimmed(helper, tmp_path):

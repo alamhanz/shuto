@@ -36,8 +36,13 @@ VERSION_RE = re.compile(r"\d+\.\d+\.\d+")  # final releases only; always use ful
 TAG_URL_RE = re.compile(r"https://github\.com/alamhanz/shuto/releases/tag/v(\d+\.\d+\.\d+)")
 SPEC_RE = re.compile(
     r"shuto\[heic\] @ https://github\.com/alamhanz/shuto/releases/download/"
-    r"v(?P<v>\d+\.\d+\.\d+)/shuto-(?P=v)-py3-none-any\.whl"
+    r"v(?P<v>\d+\.\d+\.\d+)/shuto-(?P=v)-py3-none-any\.whl#sha256=(?P<h>[0-9a-f]{64})"
 )
+SHA256_RE = re.compile(r"[0-9a-f]{64}")
+DIGEST_RE = re.compile(r"sha256:([0-9a-f]{64})")
+RELEASE_API = "https://api.github.com/repos/alamhanz/shuto/releases/tags/v"
+MAX_API_BYTES = 2 * 1024 * 1024
+MSG_NO_DIGEST = "Could not check the update download. Try again later."
 REDIRECTS = (301, 302, 303, 307, 308)
 CHECK_TTL_S = 24 * 3600
 HTTP_TIMEOUT_S = 5
@@ -75,6 +80,50 @@ def notes_url(version: str) -> str:
     if not VERSION_RE.fullmatch(version):
         raise ValueError(f"Not a release version: {version!r}")
     return f"{REPO_RELEASES}/tag/v{version}"
+
+
+def pip_spec(version: str, sha256: str) -> str:
+    """The install spec; pip/uv refuse the download unless it has exactly this sha256."""
+    if not SHA256_RE.fullmatch(sha256):
+        raise ValueError("Not a sha256 digest.")
+    return f"shuto[heic] @ {wheel_url(version)}#sha256={sha256}"
+
+
+def fetch_wheel_digest(version: str, opener: Any = None, timeout: float = HTTP_TIMEOUT_S) -> str:
+    """The sha256 GitHub reports for this release's wheel. Any problem is an UpdateError."""
+    url = RELEASE_API + version  # only a validated version goes into the URL
+    if not VERSION_RE.fullmatch(version):
+        raise UpdateError(MSG_NO_DIGEST)
+    opener = opener or urllib.request.build_opener()
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": f"shuto/{current_version()}",
+            "Accept": "application/vnd.github+json",
+        },
+    )
+    try:
+        resp = opener.open(req, timeout=timeout)
+        try:
+            data = json.loads(resp.read(MAX_API_BYTES))
+        finally:
+            close = getattr(resp, "close", None)
+            if close:
+                close()
+        if not isinstance(data, dict) or data.get("tag_name") != f"v{version}":
+            raise ValueError("wrong release")
+        name = f"shuto-{version}-py3-none-any.whl"
+        digests = [
+            a.get("digest")
+            for a in data.get("assets") or []
+            if isinstance(a, dict) and a.get("name") == name
+        ]
+        match = DIGEST_RE.fullmatch(digests[0]) if len(digests) == 1 else None
+        if not match:
+            raise ValueError("no usable digest")
+        return match.group(1)
+    except Exception:
+        raise UpdateError(MSG_NO_DIGEST) from None
 
 
 def _parts(version: str) -> tuple[int, ...] | None:
@@ -426,13 +475,23 @@ def start_update(
     pids: list[int] | None = None,
     ui_args: list[str] | None = None,
     spawn: Callable[[list[str]], None] | None = None,
+    fetch_digest: Callable[[str], str] | None = None,
 ) -> None:
-    """Write the status file, copy the updater to a temp folder and start it detached."""
+    """Write the status file, copy the updater to a temp folder and start it detached.
+
+    The wheel's sha256 is looked up first; without it nothing is started (never unverified).
+    """
     spawn = spawn or spawn_detached
+    fetch_digest = fetch_digest or fetch_wheel_digest
     version = latest.version
     current = current_version()
-    spec = f"shuto[heic] @ {wheel_url(version)}"
-    rollback = f"shuto[heic] @ {wheel_url(current)}" if VERSION_RE.fullmatch(current) else None
+    spec = pip_spec(version, fetch_digest(version))
+    rollback = None
+    if VERSION_RE.fullmatch(current):
+        try:  # no verified old wheel means no rollback, never an unverified one
+            rollback = pip_spec(current, fetch_digest(current))
+        except UpdateError:
+            rollback = None
     relaunch = relaunch_cmd(hardware._os_name(), uv, ui_args)
     python = helper_python(uv)
     log_path(cfg).parent.mkdir(parents=True, exist_ok=True)

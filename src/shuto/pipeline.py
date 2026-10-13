@@ -142,6 +142,19 @@ class ImportSummary:
     photo_ids: list[int] = field(default_factory=list)
 
 
+def _split_base(batch: str) -> str:
+    """`trip (3)` -> `trip`: the name a folder was split from (the other names stay as they are)."""
+    m = re.fullmatch(r"(.+) \(\d+\)", batch)
+    return m.group(1) if m else batch
+
+
+def batches_text(batches: dict[str, int]) -> str:
+    """'600 photos added in 3 batches: trip (250), trip (2) (250), trip (3) (100)'."""
+    total = sum(batches.values())
+    listing = ", ".join(f"{name} ({n})" for name, n in batches.items())
+    return f"{total} photos added in {len(batches)} batches: {listing}"
+
+
 def import_folder(
     cfg: Config,
     store: Store,
@@ -185,6 +198,20 @@ def import_folder(
 
     new_items: dict[str, list[tuple[int, Any]]] = {}
     seen: set[str] = set()
+    room: dict[str, int] = {}  # photos in each batch, kept up to date while importing
+
+    def place_in_batch(base: str) -> str:
+        """The batch for the next new photo: `base`, or `base (2)`, `base (3)` once one is full."""
+        n = 1
+        while True:
+            name = base if n == 1 else f"{base} ({n})"
+            if name not in room:
+                room[name] = len(store.list_photos(name))
+            if room[name] < MAX_BATCH_PHOTOS:
+                room[name] += 1
+                return name
+            n += 1
+
     check_history = not (force or mark_uploaded)
     history = (
         [(p.dhash, p) for p in store.list_photos(statuses=UPLOADED_STATES) if p.dhash is not None]
@@ -241,7 +268,7 @@ def import_folder(
                 summary.already_known += 1
                 continue
             seen.add(item.sha256)
-            batch = (
+            batch = place_in_batch(
                 _safe_batch_name(batch_name)
                 if batch_name
                 else batch_id_for(item, cfg.import_.batch_by, root)
@@ -299,7 +326,7 @@ def import_folder(
                     )
                 )
                 continue
-            new_items.setdefault(batch, []).append((pid, item))
+            new_items.setdefault(_split_base(batch), []).append((pid, item))
             summary.imported += 1
             summary.photo_ids.append(pid)
             summary.batches[batch] = summary.batches.get(batch, 0) + 1
@@ -323,7 +350,7 @@ def import_folder(
                 if pos != best:
                     store.set_status(pid, Status.NEAR_DUPLICATE)
                     summary.near_duplicates += 1
-    _refresh_reports(cfg, store, set(summary.batches) | set(new_items))
+    _refresh_reports(cfg, store, set(summary.batches))
     return summary
 
 
@@ -347,7 +374,7 @@ def cull_batch(
     """Technical check of `imported` photos: -> `ready` or `culled` (reasons stored in cull)."""
     progress = progress or _noop
     thresholds = cull_mod.CullThresholds(**cfg.cull.model_dump())
-    photos = store.list_photos(batch_id, [Status.IMPORTED])
+    photos = store.list_photos(batch_id, [Status.IMPORTED])[:MAX_BATCH_PHOTOS]  # safety net
     summary = CullSummary(total=len(photos))
     for n, photo in enumerate(photos, 1):
         if cancel and cancel():
@@ -697,10 +724,12 @@ def _count(store: Store, batch_id: str, only_ids: Iterable[int] | None) -> int:
 
 
 def _describe_targets(store: Store, batch_id: str, only_ids: Iterable[int] | None) -> list[Photo]:
+    """The photos for the AI; never more than MAX_BATCH_PHOTOS in one run (safety net)."""
     if only_ids is None:
-        return store.list_photos(batch_id, [Status.READY])
+        return store.list_photos(batch_id, [Status.READY])[:MAX_BATCH_PHOTOS]
     wanted = set(only_ids)
-    return [p for p in store.list_photos(batch_id) if p.id in wanted and p.status in _REDESCRIBE]
+    found = [p for p in store.list_photos(batch_id) if p.id in wanted and p.status in _REDESCRIBE]
+    return found[:MAX_BATCH_PHOTOS]
 
 
 _REDESCRIBE = {
@@ -1796,7 +1825,7 @@ def check_batch(
         units = quality_units + (CHECK_SCALE - quality_units) * done // max(count, 1)
         progress(min(units, CHECK_SCALE - 1), CHECK_SCALE, text)
 
-    to_cull = len(store.list_photos(batch_id, [Status.IMPORTED]))
+    to_cull = min(len(store.list_photos(batch_id, [Status.IMPORTED])), MAX_BATCH_PHOTOS)
     if to_cull:
         cull_progress(0, to_cull)
     culled = cull_batch(cfg, store, batch_id, progress=cull_progress, cancel=cancel)

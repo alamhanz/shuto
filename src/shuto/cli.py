@@ -559,6 +559,8 @@ def _print_import(summary: pipeline.ImportSummary) -> None:
             out(f"  ... and {len(summary.already_uploaded) - 20} more")
     for batch, n in sorted(summary.batches.items()):
         out(f"  batch {batch}: {n}")
+    if len(summary.batches) > 1:
+        out(pipeline.batches_text(summary.batches))
     for err in summary.errors[:10]:
         out(f"  problem: {err}")
 

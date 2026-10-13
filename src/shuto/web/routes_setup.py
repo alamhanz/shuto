@@ -554,7 +554,11 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
                 batch_name=batch_name or None,
             )
             import_results[job.job_id] = list(s.batches.items())
-            parts = [f"{s.imported} photo(s) added."]
+            parts = [
+                pipeline.batches_text(s.batches) + "."
+                if len(s.batches) > 1
+                else f"{s.imported} photo(s) added."
+            ]
             copies = s.duplicates + s.already_known
             if copies:
                 parts.append(f"{copies} were already in shuto as exact copies.")

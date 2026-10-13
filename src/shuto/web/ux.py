@@ -176,7 +176,15 @@ def steps(batch_id: str, counts: dict[str, int]) -> list[dict[str, str]]:
     return out
 
 
+BUSY_WHAT = "shuto is busy with another task."
+_BUSY_ERROR = (
+    ("database is locked", "database is busy"),
+    BUSY_WHAT,
+    "Wait a moment, then try again. Make sure shuto is not open in two windows.",
+)
+
 _AI_ERRORS: tuple[tuple[tuple[str, ...], str, str], ...] = (
+    _BUSY_ERROR,
     (
         ("ollama is not running", "not running", "connection refused", "urlopen error"),
         "The AI helper is not running.",

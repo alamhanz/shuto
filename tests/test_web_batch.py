@@ -306,13 +306,17 @@ def test_upload_page_login_and_summary(web, described, monkeypatch):
     assert "Shutterstock upload login" in page and 'action="/settings/ftps"' in page
     assert f'value="/batch/{described}/upload"' in page
     assert "Upload whole batch" in page and "MB" in page
+    assert "only to send these photos" in page
+    assert f'href="/batch/{described}">Skip for now' in page
     assert not any(word in visible(page) for word in JARGON)
     monkeypatch.setattr(
         pipeline,
         "ftps_login_status",
         lambda cfg: {"user_set": True, "password_set": True, "keyring_ok": True},
     )
-    assert "Your login is saved" in web.get(f"/batch/{described}/upload").text
+    saved = web.get(f"/batch/{described}/upload").text
+    assert "Your login is saved" in saved and "Use a different login" in saved
+    assert "Skip for now" not in saved
 
 
 def test_deliver_requires_confirm_and_runs_one_job(web, described, monkeypatch):

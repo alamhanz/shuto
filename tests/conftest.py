@@ -34,6 +34,11 @@ def _no_real_update_check(monkeypatch):
 
     monkeypatch.setattr(updates, "fetch_latest", lambda *a, **k: None)
 
+    def no_digest(*a, **k):
+        raise updates.UpdateError(updates.MSG_NO_DIGEST)
+
+    monkeypatch.setattr(updates, "fetch_wheel_digest", no_digest)
+
 
 class FakeOllama:
     url = "http://127.0.0.1:11434"

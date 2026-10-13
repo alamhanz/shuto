@@ -97,6 +97,14 @@ def test_foreign_origin_is_403(web, batch):
     assert r.status_code == 403
     r = web.post(f"/batch/{batch}/cull", headers={"Origin": BASE})
     assert r.status_code == 200
+    r = web.post(f"/batch/{batch}/cull", headers={"Origin": "null"})
+    assert r.status_code == 403
+
+
+def test_referrer_policy_keeps_origin_on_form_posts(web):
+    # "no-referrer" makes browsers send `Origin: null` on plain form posts, which the
+    # Origin check refuses (issue #7). "same-origin" still sends nothing to other sites.
+    assert web.get("/").headers["referrer-policy"] == "same-origin"
 
 
 def test_security_headers_and_no_cdn(web):
@@ -1155,6 +1163,8 @@ NEWER = updates.Latest(
 def upd(web, monkeypatch):
     """Web app that can see a newer release; nothing is fetched, spawned or installed."""
     monkeypatch.setattr(updates, "fetch_latest", lambda *a, **k: NEWER)
+    monkeypatch.setattr(updates, "fetch_wheel_digest", lambda version, *a, **k: "ab" * 32)
+    monkeypatch.setattr(updates, "download_wheel", lambda v, h, folder, **k: folder / "x.whl")
     monkeypatch.setattr(updates, "current_version", lambda: "0.2.1")
     monkeypatch.setattr(updates, "install_kind", lambda: "uv-tool")
     monkeypatch.setattr(updates, "find_uv", lambda: "uv")
@@ -1264,6 +1274,58 @@ def cleanup_helper_copies(w):
     for cmd in w.spawned:
         Path(cmd[2]).unlink(missing_ok=True)
         Path(cmd[2]).parent.rmdir()
+
+
+def test_updates_start_without_a_digest_changes_nothing(upd, monkeypatch):
+    def no_digest(*a, **k):
+        raise updates.UpdateError(updates.MSG_NO_DIGEST)
+
+    monkeypatch.setattr(updates, "fetch_wheel_digest", no_digest)
+    r = post_local(upd, "/updates/start", {"version": "9.9.9"})
+    assert "Could not check the update download" in r.text and "data-update-wait" not in r.text
+    assert upd.spawned == [] and upd.state.runner.busy() is False
+
+
+def test_updates_start_with_a_wrong_download_changes_nothing(upd, monkeypatch):
+    def mismatch(*a, **k):
+        raise updates.UpdateError(updates.MSG_MISMATCH)
+
+    monkeypatch.setattr(updates, "download_wheel", mismatch)
+    r = post_local(upd, "/updates/start", {"version": "9.9.9"})
+    assert "did not match" in r.text and "data-update-wait" not in r.text
+    assert upd.spawned == [] and upd.state.runner.busy() is False
+
+
+def test_database_busy_is_a_friendly_page_not_a_crash(web, monkeypatch):
+    import sqlite3
+
+    def locked(*a, **k):
+        raise sqlite3.OperationalError("database is locked")
+
+    page = web.get("/").text
+    # htmx must swap 503 bodies (it ignores 5xx by default) and still skip 204
+    config = re.search(r'name="htmx-config" content=\'([^\']+)\'', page).group(1)
+    handling = json.loads(config)["responseHandling"]
+    assert {"code": "503", "swap": True, "error": True} in handling
+    assert handling.index({"code": "204", "swap": False}) < handling.index(
+        {"code": "503", "swap": True, "error": True}
+    )
+    monkeypatch.setattr(pipeline, "batch_report", locked)
+    quiet = TestClient(web.app, base_url=BASE, raise_server_exceptions=False)
+    for headers in ({}, {"HX-Request": "true"}):
+        r = quiet.get("/", headers=headers)
+        assert r.status_code == 503 and "busy with another task" in r.text
+        assert not re.findall(JARGON, r.text, flags=re.I)
+
+
+def test_job_failing_on_a_locked_database_gets_a_friendly_message(web):
+    def boom(ctx):
+        raise RuntimeError("database is locked (OperationalError)")
+
+    job_id = web.state.runner.submit("describe", "describe", boom)
+    web.state.runner.wait(job_id)
+    text = web.get(f"/jobs/{job_id}").text
+    assert "busy with another task" in text and "locked" not in text
 
 
 def test_updates_start_unexpected_error_is_a_message_not_a_500(upd, monkeypatch):

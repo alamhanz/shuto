@@ -8,10 +8,8 @@
 <div class="panel">
   <p><strong>{{ n }}</strong> approved photo{{ '' if n == 1 else 's' }} ({{ size }}) will be sent. shuto first makes a copy of each photo with its title and keywords saved inside, then uploads the copies and writes the Shutterstock info file (CSV). Your originals are never changed.</p>
   <h2>Shutterstock upload login</h2>
-  {% if login_ok %}
-  <p>{{ icon('check') }} Your login is saved on this computer. <a href="/settings#shutterstock">Test or change it in Settings</a>.</p>
-  {% else %}
-  <p>shuto needs your Shutterstock contributor email and password to upload. They are saved only on this computer and never shown again.</p>
+  <p class="hint">Shutterstock's photo upload server asks for the email and password of your contributor account. shuto uses them only to send these photos there. It does not read anything from your account and never signs in to the website; you still press Submit there yourself.</p>
+  {% set login_form %}
   <form method="post" action="/settings/ftps" class="stack">
     <input type="hidden" name="csrf_token" value="{{ csrf }}">
     <input type="hidden" name="back" value="{{ back_path }}">
@@ -19,6 +17,17 @@
     <div class="field"><label for="ftps_password">Shutterstock password</label><input id="ftps_password" name="password" type="password" autocomplete="current-password"></div>
     {{ button('Save login', 'secondary') }}
   </form>
+  {% endset %}
+  {% if login_ok %}
+  <p>{{ icon('check') }} Your login is saved on this computer. <a href="/settings#shutterstock">Test it in Settings</a>.</p>
+  <details>
+    <summary>Use a different login</summary>
+    {{ login_form }}
+  </details>
+  {% else %}
+  <p>No login is saved yet. It is saved only on this computer and never shown again.</p>
+  {{ login_form }}
+  <p><a href="/batch/{{ batch.id|urlencode }}">Skip for now</a> <span class="hint">Your photos stay approved; you can upload them later.</span></p>
   {% endif %}
 
   {% if active_job %}

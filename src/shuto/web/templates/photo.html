@@ -64,7 +64,7 @@
 
   <section aria-label="Edit text">
     {% include "_help.html" %}
-    <form id="{{ 'approve-form' if can_approve else 'edit-form' }}" method="post" action="/photo/{{ photo.id }}{% if can_approve %}/approve{% endif %}" class="stack">
+    <form id="{{ ('approve-anyway-form' if photo.status.value == 'set_aside' else 'approve-form') if can_approve else 'edit-form' }}" method="post" action="/photo/{{ photo.id }}{% if can_approve %}/approve{% endif %}" class="stack">
       <input type="hidden" name="csrf_token" value="{{ csrf }}">
       <input type="hidden" name="back" value="{{ show }}">
       {% if can_approve and next_id %}<input type="hidden" name="next" value="{{ next_id }}">{% endif %}

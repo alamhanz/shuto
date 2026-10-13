@@ -60,6 +60,12 @@ def _why_set(photo: Photo) -> set[str]:
     return set()
 
 
+def _theme_needs_look(flt: dict[str, Any] | None) -> bool:
+    """True when the theme check (not one of the user's rules) is why a photo needs a look."""
+    theme = (flt or {}).get("theme")
+    return isinstance(theme, dict) and theme.get("effect") not in (None, "ok")
+
+
 def _aside_messages(flt: dict[str, Any] | None) -> list[str]:
     """Plain-words reasons for the checks that set a photo aside (theme first)."""
     if not isinstance(flt, dict):
@@ -266,12 +272,17 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
         elif p.status == Status.SET_ASIDE:
             reasons = _aside_messages(p.filters) or filters_mod.messages(p.filters)
             layer = "Theme" if "theme" in _why_set(p) else "Your rule"
+        elif p.status == Status.DESCRIBED and (p.filters or {}).get("theme", {}).get("fit") == (
+            "partly"
+        ):
+            reasons = filters_mod.messages({"theme": p.filters["theme"]})
+            layer = "Theme"
         elif p.status in (Status.NEEDS_REVIEW, Status.BLOCKED):
             reasons = list(gr.get("messages") or [])
             layer = "Shutterstock rules" if reasons else ""
             if not reasons:
                 reasons = filters_mod.messages(p.filters)
-                layer = "Theme" if reasons and "theme" in reasons[0].lower() else "Your rule"
+                layer = "Theme" if _theme_needs_look(p.filters) else "Your rule"
         return {
             "id": p.id,
             "name": p.orig_name,

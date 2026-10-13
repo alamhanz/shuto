@@ -1999,7 +1999,12 @@ def set_ui_setting(store: Store, name: str, value: Any) -> Any:
     if key == "ui.style":
         value = _clean_style(value)
     elif key == "ui.filters":
-        value = _clean_filters(value)
+        new = _clean_filters(value)
+        try:
+            old = _clean_filters(store.get_setting("ui.filters") or {})
+        except PipelineError:  # a damaged saved value is replaced by the new one
+            old = {}
+        value = {**old, **new}
     elif key == "ui.bedrock_profile":
         value = str(value or "").strip()
         if value and not PROFILE_RE.match(value):

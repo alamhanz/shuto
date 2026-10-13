@@ -180,6 +180,10 @@ def next_action(batch_id: str, counts: dict[str, int]) -> dict[str, str]:
         return {"label": "Submit on Shutterstock", "href": _href(batch_id, "submit")}
     if st == "done":
         return {"label": "See all batches", "href": "/"}
+    aside = _n(counts, "set_aside")
+    if aside:  # every photo was set aside by the theme or your rules: keep a way back to them
+        label_ = f"Review {_plural(aside, 'set-aside photo')}"
+        return {"label": label_, "href": _href(batch_id, "review") + "?show=aside"}
     return {"label": "Add photos", "href": "/add"}
 
 

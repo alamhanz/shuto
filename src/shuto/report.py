@@ -68,6 +68,14 @@ class ReportRow:
     rules: dict[str, str] = field(default_factory=dict)  # per-rule columns by label
 
 
+def _described_at(p: Photo, times: dict[str, str]) -> str:
+    """When the AI last wrote this photo's text, for photos checked with no theme or rules."""
+    if not p.metadata_source:
+        return ""
+    found = [times[s] for s in ("described", "needs_review", "blocked", "set_aside") if s in times]
+    return max(found, default="")
+
+
 def _row(
     p: Photo,
     times: dict[str, str],
@@ -126,7 +134,7 @@ def _row(
         "ai_model": str(flt.get("model") or ""),
         "ai_seconds": f"{ai_time[0]:.1f}" if ai_time else "",
         "ai_tries": str(ai_time[1]) if ai_time else "",
-        "checked_at": str(flt.get("at") or ""),
+        "checked_at": str(flt.get("at") or _described_at(p, times)),
         "approved_at": times.get("approved", ""),
         "uploaded_at": p.uploaded_at or times.get("uploaded", ""),
         "submitted_at": p.submitted_at or times.get("submitted", ""),

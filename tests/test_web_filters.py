@@ -429,3 +429,50 @@ def test_ai_time_summary(web, checked):
     s = pipeline.ai_time_summary(web.state.store, checked)
     assert s["photos"] == 3 and s["total"] == pytest.approx(12.0)
     assert s["average"] == pytest.approx(4.0)
+
+
+# ------------------------------------------------------------------ partly, all set aside, shortcut
+
+
+def _partly_batch(web, photos_dir):
+    web.post("/settings/style", {"theme": "Everyday Japan", "tone": "", "always_include": ""})
+    store, cfg = web.state.store, web.state.cfg
+    batch = next(iter(pipeline.import_folder(cfg, store, photos_dir).batches))
+    pipeline.cull_batch(cfg, store, batch)
+    response = dict(DEFAULT_RESPONSE, theme_fit={"reason": "Only a bit rural.", "fit": "partly"})
+    pipeline.describe_batch(cfg, store, batch, llm=FakeProvider("fake", response=[response]))
+    return batch
+
+
+def test_partly_photo_that_passes_shows_reason_and_theme_chip(web, photos_dir):
+    batch = _partly_batch(web, photos_dir)
+    store = web.state.store
+    assert store.list_photos(batch, [Status.DESCRIBED])
+    page = web.get(f"/batch/{batch}/review?show=good").text
+    assert "Only a bit rural." in page and "Only partly fits your theme" in text_of(page)
+    assert "Theme" in text_of(page)
+    photo = store.list_photos(batch, [Status.DESCRIBED])[0]
+    assert "Only a bit rural." in web.get(f"/photo/{photo.id}").text
+
+
+def test_batch_with_everything_set_aside_links_to_them(web, checked):
+    store = web.state.store
+    for p in store.list_photos(checked, [Status.CULLED]):
+        store.set_status(p.id, Status.SET_ASIDE, force=True)
+    assert len(_aside(web, checked)) == 5
+    counts = {"set_aside": 5}
+    nxt = ux.next_action(checked, counts)
+    assert nxt["label"] == "Review 5 set-aside photos" and nxt["href"].endswith("?show=aside")
+    home = web.get("/").text
+    assert "Review 5 set-aside photos" in home and f"/batch/{checked}/review?show=aside" in home
+    assert web.get(nxt["href"]).status_code == 200
+
+
+def test_a_shortcut_does_not_approve_a_set_aside_photo(web, checked):
+    aside = _aside(web, checked)[0]
+    page = web.get(f"/photo/{aside.id}").text
+    assert 'id="approve-form"' not in page and "Approve anyway" in page
+    store = web.state.store
+    good = store.list_photos(checked, [Status.CULLED])[0]
+    store.set_status(good.id, Status.NEEDS_REVIEW, force=True)
+    assert 'id="approve-form"' in web.get(f"/photo/{good.id}").text

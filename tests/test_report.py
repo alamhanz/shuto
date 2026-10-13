@@ -114,6 +114,21 @@ def test_cells():
     assert c["approved_by_hand"] == "" and c["checked_at"] == "" and c["ai_model"] == ""
 
 
+def test_checked_at_without_theme_or_rules_falls_back_to_the_describe_time():
+    p = Photo(
+        sha256="s4", src_path="/x/4.jpg", orig_name="4.jpg", batch_id="b", id=4,
+        status=Status.DESCRIBED, metadata_source="llm:ollama/qwen",
+    )  # fmt: skip
+    header, records = report.build_rows(
+        [p],
+        times={4: {"described": "2026-10-15T08:00:00"}},
+        duplicate_of={},
+        labels=str,
+        rejections={},
+    )
+    assert dict(zip(header, records[0], strict=True))["checked_at"] == "2026-10-15T08:00:00"
+
+
 def test_empty_batch_has_header_only():
     header, records = report.build_rows([], times={}, duplicate_of={}, labels=str, rejections={})
     assert records == [] and "file" in header

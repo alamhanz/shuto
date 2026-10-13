@@ -175,7 +175,7 @@ what the answer was.
   how well the photo fits it (with the reason), one column per rule of yours (pass, fail or
   unknown; blank when the photo was not checked with that rule), the reasons for your rules,
   what set it aside, whether you approved it by hand, status, title, number of keywords, the AI
-  model, and the dates it was checked, approved, uploaded, submitted, accepted or rejected
+  model, how many seconds and tries the AI needed, and the dates it was checked, approved, uploaded, submitted, accepted or rejected
   (with the rejection reason).
 - **Excel:** the file opens directly in Excel and shows Japanese text correctly. Text that
   could be read as a formula is stored as plain text. If Excel has the file open, shuto cannot

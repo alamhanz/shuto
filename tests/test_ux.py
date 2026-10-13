@@ -38,6 +38,10 @@ def test_next_action_table():
     assert ux.next_action("b1", {"approved": 30})["label"] == "Upload 30 approved photos"
     assert ux.next_action("b1", {"uploaded": 1})["href"] == "/batch/b1/submit"
     assert ux.next_action("b1", {})["href"] == "/add"
+    aside = ux.next_action("b1", {"set_aside": 3})
+    assert aside == {"label": "Review 3 set-aside photos", "href": "/batch/b1/review?show=aside"}
+    assert ux.next_action("b1", {"set_aside": 1})["label"] == "Review 1 set-aside photo"
+    assert ux.next_action("b1", {"set_aside": 2, "approved": 1})["href"] == "/batch/b1/upload"
     assert ux.next_action("b1", {"accepted": 1})["href"] == "/"
 
 

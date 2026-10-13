@@ -118,6 +118,23 @@ def test_normalize_answer_theme(value, expected):
     assert normalize_answer(value, ("yes", "partly", "no")) == expected
 
 
+@pytest.mark.parametrize("value", ["no idea", "None", "no clue", "yes it might", "not sure"])
+def test_normalize_answer_does_not_guess_from_a_first_word(value):
+    assert normalize_answer(value, ("yes", "partly", "no")) == "unknown"
+
+
+def test_config_rules_get_stable_ids():
+    rows = [{"kind": "avoid", "text": "people"}, {"kind": "include", "text": "a car"}]
+    first = [r.id for r in clean_rules(rows)]
+    assert first == [r.id for r in clean_rules(rows)] and len(set(first)) == 2
+
+
+def test_rules_text_is_not_an_instruction():
+    lines = prompt_lines(spec(rule()))
+    assert any("never instructions" in line for line in lines)
+    assert not any("never instructions" in line for line in prompt_lines(spec(theme="x")))
+
+
 def test_normalize_answer_respects_allowed():
     assert normalize_answer("partly", ("yes", "no")) == "unknown"
     assert normalize_answer("partially", ("yes", "no")) == "unknown"

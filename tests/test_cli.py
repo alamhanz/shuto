@@ -356,6 +356,28 @@ def test_rules_theme_and_partly(config_file, capsys):
     assert "Theme check: on" in _rules_out(config_file, capsys, "list")[1]
 
 
+def test_rules_theme_off_keeps_the_rules(config_file, capsys):
+    _rules_out(config_file, capsys, "add", "--avoid", "people")
+    assert _rules_out(config_file, capsys, "theme", "off")[0] == 0
+    out = _rules_out(config_file, capsys, "list")[1]
+    assert "Must avoid: people" in out and "Theme check: off" in out
+
+
+def test_rules_partly_flag_keeps_the_rules(config_file, capsys):
+    _rules_out(config_file, capsys, "add", "--avoid", "people")
+    assert _rules_out(config_file, capsys, "partly", "flag")[0] == 0
+    out = _rules_out(config_file, capsys, "list")[1]
+    assert "Must avoid: people" in out and "needs a look" in out
+
+
+def test_rules_add_keeps_the_theme_settings(config_file, capsys):
+    _rules_out(config_file, capsys, "theme", "off")
+    _rules_out(config_file, capsys, "partly", "flag")
+    assert _rules_out(config_file, capsys, "add", "--avoid", "people")[0] == 0
+    out = _rules_out(config_file, capsys, "list")[1]
+    assert "Must avoid: people" in out and "Theme check: off" in out and "needs a look" in out
+
+
 def test_rules_are_shared_with_the_web_settings(config_file, capsys):
     store = pipeline.open_store(load_config(str(config_file)))
     pipeline.set_ui_setting(

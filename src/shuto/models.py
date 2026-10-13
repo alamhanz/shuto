@@ -17,6 +17,7 @@ class Status(StrEnum):
     DESCRIBED = "described"
     NEEDS_REVIEW = "needs_review"
     BLOCKED = "blocked"
+    SET_ASIDE = "set_aside"
     APPROVED = "approved"
     PREPARED = "prepared"
     UPLOADED = "uploaded"
@@ -39,11 +40,12 @@ _PRE_UPLOAD = (
     S.DESCRIBED,
     S.NEEDS_REVIEW,
     S.BLOCKED,
+    S.SET_ASIDE,
     S.APPROVED,
     S.PREPARED,
 )
 
-_DESCRIBE_RESULTS = frozenset({S.DESCRIBED, S.NEEDS_REVIEW, S.BLOCKED})
+_DESCRIBE_RESULTS = frozenset({S.DESCRIBED, S.NEEDS_REVIEW, S.BLOCKED, S.SET_ASIDE})
 
 ALLOWED: dict[Status, frozenset[Status]] = {
     S.IMPORTED: frozenset({S.DUPLICATE, S.NEAR_DUPLICATE, S.CULLED, S.READY}),
@@ -56,6 +58,8 @@ ALLOWED: dict[Status, frozenset[Status]] = {
     S.DESCRIBED: frozenset(_DESCRIBE_RESULTS | {S.APPROVED}),
     S.NEEDS_REVIEW: frozenset(_DESCRIBE_RESULTS | {S.APPROVED}),
     S.BLOCKED: frozenset(_DESCRIBE_RESULTS),
+    # Set aside by the theme/rules check; approving by hand is allowed (guardrails still apply).
+    S.SET_ASIDE: frozenset(_DESCRIBE_RESULTS | {S.APPROVED}),
     S.APPROVED: frozenset({S.PREPARED}),
     # Editing a prepared photo sends it back to approved (stale copy deleted by the caller).
     S.PREPARED: frozenset({S.UPLOADED, S.APPROVED}),
@@ -124,6 +128,7 @@ class Photo:
     metadata_source: str | None = None
     detected: dict[str, Any] | None = None
     guardrail: dict[str, Any] | None = None
+    filters: dict[str, Any] | None = None
     release_ids: list[str] = field(default_factory=list)
     submit_name: str | None = None
     prepared_path: str | None = None

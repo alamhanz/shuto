@@ -1,0 +1,201 @@
+"""The per-batch report CSV: one row per photo with every check and its reason.
+
+UTF-8 with BOM (so Excel reads Japanese file names), formula-safe cells, written atomically.
+Pure data shaping and file handling: no database and no config here; `pipeline` feeds it.
+"""
+
+from __future__ import annotations
+
+import csv
+import hashlib
+import io
+import os
+import re
+import tempfile
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+from .ledger import safe_cell
+from .models import Photo
+
+FIXED_BEFORE = (
+    "file",
+    "batch",
+    "sha256",
+    "duplicate_of",
+    "quality",
+    "quality_reasons",
+    "shutterstock_rules",
+    "rules_hit",
+    "theme",
+    "theme_fit",
+    "theme_reason",
+)
+FIXED_AFTER = (
+    "your_rules_reasons",
+    "set_aside_by",
+    "approved_by_hand",
+    "status",
+    "status_label",
+    "title",
+    "keyword_count",
+    "ai_model",
+    "checked_at",
+    "approved_at",
+    "uploaded_at",
+    "submitted_at",
+    "accepted_at",
+    "rejected_at",
+    "rejection_reason",
+)
+
+_UNSAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")
+
+
+def rule_label(rule: dict[str, Any]) -> str:
+    """'Must include: a car' / 'Must avoid: people' from a stored rule snapshot."""
+    head = "Must include" if rule.get("kind") == "include" else "Must avoid"
+    return f"{head}: {rule.get('text', '')}"
+
+
+@dataclass
+class ReportRow:
+    cells: dict[str, str] = field(default_factory=dict)  # fixed columns by name
+    rules: dict[str, str] = field(default_factory=dict)  # per-rule columns by label
+
+
+def _row(
+    p: Photo,
+    times: dict[str, str],
+    duplicate_of: str,
+    labels: Callable[[str], str],
+    rejection: tuple[str, str] | None,
+) -> ReportRow:
+    cull = p.cull or {}
+    guard = p.guardrail or {}
+    flt = p.filters or {}
+    meta = p.metadata or {}
+    theme = flt.get("theme") or {}
+    rules = [r for r in flt.get("rules") or [] if isinstance(r, dict)]
+    by_id = {r.get("id"): r for r in rules}
+
+    aside = []
+    for key in flt.get("set_aside_by") or []:
+        if key == "theme":
+            aside.append("Theme")
+        elif str(key).startswith("rule:") and by_id.get(str(key)[5:]):
+            aside.append(rule_label(by_id[str(key)[5:]]))
+    reasons = [
+        f"{rule_label(r)}: {r.get('reason') or r.get('result')}"
+        for r in rules
+        if r.get("result") in ("fail", "unknown")
+    ]
+    hits: list[str] = []
+    for h in guard.get("hits") or []:
+        name = h.get("name") or h.get("matched") or h.get("kind") or ""
+        if name and name not in hits:
+            hits.append(name)
+    status = str(p.status)
+    rejected_at, rejected_why = rejection or ("", "")
+    keywords = meta.get("keywords") or []
+
+    cells = {
+        "file": p.orig_name,
+        "batch": p.batch_id or "",
+        "sha256": p.sha256,
+        "duplicate_of": duplicate_of,
+        "quality": "" if not cull else ("ok" if cull.get("ok") else "failed"),
+        "quality_reasons": "; ".join(str(r) for r in cull.get("reasons") or []),
+        "shutterstock_rules": str(guard.get("action") or ""),
+        "rules_hit": "; ".join(hits),
+        "theme": str(theme.get("text") or ""),
+        "theme_fit": str(theme.get("fit") or ""),
+        "theme_reason": str(theme.get("reason") or ""),
+        "your_rules_reasons": " | ".join(reasons),
+        "set_aside_by": "; ".join(aside),
+        "approved_by_hand": "yes" if flt.get("overridden") else "",
+        "status": status,
+        "status_label": labels(status),
+        "title": str(meta.get("title") or ""),
+        "keyword_count": str(len(keywords)) if keywords else "",
+        "ai_model": str(flt.get("model") or ""),
+        "checked_at": str(flt.get("at") or ""),
+        "approved_at": times.get("approved", ""),
+        "uploaded_at": p.uploaded_at or times.get("uploaded", ""),
+        "submitted_at": p.submitted_at or times.get("submitted", ""),
+        "accepted_at": times.get("accepted", ""),
+        "rejected_at": rejected_at or times.get("rejected", ""),
+        "rejection_reason": rejected_why,
+    }
+    if not cells["ai_model"] and str(p.metadata_source or "").startswith("llm:"):
+        cells["ai_model"] = str(p.metadata_source)[4:]
+    return ReportRow(cells, {rule_label(r): str(r.get("result") or "") for r in rules})
+
+
+def build_rows(
+    photos: Iterable[Photo],
+    *,
+    times: dict[int, dict[str, str]],
+    duplicate_of: dict[int, str],
+    labels: Callable[[str], str],
+    rejections: dict[int, tuple[str, str]],
+) -> tuple[list[str], list[list[str]]]:
+    """Header and records for a batch. Per-rule columns are the union of the photos' rule
+    snapshots in first-seen order; a cell is pass / fail / unknown, or blank when the photo was
+    not checked with that rule."""
+    rows = [
+        _row(
+            p,
+            times.get(p.id or 0, {}),
+            duplicate_of.get(p.id or 0, ""),
+            labels,
+            rejections.get(p.id or 0),
+        )
+        for p in photos
+    ]
+    rule_cols: list[str] = []
+    for r in rows:
+        for label in r.rules:
+            if label not in rule_cols:
+                rule_cols.append(label)
+    header = [*FIXED_BEFORE, *rule_cols, *FIXED_AFTER]
+    records = []
+    for r in rows:
+        values = {**r.cells, **r.rules}
+        records.append([values.get(col, "") for col in header])
+    return header, records
+
+
+def render(header: list[str], records: list[list[str]]) -> bytes:
+    """The whole CSV as bytes: BOM, CRLF rows, every text cell formula-safe."""
+    buf = io.StringIO(newline="")
+    writer = csv.writer(buf, lineterminator="\r\n")
+    writer.writerow([safe_cell(str(h)) for h in header])
+    writer.writerows([safe_cell(str(c)) for c in rec] for rec in records)
+    return buf.getvalue().encode("utf-8-sig")
+
+
+def write_report(path: str | Path, header: list[str], records: list[list[str]]) -> Path:
+    """Write the report atomically (temp file + replace); returns the path."""
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    data = render(header, records)
+    fd, tmp = tempfile.mkstemp(prefix=p.name + ".", suffix=".tmp", dir=p.parent)
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(data)
+        os.replace(tmp, p)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+    return p
+
+
+def report_filename(batch_id: str) -> str:
+    """`<safe>.csv`; a short hash is added when making the name safe changed it."""
+    safe = _UNSAFE_NAME.sub("_", batch_id).strip("._") or "batch"
+    if safe != batch_id:
+        safe += "-" + hashlib.sha1(batch_id.encode("utf-8")).hexdigest()[:8]
+    return safe + ".csv"

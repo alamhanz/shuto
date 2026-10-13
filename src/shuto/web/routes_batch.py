@@ -10,7 +10,7 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 
 from .. import filters as filters_mod
-from .. import imaging, pipeline
+from .. import ftps, imaging, pipeline
 from ..jobs import JobContext
 from ..local_models import ModelChoiceRequired
 from ..models import ALLOWED, Photo, Status
@@ -460,7 +460,12 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
 
         def run(job: JobContext) -> str:
             s = pipeline.deliver_batch(
-                cfg, store, batch_id, confirm=True, progress=job.progress, cancel=job.cancelled
+                cfg,
+                store,
+                batch_id,
+                confirm=True,
+                progress=job.progress_text,
+                cancel=job.cancelled,
             )
             sent = len(s.upload.uploaded) if s.upload else 0
             if s.prepare.problems and not sent:
@@ -471,19 +476,33 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
                 )
             if s.upload is None:
                 return "Stopped before uploading."
+            if s.upload.stopped:
+                return s.upload.stopped_text()
+            if job.cancelled() and s.export is not None:
+                job.mark_completed()  # the cancel came too late: everything was sent
+            lost = [e for e in s.upload.failed.values() if e.startswith(ftps.LOST_PREFIX)]
+            if lost and not sent:
+                raise PipelineError(lost[0])
             if s.upload.failed and not sent:
                 err = next(iter(s.upload.failed.values()))
                 fe = ux.friendly_error(err, context="upload")
                 raise PipelineError(
                     f"{len(s.upload.failed)} photo(s) did not upload. {fe['what']} {fe['todo']}"
                 )
-            unfinished = len(s.prepare.problems) + len(s.upload.failed)
-            if unfinished:
+            fixes = len(s.prepare.problems) + len(s.upload.failed) - len(lost)
+            if fixes or lost:
                 # Partial success: keep what was sent and still write its CSV.
                 exported = s.export or pipeline.export_batch(cfg, store, batch_id)
+                text = f"Uploaded {sent}."
+                if fixes:
+                    text = f"Uploaded {sent}; {fixes} need a fix in Review."
+                if lost:
+                    text += " " + lost[0]
+                return f"{text} Wrote {len(exported.files)} Shutterstock info file(s)."
+            if s.upload.over_limit:
                 return (
-                    f"Uploaded {sent}; {unfinished} need a fix in Review. "
-                    f"Wrote {len(exported.files)} Shutterstock info file(s)."
+                    f"Uploaded {sent} photo(s). {s.upload.over_limit} more are ready: "
+                    "press Upload again to send them."
                 )
             if s.export is None:
                 return f"Uploaded {len(s.upload.uploaded)} photo(s). Stopped before the info file."
@@ -597,8 +616,18 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
 
             def run(job: JobContext) -> str:
                 s = pipeline.upload_batch(
-                    cfg, store, batch_id, confirm=True, only_ids=only, progress=job.progress
+                    cfg,
+                    store,
+                    batch_id,
+                    confirm=True,
+                    only_ids=only,
+                    progress=job.progress_text,
+                    cancel=job.cancelled,
                 )
+                if s.stopped:
+                    return s.stopped_text()
+                if job.cancelled():
+                    job.mark_completed()  # the cancel came too late: everything was sent
                 text = f"Uploaded {len(s.uploaded)} file(s)."
                 if s.failed:
                     name, err = next(iter(s.failed.items()))

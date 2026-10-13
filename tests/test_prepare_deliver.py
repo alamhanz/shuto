@@ -153,6 +153,7 @@ def test_upload_reconnect_failure_marks_rest_failed(tmp_path):
         _files(tmp_path, ["a.jpg", "b.jpg"]),
         lambda n, e: results.__setitem__(n, e),
         connect=connect,
+        sleep=lambda _s: None,
     )
     assert all(isinstance(v, Exception) for v in results.values())
 

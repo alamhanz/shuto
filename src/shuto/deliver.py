@@ -43,8 +43,12 @@ def upload_files(
     files: Sequence[Path],
     on_result: Callable[[str, Exception | None], None],
     connect: Callable[..., object] = ftps.connect,
+    **options,
 ) -> None:
-    """Upload files under their own names. Per-file results go to on_result(name, error)."""
+    """Upload files under their own names. Per-file results go to on_result(name, error).
+
+    `options` (cancel, on_start, on_bytes, on_wait, waits, sleep) go to ftps.upload_many.
+    """
     items = [(Path(f).name, Path(f)) for f in files]
     if not items:
         return
@@ -54,7 +58,7 @@ def upload_files(
 
     ftp = reconnect()
     try:
-        ftp = ftps.upload_many(ftp, items, on_result, reconnect=reconnect)
+        ftp = ftps.upload_many(ftp, items, on_result, reconnect=reconnect, **options)
     finally:
         ftps.close(ftp)
 

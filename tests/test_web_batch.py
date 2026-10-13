@@ -408,3 +408,41 @@ def test_legacy_routes_still_work(web, described):
     assert job.state == "done"
     assert web.post(f"/batch/{described}/format-disk").status_code == 404
     assert "Tick the box" in web.post(f"/batch/{described}/upload").text
+
+
+def test_deliver_cancel_is_truthful(web, described, monkeypatch):
+    pipeline.approve(web.state.cfg, web.state.store, batch_id=described)
+    seen = {}
+
+    def fake_deliver(cfg, store, batch_id, **kw):
+        seen.update(kw)
+        kw["progress"](1, 3, "Step 2 of 2 · Uploading photo 1 of 2")
+        return pipeline.DeliverSummary(
+            pipeline.PrepareSummary(prepared=["a", "b"]),
+            pipeline.UploadSummary(uploaded=["a"], stopped=1),
+        )
+
+    monkeypatch.setattr(pipeline, "deliver_batch", fake_deliver)
+    job = web.run_job(f"/batch/{described}/deliver", {"confirm": "yes"})
+    assert callable(seen["cancel"])
+    # cancel was never asked for, so this ends as done; the text is still the truthful one
+    assert (
+        web.state.runner.result(job.id)
+        == "Upload stopped: 1 of 2 sent. The other 1 are ready to send later."
+    )
+
+
+def test_deliver_lost_internet_is_plain(web, described, monkeypatch):
+    from shuto import ftps
+
+    pipeline.approve(web.state.cfg, web.state.store, batch_id=described)
+    lost = ftps.lost_message(2)
+    monkeypatch.setattr(
+        pipeline,
+        "deliver_batch",
+        lambda *a, **k: pipeline.DeliverSummary(
+            pipeline.PrepareSummary(), pipeline.UploadSummary(failed={"a": lost, "b": lost})
+        ),
+    )
+    job = web.run_job(f"/batch/{described}/deliver", {"confirm": "yes"})
+    assert job.state == "failed" and "press Upload to send them" in job.error

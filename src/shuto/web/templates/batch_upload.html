@@ -36,7 +36,7 @@
   <form hx-post="/batch/{{ batch.id|urlencode }}/deliver" hx-target="#job-area" hx-swap="innerHTML" class="stack">
     <input type="hidden" name="csrf_token" value="{{ csrf }}">
     <label class="inline"><input type="checkbox" name="confirm" value="yes"> Yes, upload these {{ n }} photo{{ '' if n == 1 else 's' }} to Shutterstock</label>
-    {{ button('Upload whole batch', attrs={'disabled': 'disabled'} if not login_ok else {}) }}
+    {{ button('Upload the remaining ' ~ n if sent else 'Upload whole batch', attrs={'disabled': 'disabled'} if not login_ok else {}) }}
     {% if not login_ok %}<p class="hint">Save your login above first.</p>{% endif %}
   </form>
 </div>

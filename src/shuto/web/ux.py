@@ -89,8 +89,8 @@ HELP: dict[str, str] = {
     "commercial": "Commercial photos can be used in ads and products. People and private "
     "places may need a release.",
     "editorial": "Editorial photos show real news or events and cannot be used in ads.",
-    "csv": "The Shutterstock info file (CSV) holds the titles and keywords. You upload it on "
-    "the Shutterstock website in the last step.",
+    "csv": "The Shutterstock info file (CSV) holds the titles and keywords. In the last step you "
+    "upload it with the Upload CSV button on the Shutterstock website (Portfolio, Not submitted).",
 }
 
 STAGES = ("check", "review", "upload", "submit", "done", "empty")

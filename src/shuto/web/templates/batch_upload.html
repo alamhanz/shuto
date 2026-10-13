@@ -47,7 +47,7 @@
 {% endif %}
 {% if exports %}
 <section class="panel" aria-labelledby="files-title">
-  <h2 id="files-title">Shutterstock info files (CSV)</h2>
+  <h2 id="files-title">Shutterstock info file (CSV)</h2>
   <p class="hint">{{ HELP.csv }}</p>
   <div class="row">
   {% for f in exports %}<a class="btn secondary" href="/batch/{{ batch.id|urlencode }}/exports/{{ f|urlencode }}">{{ icon('download') }}Download {{ f }}</a>{% endfor %}

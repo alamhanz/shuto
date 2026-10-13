@@ -160,7 +160,7 @@ shuto                      # start the web app
 | `secrets set NAME`, `check-ftps` | store a secret (the web app does this in Settings); test the upload login |
 | `restrictions` | `list` rules or `check TEXT` |
 | `rules` | your own photo rules: `list`, `add --avoid/--include TEXT [--flag]`, `remove ID`, `clear`, `mode ID set-aside/flag`, `theme on/off`, `partly pass/flag` (shared with the web app; applies to photos described from now on) |
-| `report BATCH` | write the batch report CSV (`reports/<batch>.csv`) and print its path |
+| `report BATCH` | write the batch report CSV (`batches/<batch>/report.csv`) and print its path |
 | `shortcut`, `uninstall` | create or remove icons; uninstall shuto |
 
 ### Configuration and secrets

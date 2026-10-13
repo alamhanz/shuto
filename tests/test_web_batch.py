@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import re
 import time
 
@@ -391,6 +392,11 @@ def test_submit_page_and_marking(web, described, tmp_path):
     page = web.get(f"/batch/{described}/submit").text
     assert "submit.shutterstock.com" in page and "I submitted this batch" in page
     assert "Download commercial.csv" in page and 'alt="Screenshot placeholder' in page
+    text = html.unescape(re.sub(r"<[^>]+>", " ", page))
+    assert "Portfolio → Not submitted" in text and "Upload CSV" in text
+    assert "Portfolio → Pending" in text and "Submit content" in text
+    assert "commercial.csv" in text and str(web.state.cfg.workspace_path("batches")) in text
+    assert 'rel="noopener noreferrer"' in page and "waiting there" not in text
     assert not any(word in visible(page) for word in JARGON)
     r = web.post(f"/batch/{described}/submitted")
     assert r.status_code == 303

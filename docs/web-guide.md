@@ -107,10 +107,13 @@ If something fails, a message says what happened and a **Try again** button appe
 
 shuto never submits for you. The **Submit** page lists the steps:
 
-1. Open the Shutterstock contributor site and sign in.
-2. Upload the info file (CSV) you downloaded from shuto.
-3. Check your photos and press **Submit**.
-4. Back in shuto, click **I submitted this batch**.
+1. Open submit.shutterstock.com and sign in.
+2. Go to **Portfolio, Not submitted** (in the menu: Portfolio, Submit content). Your uploaded
+   photos are there; it can take a few minutes after uploading for them to appear.
+3. Click **Upload CSV** (top right) and choose the batch's info file
+   (`<batch>-shutterstock.csv`, also in the batch folder shown on the page).
+4. Check the photos, then press **Submit**. They move to **Portfolio, Pending**.
+5. Back in shuto, click **I submitted this batch**.
 
 <!-- screenshot: the submit step (images/web-submit.png) -->
 

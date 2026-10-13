@@ -7,27 +7,25 @@
 {% include "_report_bar.html" %}
 {% if waiting or exports or finished %}
 <p>Your photos are uploaded. The last step is yours: shuto never presses Submit for you. Follow these steps in your web browser.</p>
+<div class="row">
+{% for f in exports %}<a class="btn secondary" href="/batch/{{ batch.id|urlencode }}/exports/{{ f|urlencode }}">{{ icon('download') }}Download {{ f }}</a>{% else %}<span class="hint">No info file yet. Go back to Upload and finish it first.</span>{% endfor %}
+</div>
+<p class="hint">{{ HELP.csv }}</p>
 <ol class="steps-list">
   <li>
-    <p>Download the info file{{ '' if exports|length == 1 else 's' }} below and keep {{ 'it' if exports|length == 1 else 'them' }} somewhere easy to find.</p>
-    <div class="row">
-    {% for f in exports %}<a class="btn secondary" href="/batch/{{ batch.id|urlencode }}/exports/{{ f|urlencode }}">{{ icon('download') }}Download {{ f }}</a>{% else %}<span class="hint">No info file yet. Go back to Upload and finish it first.</span>{% endfor %}
-    </div>
-    <p class="hint">{{ HELP.csv }}</p>
+    <p>Open <a href="https://submit.shutterstock.com" target="_blank" rel="noopener noreferrer">submit.shutterstock.com</a> and sign in.</p>
   </li>
   <li>
-    <p>Open <a href="https://submit.shutterstock.com" target="_blank" rel="noopener noreferrer">submit.shutterstock.com</a> and sign in. Your uploaded photos are waiting there.</p>
-    <img class="shot" src="/static/img/submit-1.png" alt="Screenshot placeholder: the Shutterstock page that lists uploaded photos" width="480" height="270">
+    <p>Go to <strong>Portfolio &rarr; Not submitted</strong> (in the menu: Portfolio &rarr; Submit content). Your uploaded photos are there. It can take a few minutes after uploading for them to appear.</p>
+    <img class="shot" src="/static/img/submit-1.png" alt="Screenshot placeholder: the Not submitted tab on Shutterstock" width="480" height="270">
   </li>
   <li>
-    <p>Choose the option to upload a CSV, and pick the info file you just downloaded.</p>
-    <img class="shot" src="/static/img/submit-2.png" alt="Screenshot placeholder: choosing the info file on Shutterstock" width="480" height="270">
+    <p>Click <strong>Upload CSV</strong> (top right) and choose {% if exports|length == 1 %}<strong>{{ exports[0] }}</strong>{% elif exports %}each of <strong>{{ exports|join('</strong>, <strong>'|safe) }}</strong>, one after the other{% else %}the info file{% endif %}. The same file{{ '' if exports|length == 1 else 's' }} {{ 'is' if exports|length == 1 else 'are' }} in the batch folder shown here.</p>
+    {% include "_files_note.html" %}
+    <img class="shot" src="/static/img/submit-2.png" alt="Screenshot placeholder: the Upload CSV button on Shutterstock" width="480" height="270">
   </li>
   <li>
-    <p>Look over the titles and keywords Shutterstock shows you. Fix anything that looks wrong.</p>
-  </li>
-  <li>
-    <p>Press <strong>Submit</strong> on the Shutterstock page.</p>
+    <p>Check the photos, then press <strong>Submit</strong>. They then move to <strong>Portfolio &rarr; Pending</strong>.</p>
     <img class="shot" src="/static/img/submit-3.png" alt="Screenshot placeholder: the Submit button on Shutterstock" width="480" height="270">
   </li>
 </ol>

@@ -304,6 +304,9 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
         current["always_include"] = str(form.get("always_include") or "")
         if "region_focus" in form:
             current["region_focus"] = str(form.get("region_focus") or "")
+        for key in ("default_city", "default_country"):
+            if key in form:
+                current[key] = str(form.get(key) or "")
         try:
             pipeline.set_ui_setting(ctx.store, "style", current)
         except pipeline.PipelineError as exc:
@@ -426,6 +429,8 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             "tone": cfg.style.tone,
             "always_include": ", ".join(cfg.style.keywords.always_include),
             "region_focus": cfg.style.region_focus,
+            "default_city": cfg.style.default_place.city,
+            "default_country": cfg.style.default_place.country,
         }
 
     def rules_values() -> dict:

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
+from collections.abc import Callable
 from typing import Any
 
 from .base import LLMRequest
@@ -30,6 +32,25 @@ DEFAULT_RESPONSE = {
 }  # fmt: skip
 
 
+def vary(base: dict) -> Callable[[LLMRequest], dict]:
+    """A response function: ``base`` with a description and keywords that differ per photo.
+
+    The variation comes from the image bytes, so the same photo always gets the same answer and
+    different photos never look like duplicates of each other (the batch duplicate check).
+    """
+
+    def make(req: LLMRequest) -> dict:
+        n = int(hashlib.sha1(req.image_jpeg).hexdigest()[:6], 16)
+        kws = list(base.get("keywords") or DEFAULT_RESPONSE["keywords"])
+        return {
+            **base,
+            "description": f"{base['description']} view {n} of series {n % 97}",
+            "keywords": [*kws[:19], *(f"extra {n} {i}" for i in range(6))],
+        }
+
+    return make
+
+
 class FakeProvider:
     """Canned provider.
 
@@ -54,8 +75,8 @@ class FakeProvider:
         self.calls.append(req)
         self.schemas.append(schema)
         resp = self._responses[idx]
-        if resp is None:
-            resp = DEFAULT_RESPONSE
+        if resp is None:  # the stock answer differs a little per photo, like a real model
+            resp = vary(DEFAULT_RESPONSE)
         if callable(resp):
             resp = resp(req)
         if (

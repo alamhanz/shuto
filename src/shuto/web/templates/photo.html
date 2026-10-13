@@ -8,7 +8,7 @@
   {% if next_href %}<a id="next-link" href="{{ next_href }}">next (j) &rsaquo;</a>{% endif %}
 </p>
 <h1>{{ photo.orig_name }}</h1>
-<p>{{ chip(bucket(photo.status) if bucket(photo.status) in ('good', 'attention', 'aside') else 'neutral', label(photo.status)) }}</p>
+<p>{{ chip(bucket(photo.status) if bucket(photo.status) in ('good', 'attention', 'aside') else 'neutral', label(photo.status)) }}{% if (meta.place or {}).default %} <span class="chip review" title="The place in the caption is your default place. Check that it is right for this photo.">Default place</span>{% endif %}</p>
 
 {% if photo.has_gps %}
 <p class="flash warn" role="alert">{{ icon('alert') }}<span>This photo contains the place where it was taken (GPS). shuto does not strip GPS data from the copy it sends, so remove it from the photo first if you do not want to publish where this was taken.</span></p>
@@ -59,6 +59,7 @@
     {% if checks_overridden %}<p class="hint">You approved this photo even though a check did not pass.</p>{% endif %}
     {% if checked_with_older_rules %}<p class="hint">Checked with your earlier theme or rules. New rules only apply to photos checked from now on.</p>{% endif %}
     {% else %}<p class="hint">Not checked with a theme or your own rules.</p>{% endif %}
+    {% if meta.metadata_issues %}<h3>Description and keywords</h3><ul>{% for i in meta.metadata_issues %}<li>{{ i.text }}</li>{% endfor %}</ul>{% endif %}
     {% if meta.warnings %}<h3>Other notes</h3><ul>{% for w in meta.warnings %}<li>{{ w }}</li>{% endfor %}</ul>{% endif %}
   </section>
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import asdict, dataclass, field
 
 from .categories import normalize_categories
@@ -20,6 +21,26 @@ EDITORIAL_CAPTION_RE = re.compile(
     rf"^(?P<city>{_CAPS}), (?P<country>(?:[^\W\d_]|[ .'/-])+) - (?P<month>[^\W\d_]+) "
     r"\d{1,2}, \d{4}: \S.*"
 )
+
+
+MAX_PLACE_CHARS = 60
+_PLACE_OK = re.compile(r"[A-Za-z][A-Za-z .'-]*")
+
+
+def clean_place_part(text: object) -> str:
+    """A city or country typed by the user: accents dropped, spaces tidied, letters only.
+
+    Returns "" for empty input; raises ValueError (plain words) for anything else unusable.
+    """
+    raw = unicodedata.normalize("NFKD", str(text or ""))
+    value = re.sub(r"\s+", " ", "".join(c for c in raw if not unicodedata.combining(c))).strip()
+    if not value:
+        return ""
+    if len(value) > MAX_PLACE_CHARS:
+        raise ValueError(f"Keep each place name under {MAX_PLACE_CHARS} characters.")
+    if not _PLACE_OK.fullmatch(value):
+        raise ValueError("Write the place in English letters, for example Tokyo or Japan.")
+    return value
 
 
 def is_editorial_caption(text: str) -> bool:

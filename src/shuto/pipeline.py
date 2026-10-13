@@ -26,7 +26,17 @@ from typing import Any
 import platformdirs
 
 from . import cull as cull_mod
-from . import deliver, describe, estimate, ftps, guardrails, hardware, imaging, local_models
+from . import (
+    deliver,
+    describe,
+    estimate,
+    ftps,
+    guardrails,
+    hardware,
+    imaging,
+    local_models,
+    metadata_rules,
+)
 from . import filters as filters_mod
 from . import ledger as ledger_mod
 from . import report as report_mod
@@ -37,7 +47,7 @@ from .llm import get_provider
 from .llm.base import LLMError, VisionLLM
 from .llm.fake import FakeProvider
 from .llm.ollama import OllamaClient, OllamaProvider
-from .metadata import PhotoMetadata, normalize
+from .metadata import PhotoMetadata, clean_place_part, normalize
 from .models import REASON_CODES, REUPLOADABLE, UPLOADED_STATES, LLMCall, Photo, Status
 from .prepare import prepare_file, release_check, safe_filename
 from .secrets import get_secret, keyring_available
@@ -546,6 +556,7 @@ class DoctorReport:
     workspace: str
     selection_unreadable: bool = False
     checks: list[str] = field(default_factory=list)  # theme and rules that new photos get
+    default_place: str = ""  # "Tokyo, Japan" or "" when none is set
 
 
 def doctor(
@@ -589,6 +600,7 @@ def doctor(
         str(cfg.workspace_dir),
         unreadable,
         active_checks(cfg),
+        ", ".join(p for p in (cfg.style.default_place.city, cfg.style.default_place.country) if p),
     )
 
 
@@ -987,6 +999,12 @@ def describe_batch(
     style = describe.Style.from_config(cfg.style)
     spec = filter_spec(cfg)
     feedback = describe.feedback_lines(store.rejection_stats(), store.recent_rejection_examples())
+    seen = metadata_rules.BatchSeen()  # what the batch already says, so no two photos match
+    redo = {p.id for p in photos}
+    for other in store.list_photos(batch_id):
+        om = other.metadata or {}
+        if other.id not in redo and om.get("description"):
+            seen.add(str(om["description"]), om.get("keywords") or [])
     side = cfg.llm.image_max_side or llm.default_image_side
     conc = max(1, cfg.llm.concurrency or llm.default_concurrency)
     lock = threading.Lock()
@@ -1018,6 +1036,7 @@ def describe_batch(
                 has_property_release=has_property,
                 filters=spec,
                 at=_now_iso(),
+                seen=seen,
             )
         except LLMError as exc:
             store.log_llm_call(
@@ -1048,6 +1067,9 @@ def describe_batch(
         )
         meta = res.metadata.to_dict()
         meta["location"] = res.location
+        meta["place"] = res.place
+        if res.issues:
+            meta["metadata_issues"] = [i.to_dict() for i in res.issues]
         found = res.filters.to_dict() if res.filters else None
         _drop_prepared(store, photo)
         if photo.status != Status.READY:
@@ -1149,6 +1171,8 @@ def update_metadata(
         store.update_photo(photo_id, release_ids=list(release_ids))
         photo = get_photo(store, photo_id)
     data = dict(photo.metadata or {})
+    if description is not None:  # the user has looked at the caption: no "Default place" note
+        data.pop("place", None)
     for key, value in (
         ("description", description),
         ("title", title),
@@ -1161,7 +1185,7 @@ def update_metadata(
             data[key] = value
     meta, gr, status = _evaluate(cfg, store, photo, data)
     stored = meta.to_dict()
-    for extra in ("title", "location"):
+    for extra in ("title", "location", "place"):
         if extra in data:
             stored[extra] = data[extra]
     was = photo.status
@@ -2225,6 +2249,12 @@ def _clean_style(value: Any) -> dict[str, Any]:
         if focus not in REGION_FOCUS:
             raise PipelineError("Region focus must be None or Japan.")
         out["region_focus"] = focus
+    for key, label in (("default_city", "city"), ("default_country", "country")):
+        if key in value:
+            try:
+                out[key] = clean_place_part(value.get(key))
+            except ValueError as exc:
+                raise PipelineError(f"Default place, {label}: {exc}") from exc
     return out
 
 
@@ -2336,6 +2366,13 @@ def apply_style_overrides(cfg: Config, store: Store) -> Config:
         update["keywords"] = cfg.style.keywords.model_copy(
             update={"always_include": list(style["always_include"])}
         )
+    place = {
+        part: style[f"default_{part}"]
+        for part in ("city", "country")
+        if isinstance(style.get(f"default_{part}"), str)
+    }
+    if place:
+        update["default_place"] = cfg.style.default_place.model_copy(update=place)
     return cfg.model_copy(update={"style": cfg.style.model_copy(update=update)})
 
 

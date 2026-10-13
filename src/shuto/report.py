@@ -40,7 +40,11 @@ FIXED_AFTER = (
     "status",
     "status_label",
     "title",
+    "place",
+    "place_source",
+    "default_place",
     "keyword_count",
+    "metadata_issues",
     "ai_model",
     "ai_seconds",
     "ai_tries",
@@ -74,6 +78,19 @@ def _described_at(p: Photo, times: dict[str, str]) -> str:
         return ""
     found = [times[s] for s in ("described", "needs_review", "blocked", "set_aside") if s in times]
     return max(found, default="")
+
+
+def _place_text(place: Any) -> str:
+    """'TOKYO, JAPAN' from a stored place; blank when no part is known."""
+    if not isinstance(place, dict):
+        return ""
+    return ", ".join(str(place[k]) for k in ("city", "country") if place.get(k))
+
+
+def _default_flag(place: Any) -> str:
+    if not isinstance(place, dict):
+        return ""
+    return "yes" if place.get("default") else "no"
 
 
 def _row(
@@ -131,7 +148,15 @@ def _row(
         "status": status,
         "status_label": labels(status),
         "title": str(meta.get("title") or ""),
+        "place": _place_text(meta.get("place")),
+        "place_source": str((meta.get("place") or {}).get("source") or ""),
+        "default_place": _default_flag(meta.get("place")),
         "keyword_count": str(len(keywords)) if keywords else "",
+        "metadata_issues": "; ".join(
+            str(i.get("text") or "")
+            for i in meta.get("metadata_issues") or []
+            if isinstance(i, dict)
+        ),
         "ai_model": str(flt.get("model") or ""),
         "ai_seconds": f"{ai_time[0]:.1f}" if ai_time else "",
         "ai_tries": str(ai_time[1]) if ai_time else "",

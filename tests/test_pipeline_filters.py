@@ -331,7 +331,7 @@ def test_report_written_after_each_step(cfg, store, photos_dir):
     batch = _ready(cfg, store, photos_dir)
     path = _report_file(cfg, batch)
     assert path.is_file()  # cull_batch / import wrote it
-    assert path.parent.name == "reports" and path.name == report.report_filename(batch)
+    assert path.parent == pipeline.batch_dir(cfg, batch) and path.name == "report.csv"
     _describe(cfg, store, batch, _resp(fit="no", checks={"r1": "yes"}))
     text = path.read_bytes().decode("utf-8-sig")
     assert "Must avoid: people" in text and "set_aside" in text and "Everyday Japan" in text

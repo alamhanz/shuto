@@ -52,9 +52,8 @@ def test_check_batch_combined_progress(cfg, store, photos_dir):
     counters = [m.split("titles & keywords ")[1].split(" ")[0] for m in ai]
     assert counters == ["0/3", "1/3", "2/3", "3/3"]
     assert "left" not in ai[0] and "left" in ai[1] and "left" in ai[2]  # once one is done
-    # the bar is only full with the last photo described
-    full = [i for i, (d, _, _) in enumerate(seen) if d == total]
-    assert full == [len(seen) - 1] and seen[-1][2].endswith("3/3")
+    # the bar is never full here: the job panel shows it full only when the job has ended
+    assert max(dones) == total - 1 and seen[-1][2].endswith("3/3")
     first_ai = next(i for i, (_, _, m) in enumerate(seen) if m.startswith("Step 2"))
     assert seen[first_ai][0] == total // 10
 

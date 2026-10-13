@@ -102,7 +102,9 @@ def test_blocked_photo_is_never_approved(cfg, store, photos_dir):
 def test_full_flow_with_fake_ftp(cfg, store, photos_dir, monkeypatch):
     batch, prep = _to_prepared(cfg, store, photos_dir)
     assert len(prep.prepared) == 3 and not prep.problems
-    assert all(cfg.workspace_path("prepared", batch, n).exists() for n in prep.prepared)
+    assert all(
+        pipeline.batch_dir(cfg, batch).joinpath("prepared", n).exists() for n in prep.prepared
+    )
 
     with pytest.raises(pipeline.UploadRefused):
         pipeline.upload_batch(cfg, store, batch)

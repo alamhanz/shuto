@@ -63,7 +63,7 @@ let through and shown with its reason.
 Changes only apply to photos you check from then on; photos already checked keep their results.
 Every batch also has a **report** (a CSV file you can open in Excel) listing every check and
 its reason: download it from Review or Submit, or press **Open folder** there. Each batch has
-one folder in your workspace (`batches`) holding its report, its Shutterstock info files and the
+one folder in your workspace (`batches`) holding its report, its Shutterstock info file and the
 photo copies that get uploaded.
 Going back to shuto 0.3.x after updating to 0.4.0 is not possible, because the database is
 upgraded.
@@ -99,7 +99,7 @@ When you are done, click **Go to Upload**.
 
 Check the number of approved photos and your Shutterstock login, tick **Yes, upload these
 photos to Shutterstock**, and click the upload button. shuto prepares copies of your photos
-(your originals stay as they are), uploads them and creates the Shutterstock info files (CSV).
+(your originals stay as they are), uploads them and creates the Shutterstock info file (CSV), one per batch.
 If something fails, a message says what happened and a **Try again** button appears.
 <!-- screenshot: the upload step (images/web-upload.png) -->
 

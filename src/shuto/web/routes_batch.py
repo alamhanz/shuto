@@ -500,7 +500,7 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
                     text = f"Uploaded {sent}; {fixes} need a fix in Review."
                 if lost:
                     text += " " + lost[0]
-                return f"{text} Wrote {len(exported.files)} Shutterstock info file(s)."
+                return f"{text} Wrote the Shutterstock info file."
             if s.upload.over_limit:
                 return (
                     f"Uploaded {sent} photo(s). {s.upload.over_limit} more are ready: "
@@ -509,8 +509,7 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
             if s.export is None:
                 return f"Uploaded {len(s.upload.uploaded)} photo(s). Stopped before the info file."
             return (
-                f"Uploaded {len(s.upload.uploaded)} photo(s) and wrote "
-                f"{len(s.export.files)} Shutterstock info file(s)."
+                f"Uploaded {len(s.upload.uploaded)} photo(s) and wrote the Shutterstock info file."
             )
 
         return ctx.start_job(request, "deliver", batch_id, run, total=2 * n + 1)
@@ -659,7 +658,7 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
                 s = pipeline.export_batch(cfg, store, batch_id)
                 if not s.files:
                     return "Nothing to export: upload prepared photos first."
-                return f"Wrote {len(s.files)} CSV file(s) for {len(s.rows)} photo(s)."
+                return f"Wrote the Shutterstock CSV for {len(s.rows)} photo(s)."
 
         return ctx.start_job(request, action, batch_id, run)
 

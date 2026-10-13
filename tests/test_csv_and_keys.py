@@ -23,7 +23,34 @@ def test_build_csv_quotes_and_flags():
         "Mount Fuji at sunrise, Japan",
         "mount fuji,sunrise,japan",
         "Nature,Parks/Outdoor",
-        "no",
-        "no",
         "yes",
+        "no",
+        "no",
     ]
+
+
+def test_header_matches_shutterstocks_example_exactly():
+    header = "Filename,Description,Keywords,Categories,Editorial,Mature content,illustration"
+    assert ",".join(HEADERS) == header
+    assert build_csv([]) == header + "\n"
+
+
+def test_editorial_and_commercial_rows_share_one_file():
+    out = build_csv(
+        [
+            {"filename": "a.jpg", "description": "d", "keywords": ["k"], "categories": []},
+            {
+                "filename": "b.jpg",
+                "description": "d",
+                "keywords": ["k, with comma"],
+                "categories": [],
+                "editorial": True,
+                "mature": True,
+                "illustration": True,
+            },
+        ]
+    )
+    rows = list(csv.reader(io.StringIO(out)))
+    assert [r[4:] for r in rows[1:]] == [["no", "no", "no"], ["yes", "yes", "yes"]]
+    assert rows[2][2] == "k, with comma"
+    assert '"k, with comma"' in out

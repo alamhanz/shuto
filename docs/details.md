@@ -169,13 +169,15 @@ approve, edit, upload, export, submit, results). It lists, for each photo, what 
 what the answer was.
 
 - **Where:** `batches/<batch>/report.csv` inside your shuto workspace. Every batch has one
-  folder that holds all of its own files: `report.csv`, the Shutterstock CSV files and a
+  folder that holds all of its own files: `report.csv`, the batch's one Shutterstock CSV (`<batch>-shutterstock.csv`) and a
   `prepared/` folder with the photo copies that get uploaded. Your original photo folder is
   never written to. In the web app press **Download report** on the Review or Submit page, or
   **Open folder** next to it to see the files. On the command line, `shuto report BATCH`
   writes the report and prints its path and the batch folder (`--out PATH` writes a copy
-  somewhere else). Folder names keep only letters, digits and `. _ -`; other characters become
-  `_` and a short code is added so two batches never share a folder.
+  somewhere else). Folder names keep ASCII letters, digits, spaces and `( ) . _ -` (so `trip (2)` stays
+  readable); other characters become `_`. A short code is added when the name had to change or
+  has capital letters, so two batches never share a folder (even on Windows and macOS, which
+  ignore case), and Windows reserved names such as `nul` or `con` get a `_` in front.
 - **Older versions:** files made by 0.4.0 and earlier (`reports/`, `exports/`, `prepared/` in
   the workspace) are not moved or deleted. They keep working, download buttons still find
   them, and new files go to the batch folder.

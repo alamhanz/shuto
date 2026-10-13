@@ -256,7 +256,7 @@ def test_deliver_phase_text_and_bar_never_full_early(cfg, store, photos_dir, cre
     texts = [m for _, _, m in seen]
     assert "Step 1 of 2 · Preparing photos 1/3" in texts
     assert any(m.startswith("Step 2 of 2 · Uploading photo 2 of 3") for m in texts)
-    assert all(d < t for d, t, m in seen if m != "Writing the CSV files")
+    assert all(d < t for d, t, m in seen if m != "Writing the Shutterstock CSV")
     assert seen[-1][0] == seen[-1][1]
 
 

@@ -32,7 +32,6 @@ from . import ledger as ledger_mod
 from . import report as report_mod
 from .collect import _safe_batch_name, batch_id_for, group_near_duplicates, scan_folder
 from .config import APP_NAME, Config, FilterRuleConfig, default_config_dir
-from .csv_export import split_by_kind
 from .imaging import hamming
 from .llm import get_provider
 from .llm.base import LLMError, VisionLLM
@@ -1586,23 +1585,23 @@ def export_batch(
     batch_id: str,
     *,
     dry_run: bool = False,
-    now: datetime | None = None,
 ) -> ExportSummary:
-    """Write the Shutterstock bulk CSVs for uploaded photos (filenames = uploaded names)."""
+    """Write the batch's one Shutterstock CSV for uploaded photos (filenames = uploaded names).
+
+    The file is rewritten on every export, so it always lists every photo that is uploaded or
+    exported and not yet submitted.
+    """
     photos = [p for p in store.list_photos(batch_id, [Status.UPLOADED, Status.EXPORTED])]
     photos = [p for p in photos if p.submit_name]
     rows = export_rows(photos)
     summary = ExportSummary(rows=rows, dry_run=dry_run)
     if dry_run or not rows:
         return summary
-    now = now or datetime.now()
-    files = deliver.write_csvs(batch_id, rows, batch_dir(cfg, batch_id), now)
-    summary.files = files
-    by_kind = {kind: f for kind, f in zip(split_by_kind(rows), files, strict=True)}
-    for photo, row in zip(photos, rows, strict=True):
+    dest = deliver.write_csv(batch_id, rows, batch_dir(cfg, batch_id))
+    summary.files = [dest]
+    for photo in photos:
         assert photo.id is not None
-        kind = "editorial" if row["editorial"] else "commercial"
-        store.update_photo(photo.id, exported_at=_now_iso(), export_file=str(by_kind[kind]))
+        store.update_photo(photo.id, exported_at=_now_iso(), export_file=str(dest))
         if photo.status == Status.UPLOADED:
             store.set_status(photo.id, Status.EXPORTED)
     refresh_report(cfg, store, batch_id)
@@ -1916,7 +1915,7 @@ def deliver_batch(
     waits: Sequence[float] | None = None,
     sleep: Callable[[float], None] | None = None,
 ) -> DeliverSummary:
-    """Prepare approved photos, upload them (needs `confirm`), then write the CSV files.
+    """Prepare approved photos, upload them (needs `confirm`), then write the batch CSV.
 
     One progress range of 2n+1 (n = approved + prepared photos). Stops after upload failures
     or a cancel and returns what was done so far; uploaded photos can be exported later.
@@ -1958,7 +1957,7 @@ def deliver_batch(
     if summary.upload.failed or summary.upload.stopped:
         return summary
     summary.export = export_batch(cfg, store, batch_id)
-    progress(total, total, "Writing the CSV files")
+    progress(total, total, "Writing the Shutterstock CSV")
     return summary
 
 

@@ -32,7 +32,7 @@ def test_files_land_in_the_batch_folder(cfg, store, photos_dir, monkeypatch):
     folder = pipeline.batch_dir(cfg, batch)
     assert folder.parent == cfg.workspace_path("batches")
     assert (folder / "report.csv").is_file()
-    assert list(folder.glob("shutterstock-*.csv"))
+    assert list(folder.glob("*-shutterstock.csv"))
     assert len(list((folder / "prepared").glob("*.jpg"))) == 3
     for old in ("prepared", "exports", "reports"):
         assert not cfg.workspace_path(old).exists()

@@ -831,7 +831,8 @@ def cmd_export(ctx: Ctx) -> int:
         out("Nothing to export (photos must be uploaded first).")
         return 0
     out(f"Batch folder: {pipeline.batch_dir(ctx.cfg, a.batch)}")
-    out("Final step is manual: on shutterstock.com choose Submit and upload this CSV there.")
+    out("Final step is manual: on submit.shutterstock.com open Portfolio > Not submitted,")
+    out("press Upload CSV and choose this file, check the photos and press Submit.")
     out(f"Afterwards: shuto submitted {a.batch}")
     return 0
 
@@ -1185,7 +1186,7 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("--ids", type=int, nargs="+")
     s.add_argument("--yes", action="store_true", help="confirm this upload")
 
-    s = add("export", "write the Shutterstock CSV files")
+    s = add("export", "write the batch's Shutterstock CSV")
     s.add_argument("batch")
     s.add_argument("--dry-run", action="store_true")
 

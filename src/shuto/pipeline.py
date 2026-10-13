@@ -40,6 +40,8 @@ from .llm.fake import FakeProvider
 from .llm.ollama import OllamaClient, OllamaProvider
 from .metadata import PhotoMetadata, normalize
 from .models import REASON_CODES, UPLOADED_STATES, LLMCall, Photo, Status
+from .photo_context import compute_file_facts
+from .photo_context import photo_context as photo_context  # noqa: F401  (public interface)
 from .prepare import prepare_file, release_check, safe_filename
 from .secrets import get_secret, keyring_available
 from .store import InvalidTransition, Store
@@ -301,6 +303,9 @@ def import_folder(
                 camera=item.info.camera,
                 has_gps=item.info.has_gps,
             )
+            facts = compute_file_facts(item.path)  # file EXIF/IPTC/XMP + offline place, local only
+            if facts:
+                store.update_photo(pid, metadata=facts)
             if mark_uploaded:
                 summary.marked_uploaded += 1
                 continue

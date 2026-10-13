@@ -71,6 +71,8 @@ def _helper_steps(os_name: str) -> list[str]:
 
 
 UPLOAD_JOB_KINDS = ("deliver", "ftps_test", "upload")
+AI_JOB_KINDS = {"check", "describe"}  # jobs that use the AI model
+WRITING_BUSY = "Wait for shuto to finish writing titles and keywords, then try again."
 
 
 def _friendly(error: str | None, kind: str = "") -> dict[str, str]:
@@ -161,6 +163,11 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
         except Exception:
             raise RuntimeError("The model in use could not be read.") from None
         return hardware.normalize_tag(sel.model) if sel.provider == "ollama" else None
+
+    def writing_job_active() -> bool:
+        """True while a check or a titles-and-keywords job is queued or running (it uses the AI
+        model, so the model must not be removed under it)."""
+        return bool(ctx.runner.active_kinds() & AI_JOB_KINDS)
 
     def removable_models() -> list[dict]:
         """Downloaded models that may be removed: only models from the model list (they can be
@@ -747,6 +754,8 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
         info = {"tag": tag, "status": ""}
         victim: dict | None = None
         if replace:
+            if writing_job_active():
+                return ctx.message_fragment(request, WRITING_BUSY)
             victim = next((m for m in removable_models() if m["tag"] == replace), None)
             if victim is None or hardware.normalize_tag(replace) == hardware.normalize_tag(tag):
                 return ctx.message_fragment(
@@ -765,6 +774,8 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             last: list[object] = [None]
             if victim is not None:
                 # this job may have waited in the queue: check again that it is still safe
+                if writing_job_active():
+                    raise RuntimeError(f"{WRITING_BUSY} {tag} was not downloaded.")
                 try:
                     now_in_use = hardware.normalize_tag(replace) == selected_tag()
                 except RuntimeError:
@@ -810,6 +821,33 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
 
         return submit_models_job(request, "pull", run, back, info)
 
+    def remove_problem(tag: str) -> str | None:
+        """Plain reason this model cannot be removed now, or None when it can."""
+        if ctx.runner.active_job(MODELS_JOB_KEY):
+            return "Wait for the download or change in progress to finish."
+        if writing_job_active():
+            return WRITING_BUSY
+        try:
+            in_use = hardware.normalize_tag(tag) == selected_tag()
+        except RuntimeError:
+            return "shuto could not tell which model is in use, so it removed nothing."
+        if in_use:
+            return f"{tag} is the model in use. Choose another model first."
+        if not any(m["tag"] == tag for m in removable_models()):
+            return f"{tag} cannot be removed here: it is not downloaded, or not on the model list."
+        return None
+
+    @app.get("/settings/model/remove", response_class=HTMLResponse)
+    def settings_model_remove_confirm(request: Request, tag: str, return_to: str = "/settings"):
+        """Read-only confirmation page, so Remove is safe without JavaScript."""
+        if not TAG_RE.match(tag):
+            raise HTTPException(status_code=404, detail="Unknown model.")
+        back = return_to if return_to in RETURN_PAGES else "/settings"
+        problem = remove_problem(tag)
+        if problem:
+            return go(back, None, problem)
+        return ctx.render(request, "model_remove.html", tag=tag, return_to=back)
+
     @app.post("/settings/model/remove")
     def settings_model_remove(request: Request, form: PostForm):
         tag = str(form.get("tag") or "")
@@ -817,28 +855,9 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
         back = back if back in RETURN_PAGES else "/settings"
         if form.get("confirm") != "yes" or not TAG_RE.match(tag):
             return go(back, None, "Removal not confirmed.", request)
-        if ctx.runner.active_job(MODELS_JOB_KEY):
-            return go(back, None, "Wait for the download or change in progress to finish.", request)
-        try:
-            in_use = hardware.normalize_tag(tag) == selected_tag()
-        except RuntimeError:
-            return go(
-                back,
-                None,
-                "shuto could not tell which model is in use, so it removed nothing.",
-                request,
-            )
-        if in_use:
-            return go(
-                back, None, f"{tag} is the model in use. Choose another model first.", request
-            )
-        if not any(m["tag"] == tag for m in removable_models()):
-            return go(
-                back,
-                None,
-                f"{tag} cannot be removed here: it is not downloaded, or not on the model list.",
-                request,
-            )
+        problem = remove_problem(tag)
+        if problem:
+            return go(back, None, problem, request)
         client = pipeline.ollama_client(ctx.cfg)
         try:
             client.delete(tag)

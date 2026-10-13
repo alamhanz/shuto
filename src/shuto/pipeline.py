@@ -502,6 +502,7 @@ class DoctorReport:
     provider: str
     config_path: str | None
     workspace: str
+    selection_unreadable: bool = False
 
 
 def doctor(
@@ -524,12 +525,15 @@ def doctor(
         local_models.load_benchmarks(benchmark_cache_path()),
         free,
     )
+    unreadable = False
     try:
         selection = resolve_selection(cfg, store)
         selected: str | None = f"{selection.provider}:{selection.model}"
         provider = selection.provider
     except local_models.ModelChoiceRequired:
         selected, provider = None, cfg.llm.provider
+    except Exception:
+        selected, provider, unreadable = None, cfg.llm.provider, True
     return DoctorReport(
         profile.to_dict(),
         status,
@@ -540,6 +544,7 @@ def doctor(
         provider,
         str(config_path) if config_path else None,
         str(cfg.workspace_dir),
+        unreadable,
     )
 
 

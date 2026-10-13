@@ -73,6 +73,17 @@ class JobRunner:
         with self._lock:
             return bool(self._active) or self._closed
 
+    def active_kinds(self) -> set[str]:
+        """Kinds of the jobs that are queued or running now."""
+        with self._lock:
+            ids = list(self._active.values())
+        kinds = set()
+        for job_id in ids:
+            job = self.store.get_job(job_id)
+            if job is not None:
+                kinds.add(job.kind)
+        return kinds
+
     def close(self) -> bool:
         """Refuse new jobs (an update is starting). False if a job is already active."""
         with self._lock:

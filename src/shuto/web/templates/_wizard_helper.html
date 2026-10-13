@@ -1,4 +1,5 @@
-{% from "_ui.html" import chip, icon %}
+{% from "_ui.html" import chip %}
+{% from "_wizard_nav.html" import wizard_nav %}
 <h1>The AI helper</h1>
 <p>shuto uses a free program called Ollama to run the AI on this computer, so your photos stay here.</p>
 <p>
@@ -17,5 +18,4 @@
    <a class="btn secondary" href="/welcome?step=2">Check again</a></p>
 <p>No wish to install anything? <a href="/welcome?step=3&online=1">Use an online AI instead</a>.</p>
 {% endif %}
-<p class="next-action"><a class="btn primary" href="/welcome?step=3">Continue {{ icon('arrow') }}</a></p>
-<p><a href="/welcome?step=1">Back</a> &middot; <a href="/welcome?step=3">Skip this step</a></p>
+{{ wizard_nav('Continue', href='/welcome?step=3', back='/welcome?step=1', skip='Skip this step', skip_href='/welcome?step=3') }}

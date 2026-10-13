@@ -283,7 +283,7 @@ def test_pull_progress_is_throttled(cfg, monkeypatch):
             data={"tag": "moondream", "confirm": "yes", "csrf_token": state.csrf},
         )
         assert r.status_code == 200, r.text
-        state.runner.wait(int(re.search(r'id="job-(\d+)"', r.text).group(1)))
+        state.runner.wait(int(re.search(r'(?:id="job-|data-job=")(\d+)"', r.text).group(1)))
         progress_writes = [w for w in writes if "done" in w]
         assert 0 < len(progress_writes) <= 105
     finally:

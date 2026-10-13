@@ -1,0 +1,19 @@
+{% from "_ui.html" import icon %}
+{#- The one footer of every setup step, so the buttons never move between steps.
+    back: href or none. primary: label; href makes it a link, form makes it a submit button
+    of that form (no JavaScript), disabled greys it. skip: label + skip_href (link) or
+    skip_value (a second submit button of `form`, field "then"). hint: its own line below. -#}
+{% macro wizard_nav(primary, href=None, form=None, back=None, skip=None, skip_href=None, skip_value=None, disabled=False, hint=None, primary_value=None) -%}
+<div class="wiz-nav" data-wizard-nav>
+  <div class="wiz-row">
+    <span class="wiz-back">{% if back %}<a href="{{ back }}">Back</a>{% endif %}</span>
+    <span class="wiz-skip">{% if skip and skip_value %}<button type="submit" form="{{ form }}" name="then" value="{{ skip_value }}" class="secondary">{{ skip }}</button>{% elif skip %}<a href="{{ skip_href }}">{{ skip }}</a>{% endif %}</span>
+    <span class="wiz-primary">
+      {%- if disabled %}<button type="button" class="btn primary" disabled aria-describedby="wiz-hint">{{ primary }} {{ icon('arrow') }}</button>
+      {%- elif href %}<a class="btn primary" href="{{ href }}"{% if hint %} aria-describedby="wiz-hint"{% endif %}>{{ primary }} {{ icon('arrow') }}</a>
+      {%- else %}<button type="submit" form="{{ form }}"{% if primary_value %} name="then" value="{{ primary_value }}"{% endif %} class="btn primary">{{ primary }} {{ icon('arrow') }}</button>{% endif -%}
+    </span>
+  </div>
+  {% if hint %}<p class="hint wiz-hint" id="wiz-hint">{{ hint }}</p>{% endif %}
+</div>
+{%- endmacro %}

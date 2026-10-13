@@ -191,6 +191,18 @@ _AI_ERRORS: tuple[tuple[tuple[str, ...], str, str], ...] = (
         "Open Ollama from the Start menu (or Applications), then press Try again.",
     ),
     (
+        ("download stalled",),
+        "The download stalled.",
+        "Check your internet connection, then press Try again. What was already downloaded "
+        "is kept, so it continues where it stopped.",
+    ),
+    (
+        ("download connection was lost",),
+        "The download was interrupted.",
+        "Check your internet connection and that the Ollama app is still open, then press "
+        "Try again. What was already downloaded is kept, so it continues where it stopped.",
+    ),
+    (
         ("timed out", "timeout"),
         "The AI took too long to answer.",
         "Wait a minute, then press Try again. A smaller model may be faster.",

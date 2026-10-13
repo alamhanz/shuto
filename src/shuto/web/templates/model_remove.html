@@ -1,7 +1,10 @@
 {% extends "base.html" %}
+{% from "_ui.html" import icon %}
 {% block title %}shuto - remove a model{% endblock %}
 {% block content %}
 <h1>Remove {{ tag }}?</h1>
+{% if in_use %}<p class="flash warn" role="alert">{{ icon('alert') }}<span>{{ tag }} is the AI model shuto uses now. After removing it, shuto can't write titles and keywords until you choose or download another model.</span></p>{% endif %}
+{% if pinned %}<p>Your settings file still names {{ tag }}. After removing it, choose another model in Settings.</p>{% endif %}
 <p>{{ tag }} will be deleted from this computer. You can download it again later.</p>
 <form method="post" action="/settings/model/remove">
   <input type="hidden" name="csrf_token" value="{{ csrf }}">

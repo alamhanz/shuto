@@ -930,8 +930,12 @@ def _estimate_tokens(cfg: Config) -> dict[str, int]:
 NOT_ENGLISH_TEXT = metadata_rules.reason("non_english")
 
 
-def not_english(data: dict[str, Any]) -> bool:
-    """True when the title, description or a keyword has non-Latin letters (never sent on)."""
+def not_english(data: dict[str, Any], strict: bool = True) -> bool:
+    """True when the title, description or a keyword has non-Latin letters (never sent on).
+
+    Always False when strict English is switched off (the owner chose another language)."""
+    if not strict:
+        return False
     return any(
         metadata_rules.has_foreign_script(str(data.get(k) or "")) for k in ("title", "description")
     ) or any(metadata_rules.has_foreign_script(str(k)) for k in data.get("keywords") or [])
@@ -970,7 +974,7 @@ def _evaluate(
         has_property_release=has_property,
     )
     meta.warnings.extend(m for m in gr.messages if m not in meta.warnings)
-    if not_english(data):
+    if not_english(data, cfg.style.english_only):
         meta.warnings.append(NOT_ENGLISH_TEXT)
     return meta, gr, _status_for(meta, gr, photo.filters)
 
@@ -1156,7 +1160,7 @@ def describe_batch(
                 if why is None:
                     raise
                 return _flag_unreadable(photo, why)
-            facts = photo_context(photo)
+            facts = photo_context(photo, style.english_only)
             has_model, has_property = _release_flags(photo.release_ids)
             res = describe.describe_photo(
                 use,
@@ -1210,6 +1214,7 @@ def describe_batch(
         meta = res.metadata.to_dict()
         meta["location"] = res.location
         meta["place"] = res.place
+        meta["language"] = style.text_language  # what the text was written in, kept per photo
         meta.update(_file_facts(photo.metadata))
         meta["ai_run"] = {"model": f"{use.name}/{use.model}", "max_tries": tries_now}
         if res.issues:
@@ -1331,7 +1336,7 @@ def update_metadata(
             data[key] = value
     meta, gr, status = _evaluate(cfg, store, photo, data)
     stored = meta.to_dict()
-    for extra in ("title", "location", "place", *FILE_FACT_KEYS):
+    for extra in ("title", "location", "place", "language", *FILE_FACT_KEYS):
         if extra in data:
             stored[extra] = data[extra]
     was = photo.status
@@ -1387,7 +1392,7 @@ def approve(
         if photo.status not in (Status.DESCRIBED, Status.NEEDS_REVIEW, Status.SET_ASIDE):
             summary.refused[pid] = f"status is {photo.status.value}"
             continue
-        if not_english(photo.metadata or {}):
+        if not_english(photo.metadata or {}, cfg.style.english_only):
             summary.refused[pid] = NOT_ENGLISH_TEXT + ": edit it to English first"
             continue
         meta, gr, _ = _evaluate(cfg, store, photo, photo.metadata or {})
@@ -1477,7 +1482,9 @@ def prepare_batch(
         progress(i, len(photos), photo.orig_name)
         meta = dict(photo.metadata or {})
         gr = (photo.guardrail or {}).get("action")
-        problems = release_check(meta, photo.detected, photo.release_ids)
+        problems = release_check(
+            meta, photo.detected, photo.release_ids, strict=cfg.style.english_only
+        )
         if gr == "block":
             problems.append("Blocked by guardrails.")
         if problems:
@@ -1810,7 +1817,7 @@ def export_batch(
     photos = [p for p in photos if p.submit_name]
     skipped: dict[int, str] = {}
     for p in photos:  # last guard: the CSV never carries non-Latin text (flagged, not altered)
-        if not_english(p.metadata or {}):
+        if not_english(p.metadata or {}, cfg.style.english_only):
             assert p.id is not None
             skipped[p.id] = NOT_ENGLISH_TEXT
     if skipped and not dry_run:
@@ -1821,7 +1828,7 @@ def export_batch(
     summary = ExportSummary(rows=rows, dry_run=dry_run, skipped=skipped)
     if dry_run or not rows:
         return summary
-    dest = deliver.write_csv(batch_id, rows, batch_dir(cfg, batch_id))
+    dest = deliver.write_csv(batch_id, rows, batch_dir(cfg, batch_id), cfg.style.english_only)
     summary.files = [dest]
     for photo in photos:
         assert photo.id is not None
@@ -2384,6 +2391,7 @@ UI_SETTING_KEYS = (
     "update_cache",
     "include_gps",
     "max_tries",
+    "language",
 )
 PROFILE_RE = re.compile(r"^[A-Za-z0-9_.@:+=,-]{1,100}$")
 MAX_STYLE_TEXT = 200
@@ -2443,6 +2451,24 @@ def _clean_style(value: Any) -> dict[str, Any]:
             except ValueError as exc:
                 raise PipelineError(f"Default place, {label}: {exc}") from exc
     return out
+
+
+def _clean_language_setting(value: Any) -> dict[str, Any]:
+    """Validate the metadata language setting: strict English, or a language name to write in."""
+    if not isinstance(value, dict):
+        raise PipelineError("The language setting must be a set of named values.")
+    english = value.get("english_only", True)
+    if not isinstance(english, bool):
+        raise PipelineError("English only must be on or off.")
+    if english:
+        return {"english_only": True}
+    try:
+        return {
+            "english_only": False,
+            "language": metadata_rules.clean_language(value.get("language")),
+        }
+    except ValueError as exc:
+        raise PipelineError(str(exc)) from exc
 
 
 def _clean_filters(value: Any) -> dict[str, Any]:
@@ -2510,6 +2536,8 @@ def set_ui_setting(store: Store, name: str, value: Any) -> Any:
         value = str(value or "").strip()
         if value and not PROFILE_RE.match(value):
             raise PipelineError("That AWS profile name is not valid.")
+    elif key == "ui.language":
+        value = _clean_language_setting(value)
     elif key in ("ui.update_check", "ui.include_gps"):
         value = bool(value)
     elif key == "ui.update_cache":
@@ -2562,6 +2590,23 @@ def apply_style_overrides(cfg: Config, store: Store) -> Config:
     tries = store.get_setting("ui.max_tries")
     if isinstance(tries, int) and not isinstance(tries, bool) and 1 <= tries <= 20:
         cfg = cfg.model_copy(update={"llm": cfg.llm.model_copy(update={"max_tries": tries})})
+    lang = store.get_setting("ui.language")
+    if isinstance(lang, dict) and isinstance(lang.get("english_only"), bool):
+        try:
+            saved = _clean_language_setting(lang)
+        except PipelineError:  # a damaged saved value never stops the app; strict English stays
+            saved = {}
+        if saved:
+            cfg = cfg.model_copy(
+                update={
+                    "style": cfg.style.model_copy(
+                        update={
+                            "english_only": saved["english_only"],
+                            "metadata_language": saved.get("language", ""),
+                        }
+                    )
+                }
+            )
     style = store.get_setting("ui.style") or {}
     if not style:
         return cfg

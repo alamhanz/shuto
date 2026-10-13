@@ -44,10 +44,12 @@ def compute_file_facts(path: str | Path) -> dict[str, Any]:
     return out
 
 
-def _clean_text(value: object, limit: int) -> str:
+def _clean_text(value: object, limit: int, english: bool = True) -> str:
     """One line of English text: accents folded, words in other scripts left out (the prompt
-    asks for English only, so a Japanese title in the file must not leak into the answer)."""
-    text = english_only(re.sub(r"\s+", " ", str(value or "")).strip())
+    asks for English only, so a Japanese title in the file must not leak into the answer).
+    With ``english=False`` (another metadata language) the words are kept as they are."""
+    text = re.sub(r"\s+", " ", str(value or "")).strip()
+    text = english_only(text) if english else text
     return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
 
 
@@ -80,20 +82,23 @@ def _place_from_file(hint: dict | None) -> dict[str, Any] | None:
     }
 
 
-def place_text(place: dict[str, Any] | None) -> str:
+def place_text(place: dict[str, Any] | None, english: bool = True) -> str:
     """ "Shibuya, Tokyo, Japan" style text from a context place."""
     if not place:
         return ""
     parts: list[str] = []
     for key in _PLACE_KEYS:
-        value = _clean_text(place.get(key), 60)
+        value = _clean_text(place.get(key), 60, english)
         if value and value.lower() not in (p.lower() for p in parts):
             parts.append(value)
     return ", ".join(parts)
 
 
 def build_context(
-    meta: PhotoMeta, gps_place: dict | None = None, captured_fallback: Any = None
+    meta: PhotoMeta,
+    gps_place: dict | None = None,
+    captured_fallback: Any = None,
+    english: bool = True,
 ) -> dict[str, Any]:
     """Known facts plus a short hints string (at most 300 characters)."""
     captured = meta.captured or captured_fallback
@@ -112,16 +117,16 @@ def build_context(
         "focal_mm": meta.focal_mm,
         "focal_35mm": meta.focal_35mm,
     }
-    ctx["hints"] = _hints(ctx)
+    ctx["hints"] = _hints(ctx, english)
     return ctx
 
 
-def _gps_place_sentence(place: dict[str, Any]) -> str:
+def _gps_place_sentence(place: dict[str, Any], english: bool = True) -> str:
     """E.g. "Place from GPS: Sakuragaokacho (neighborhood), Shibuya (ward), Tokyo (prefecture),
     Japan. Use the ward for the caption; neighborhood may be a keyword." """
-    hood = _clean_text(place.get("neighborhood"), 60)
-    ward = _clean_text(place.get("ward"), 60)
-    city = _clean_text(place.get("city"), 60)
+    hood = _clean_text(place.get("neighborhood"), 60, english)
+    ward = _clean_text(place.get("ward"), 60, english)
+    city = _clean_text(place.get("city"), 60, english)
     main_label = "ward" if ward else "city"
     main = ward or city
     if hood and hood.lower() == main.lower():
@@ -129,8 +134,8 @@ def _gps_place_sentence(place: dict[str, Any]) -> str:
     levels: list[tuple[str, str]] = [
         (hood, "neighborhood"),
         (main, main_label),
-        (_clean_text(place.get("prefecture"), 60), _region_label(place)),
-        (_clean_text(place.get("country"), 60), ""),
+        (_clean_text(place.get("prefecture"), 60, english), _region_label(place)),
+        (_clean_text(place.get("country"), 60, english), ""),
     ]
     shown = [(n, label) for n, label in levels if n]
     if not shown:
@@ -149,28 +154,28 @@ def _region_label(place: dict[str, Any]) -> str:
     return "prefecture" if place.get("country") == "Japan" else "region"
 
 
-def _hints(ctx: dict[str, Any]) -> str:
+def _hints(ctx: dict[str, Any], english: bool = True) -> str:
     sentences: list[str] = []
-    where = place_text(ctx["place"])
+    where = place_text(ctx["place"], english)
     when = ctx["captured"][:10] if ctx["captured"] else ""
     place = ctx["place"]
     if place and where and place["source"] == "gps":
         if when:
             sentences.append(f"Taken {when}.")
-        sentences.append(_gps_place_sentence(place) or f"Place from GPS: {where}.")
+        sentences.append(_gps_place_sentence(place, english) or f"Place from GPS: {where}.")
     elif place and where:
         sentences.append(f"Taken {when + ' ' if when else ''}in {where} (from the photo file).")
     elif when:
         sentences.append(f"Taken {when}.")
     if ctx["title"]:
-        sentences.append(f"Photographer title: {_clean_text(ctx['title'], 60)}.")
+        sentences.append(f"Photographer title: {_clean_text(ctx['title'], 60, english)}.")
     if ctx["keywords"]:
-        kws = [_clean_text(k, 30) for k in ctx["keywords"][:_MAX_KEYWORDS_IN_HINTS]]
+        kws = [_clean_text(k, 30, english) for k in ctx["keywords"][:_MAX_KEYWORDS_IN_HINTS]]
         sentences.append("Photographer keywords: " + ", ".join(k for k in kws if k) + ".")
     if ctx["caption"]:
-        sentences.append(f"Photographer caption: {_clean_text(ctx['caption'], 80)}.")
+        sentences.append(f"Photographer caption: {_clean_text(ctx['caption'], 80, english)}.")
     if ctx["lens"] or ctx["focal_35mm"]:
-        gear = _clean_text(ctx["lens"], 40) if ctx["lens"] else f"{ctx['focal_35mm']:g} mm"
+        gear = _clean_text(ctx["lens"], 40, english) if ctx["lens"] else f"{ctx['focal_35mm']:g} mm"
         sentences.append(f"Lens: {gear}.")
     text = ""
     for sentence in sentences:  # whole sentences only, in priority order
@@ -180,7 +185,7 @@ def _hints(ctx: dict[str, Any]) -> str:
     return text
 
 
-def photo_context(photo: Any) -> dict[str, Any]:
+def photo_context(photo: Any, english: bool = True) -> dict[str, Any]:
     """Facts for one stored photo; uses values saved at import, else reads the file now."""
     stored = photo.metadata or {}
     file_meta = stored.get("file_meta")
@@ -194,4 +199,4 @@ def photo_context(photo: Any) -> dict[str, Any]:
             captured = datetime.fromisoformat(photo.captured_at)
         except ValueError:
             captured = None
-    return build_context(PhotoMeta.from_dict(file_meta), gps_place, captured)
+    return build_context(PhotoMeta.from_dict(file_meta), gps_place, captured, english)

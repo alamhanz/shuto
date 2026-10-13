@@ -53,7 +53,10 @@ def safe_filename(
 
 
 def release_check(
-    meta: dict[str, Any], detected: dict[str, Any] | None, release_ids: list[str]
+    meta: dict[str, Any],
+    detected: dict[str, Any] | None,
+    release_ids: list[str],
+    strict: bool = True,
 ) -> list[str]:
     """Problems that block preparation (empty list = fine).
 
@@ -86,7 +89,7 @@ def release_check(
         problems.append("No keywords.")
     texts = [str(meta.get(k) or "") for k in ("title", "description")]
     texts += [str(k) for k in meta.get("keywords") or []]
-    if any(has_foreign_script(t) for t in texts):
+    if strict and any(has_foreign_script(t) for t in texts):
         problems.append("Text is not in English: Shutterstock needs English, Latin letters.")
     return problems
 

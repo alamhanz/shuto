@@ -96,6 +96,29 @@
 </form>
 </section>
 
+<section id="metadata-language" aria-labelledby="h-language">
+<h2 id="h-language">Metadata language</h2>
+<p>The language of the descriptions and keywords the AI writes. Changes apply to photos you check from now on; photos already checked keep the language they were written in.</p>
+<form method="post" action="/settings/language" class="stack">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <label class="inline"><input type="radio" name="english_only" value="yes"{% if language.english_only %} checked{% endif %}> English only (strict)</label>
+  <p class="hint">Recommended. Everything is written in English with plain letters, and text in other languages is flagged for you.</p>
+  <label class="inline"><input type="radio" name="english_only" value="no"{% if not language.english_only %} checked{% endif %}> Another language</label>
+  {% call field('language', 'Language for descriptions and keywords', help='Required when you choose another language, for example Japanese. Letters, spaces and hyphens only.') %}
+  <input id="language" name="language" value="{{ language.language }}" maxlength="30" aria-describedby="language-help">
+  {% endcall %}
+  {% if not language.english_only %}
+  <div id="language-warnings">
+  {% for w in language.warnings %}<p class="flash warn" role="note">{{ icon('alert') }}<span>{% if w.kind == 'local' %}<strong>Local AI model.</strong> {% endif %}{{ w.text }}</span></p>
+  {% endfor %}
+  </div>
+  {% else %}
+  <p class="hint">If you choose another language you will see a note about local AI models and about Shutterstock.</p>
+  {% endif %}
+  <p><button type="submit" class="btn primary">Save language</button></p>
+</form>
+</section>
+
 <section id="privacy" aria-labelledby="h-privacy">
 <h2 id="h-privacy">Privacy</h2>
 <form method="post" action="/settings/privacy" class="stack">

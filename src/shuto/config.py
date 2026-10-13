@@ -11,6 +11,7 @@ import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
 from .metadata import clean_place_part
+from .metadata_rules import clean_language
 
 APP_NAME = "shuto"
 CONFIG_FILENAME = "shuto.yaml"
@@ -117,12 +118,24 @@ class StyleConfig(_Section):
     theme: str = ""
     tone: str = "documentary, warm, factual; no hype words"
     language: str = "en"
+    english_only: bool = True  # strict English metadata; off = write in `metadata_language`
+    metadata_language: str = ""  # used only when english_only is off, e.g. "Japanese"
     region_focus: Literal["", "japan"] = ""  # "japan": romaji, Japan-first rules, house rules
     keywords: KeywordStyle = Field(default_factory=KeywordStyle)
     avoid: list[str] = ["beautiful", "amazing", "stunning"]
     extra_instructions: str = ""
     default_place: DefaultPlace = Field(default_factory=DefaultPlace)
     description: DescriptionStyle = Field(default_factory=DescriptionStyle)
+
+    @model_validator(mode="after")
+    def _check_metadata_language(self) -> StyleConfig:
+        if self.english_only:
+            return self
+        try:
+            self.metadata_language = clean_language(self.metadata_language)
+        except ValueError as exc:
+            raise ValueError(f"style.metadata_language: {exc}") from exc
+        return self
 
 
 class FilterRuleConfig(_Section):

@@ -30,6 +30,20 @@ Release notes are also published on the GitHub Releases page. Newest first.
   answer breaks a rule, the same model is asked to fix it (see "Tries, languages and small
   models").
 
+### Metadata language
+- **Settings -> Metadata language.** "English only (strict)" is on by default and works as
+  before. Turn it off and type the language for descriptions and keywords (for example
+  Japanese): both prompts then say "Write the description and keywords in <language>" instead
+  of the English-only rule, words in other scripts from the photo file are kept as hints, accents
+  are not changed, and the not-English checks (AI answer, text you type, CSV guard) are off.
+  The CSV stays UTF-8. The language name takes letters, spaces and hyphens only (30 characters
+  at most) because it goes into the AI's instructions; off with an empty box cannot be saved.
+- **Cautions** are shown when you turn strict off and next to the setting: local AI models may
+  write the language badly (shown prominently when the chosen model is local), and Shutterstock
+  may expect English metadata.
+- **Traceable:** each photo remembers the language it was written in, and the batch report has a
+  `metadata_language` column. Photos already checked keep their text when you switch.
+
 ### Tries, languages and small models
 - **Up to 8 tries per photo.** If an answer breaks a rule (too short, a word list, too few
   keywords, almost the same as another photo in the batch) the AI is asked again, up to 8 model

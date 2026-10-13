@@ -133,7 +133,13 @@ a.chip:hover, a.badge:hover { border-color: var(--secondary); }
 .card .name { font-weight: 600; word-break: break-all; }
 .card .reason { color: var(--review); font-size: .88rem; }
 .card .pick { position: absolute; top: 6px; left: 6px; background: var(--surface); padding: .15rem .3rem; border-radius: 6px; display: flex; align-items: center; gap: .3rem; }
-.card.culled img, .card.duplicate img, .card.near_duplicate img { opacity: .55; }
+.card.culled img, .card.duplicate img, .card.near_duplicate img, .card.set_aside img { opacity: .55; }
+.card .layer { margin-top: .25rem; font-size: .8rem; }
+.checks { list-style: none; padding-left: 0; }
+.checks li { margin: .4rem 0; }
+.report-bar { margin: .6rem 0; }
+.rule-row { display: flex; gap: .6rem; flex-wrap: wrap; align-items: center; margin: .4rem 0; }
+.rule-row input[type="text"] { flex: 1 1 14rem; min-width: 10rem; }
 .card.needs_review, .card.blocked { border-style: dashed; border-color: var(--review); }
 .card.selected { border-color: var(--secondary); box-shadow: 0 0 0 2px var(--secondary); }
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: .9rem; }

@@ -4,7 +4,7 @@
 {% block content %}
 <h1>Settings</h1>
 <nav aria-label="Settings sections"><p class="chips">
-  <a class="chip" href="#model">AI model</a><a class="chip" href="#storage">AI storage</a><a class="chip" href="#shutterstock">Shutterstock login</a><a class="chip" href="#style">Style</a><a class="chip" href="#computer">This computer</a><a class="chip" href="#updates">Updates</a><a class="chip" href="#advanced">Advanced</a>
+  <a class="chip" href="#model">AI model</a><a class="chip" href="#storage">AI storage</a><a class="chip" href="#shutterstock">Shutterstock login</a><a class="chip" href="#style">Style</a><a class="chip" href="#rules">Your photo rules</a><a class="chip" href="#computer">This computer</a><a class="chip" href="#updates">Updates</a><a class="chip" href="#advanced">Advanced</a>
 </p></nav>
 <p><a href="/welcome">Run setup again</a></p>
 
@@ -74,6 +74,51 @@
   </select>
   {% endcall %}
   <p><button type="submit" class="btn primary">Save style</button></p>
+</form>
+</section>
+
+<section id="rules" aria-labelledby="h-rules">
+<h2 id="h-rules">Your photo rules</h2>
+<p>{{ HELP.rules }}</p>
+<p class="hint">Changes only apply to photos you check from now on. Photos that were already checked keep their results.</p>
+<form method="post" action="/settings/rules" class="stack">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <fieldset>
+    <legend>Your theme</legend>
+    {% if rules.theme %}<p>Theme: <strong>{{ rules.theme }}</strong> (change it under Your style).</p>
+    {% else %}<p class="hint">You have not set a theme yet. Add one under Your style to use this check.</p>{% endif %}
+    <label class="inline"><input type="checkbox" name="theme_check" value="yes"{% if rules.theme_check %} checked{% endif %}> Set aside photos that don't fit my theme</label>
+    {% call field('theme_partly', 'A photo that fits the theme only partly') %}
+    <select id="theme_partly" name="theme_partly">
+      <option value="pass"{% if rules.theme_partly == 'pass' %} selected{% endif %}>Let through (shown with the reason)</option>
+      <option value="flag"{% if rules.theme_partly == 'flag' %} selected{% endif %}>Needs a look</option>
+    </select>
+    {% endcall %}
+  </fieldset>
+  <fieldset>
+    <legend>Your own rules</legend>
+    <p class="hint">At most {{ rules.max_rules }} rules ({{ rules.rule_count }} saved). Each one is 2 to 80 characters, for example "people" or "a car". A rule the AI cannot answer always goes to Needs a look.</p>
+    {% for r in rules.rule_rows %}
+    <div class="rule-row">
+      <input type="hidden" name="rule_id_{{ loop.index0 }}" value="{{ r.id }}">
+      <label class="sr-only" for="rule_kind_{{ loop.index0 }}">Rule {{ loop.index }}: type</label>
+      <select id="rule_kind_{{ loop.index0 }}" name="rule_kind_{{ loop.index0 }}">
+        <option value="include"{% if r.kind == 'include' %} selected{% endif %}>Must include</option>
+        <option value="avoid"{% if r.kind == 'avoid' %} selected{% endif %}>Must avoid</option>
+      </select>
+      <label class="sr-only" for="rule_text_{{ loop.index0 }}">Rule {{ loop.index }}: text</label>
+      <input type="text" id="rule_text_{{ loop.index0 }}" name="rule_text_{{ loop.index0 }}" value="{{ r.text }}" minlength="2" maxlength="80" placeholder="{{ 'Describe what to look for' if not r.text else '' }}">
+      <label class="sr-only" for="rule_mode_{{ loop.index0 }}">Rule {{ loop.index }}: when it fails</label>
+      <select id="rule_mode_{{ loop.index0 }}" name="rule_mode_{{ loop.index0 }}">
+        <option value="set_aside"{% if r.mode == 'set_aside' %} selected{% endif %}>Set aside</option>
+        <option value="flag"{% if r.mode == 'flag' %} selected{% endif %}>Just flag</option>
+      </select>
+      {% if r.text %}<label class="inline"><input type="checkbox" name="rule_remove_{{ loop.index0 }}" value="yes"> Remove</label>{% endif %}
+    </div>
+    {% endfor %}
+    {% if rules.rule_count >= rules.max_rules %}<p class="hint">You have reached the limit. Remove a rule to add another.</p>{% endif %}
+  </fieldset>
+  <p><button type="submit" class="btn primary">Save rules</button></p>
 </form>
 </section>
 

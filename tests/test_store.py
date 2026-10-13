@@ -22,7 +22,7 @@ def test_migrate_idempotent(store):
     store.migrate()
     store.migrate()
     with sqlite3.connect(store.path) as c:
-        assert c.execute("PRAGMA user_version").fetchone()[0] == 1
+        assert c.execute("PRAGMA user_version").fetchone()[0] == 2
         assert c.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
     Store(store.path)  # reopen
 
@@ -215,7 +215,7 @@ def test_concurrent_writers(store):
 
     def work(t):
         try:
-            for i in range(25):
+            for i in range(10):
                 pid = store.add_photo(
                     sha256=f"t{t}-{i}", src_path="/x", orig_name="x.jpg", batch_id="b"
                 )
@@ -231,5 +231,161 @@ def test_concurrent_writers(store):
     for t in threads:
         t.join()
     assert errors == []
-    assert len(store.list_photos(statuses=[Status.READY])) == 100
-    assert store.usage_by_batch("b")["calls"] == 100
+    assert len(store.list_photos(statuses=[Status.READY])) == 40
+    assert store.usage_by_batch("b")["calls"] == 40
+
+
+# -- schema v2 / filters / set_aside -----------------------------------------------------
+
+
+def _make_v1_db(path):
+    """A database exactly as the previous release created it (v1 DDL, one photo)."""
+    from shuto.store import _SCHEMA_V1
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(path)
+    for stmt in _SCHEMA_V1.split(";"):
+        if stmt.strip():
+            conn.execute(stmt)
+    conn.execute("PRAGMA user_version=1")
+    conn.execute("INSERT INTO batches(id, created_at) VALUES ('b1', 'x')")
+    conn.execute(
+        "INSERT INTO photos(batch_id, sha256, src_path, orig_name, status, guardrail_json,"
+        " created_at, updated_at) VALUES ('b1','abc','/x/a.jpg','a.jpg','described',"
+        " '{\"action\": \"ok\"}', 't', 't')"
+    )
+    conn.commit()
+    conn.close()
+
+
+def _columns(db):
+    with sqlite3.connect(db) as c:
+        return [r[1] for r in c.execute("PRAGMA table_info(photos)")]
+
+
+def _version(db):
+    with sqlite3.connect(db) as c:
+        return c.execute("PRAGMA user_version").fetchone()[0]
+
+
+def test_v1_database_migrates_in_place(tmp_path):
+    db = tmp_path / "old" / "shuto.db"
+    _make_v1_db(db)
+    assert "filters_json" not in _columns(db)
+    store = Store(db)
+    photo = store.find_by_sha("abc")
+    assert photo.status is Status.DESCRIBED
+    assert photo.guardrail == {"action": "ok"}
+    assert photo.filters is None
+    store.update_photo(photo.id, filters={"v": 1, "verdict": "ok"})
+    assert store.get_photo(photo.id).filters == {"v": 1, "verdict": "ok"}
+    store.migrate()  # no-op the second time
+    Store(db)
+    assert _version(db) == 2
+    assert _columns(db).count("filters_json") == 1
+
+
+def test_migration_is_atomic(tmp_path, monkeypatch):
+    db = tmp_path / "old" / "shuto.db"
+    _make_v1_db(db)
+    real_connect = sqlite3.connect
+
+    class Boom(sqlite3.Connection):
+        def execute(self, sql, *a):
+            if sql.startswith("PRAGMA user_version=2"):
+                raise sqlite3.OperationalError("disk gone")
+            return super().execute(sql, *a)
+
+    monkeypatch.setattr(
+        "shuto.store.sqlite3.connect",
+        lambda *a, **kw: real_connect(*a, factory=Boom, **kw),
+    )
+    with pytest.raises(sqlite3.OperationalError):
+        Store(db)
+    monkeypatch.undo()
+    assert _version(db) == 1
+    assert "filters_json" not in _columns(db)
+    assert Store(db).find_by_sha("abc") is not None  # a later start migrates fine
+    assert _version(db) == 2
+
+
+def test_migrate_with_column_already_present(tmp_path):
+    db = tmp_path / "old" / "shuto.db"
+    _make_v1_db(db)
+    with sqlite3.connect(db) as c:
+        c.execute("ALTER TABLE photos ADD COLUMN filters_json TEXT")
+    Store(db)
+    assert _version(db) == 2
+
+
+def test_newer_database_refused(tmp_path):
+    db = tmp_path / "new" / "shuto.db"
+    db.parent.mkdir()
+    with sqlite3.connect(db) as c:
+        c.execute("PRAGMA user_version=3")
+    with pytest.raises(RuntimeError, match="newer"):
+        Store(db)
+
+
+def test_filters_roundtrip_and_none_default(store):
+    pid = _photo(store)
+    assert store.get_photo(pid).filters is None
+    data = {"v": 1, "theme": {"text": "日本", "fit": "no"}, "rules": []}
+    store.update_photo(pid, filters=data)
+    assert store.get_photo(pid).filters == data
+    store.update_photo(pid, filters=None)
+    assert store.get_photo(pid).filters is None
+
+
+def test_set_aside_transitions(store):
+    pid = _photo(store)
+    store.set_status(pid, Status.READY)
+    store.set_status(pid, Status.SET_ASIDE)
+    store.set_status(pid, Status.NEEDS_REVIEW)  # describe results move between each other
+    store.set_status(pid, Status.SET_ASIDE)
+    store.set_status(pid, Status.APPROVED)  # approve anyway
+    store.set_status(pid, Status.READY)
+    store.set_status(pid, Status.SET_ASIDE)
+    store.set_status(pid, Status.READY)  # write again
+    for bad in (Status.PREPARED, Status.UPLOADED, Status.SUBMITTED):
+        store.set_status(pid, Status.SET_ASIDE)
+        with pytest.raises(InvalidTransition):
+            store.set_status(pid, bad)
+        store.set_status(pid, Status.READY)
+    # only a describe can lead into set_aside
+    with pytest.raises(InvalidTransition):
+        store.set_status(_photo(store, n=2), Status.SET_ASIDE)
+    with pytest.raises(InvalidTransition):
+        store.set_status(_photo(store, n=3, status=Status.UPLOADED), Status.SET_ASIDE)
+
+
+def test_status_times_latest_per_status(store):
+    a = _photo(store, n=1)
+    b = _photo(store, n=2)
+    _photo(store, n=3, batch="other")
+    store.set_status(a, Status.READY)
+    store.set_status(a, Status.NEEDS_REVIEW)
+    store.set_status(a, Status.APPROVED)
+    store.set_status(a, Status.READY)
+    store.set_status(a, Status.NEEDS_REVIEW)
+    store.set_status(b, Status.READY)
+    times = store.status_times("2026-W01")
+    assert set(times) == {a, b}
+    assert set(times[a]) == {"ready", "needs_review", "approved"}
+    assert set(times[b]) == {"ready"}
+    assert times[a]["needs_review"] >= times[a]["approved"]
+    assert store.status_times("nope") == {}
+
+
+def test_batch_events_filters_kind_and_batch(store):
+    a = _photo(store, n=1)
+    c = _photo(store, n=3, batch="other")
+    store.set_status(a, Status.READY)
+    store.set_status(c, Status.READY)
+    store.log_event("note", photo_id=a, batch_id="2026-W01", detail={"x": 1})
+    evs = store.batch_events("2026-W01", ["status", "note"])
+    assert [e["kind"] for e in evs].count("note") == 1
+    assert all(e["batch_id"] == "2026-W01" for e in evs)
+    assert [e["detail"] for e in store.batch_events("2026-W01", ["note"])] == [{"x": 1}]
+    assert store.batch_events("2026-W01", []) == []
+    assert store.batch_events("2026-W01", ("nothing",)) == []

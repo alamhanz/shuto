@@ -38,6 +38,12 @@ style:
     seasonal_terms: true
   avoid: [beautiful, amazing, stunning]
   extra_instructions: ""
+filters:                           # extra checks in the same AI call as the description
+  theme_check: true                # with style.theme set: photos that do not fit are set aside
+  theme_partly: pass               # a "partly" fit: pass (shown in Review) or flag ("Needs a look")
+  rules: []                        # at most 10, each 2-80 characters on one line, for example:
+  # - {kind: avoid, text: "people", mode: set_aside}      # mode: set_aside or flag
+  # - {kind: include, text: "a street scene", mode: flag}
 restrictions:
   builtin: true
   extra_files: []

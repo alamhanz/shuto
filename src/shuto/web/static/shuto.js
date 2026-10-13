@@ -1,5 +1,5 @@
 // shuto helpers (CSP-safe, no inline handlers).
-// - j/k = next/previous photo, a = approve
+// - j/k = next/previous photo, a = approve (not for set-aside photos: "Approve anyway" is a click)
 // - live keyword count, max 2 categories
 // - bulk select: [data-select-all] / [data-select-none] toggle input[name=ids]; [data-select-count] shows the count
 // - dialogs: [data-open-dialog="id"], [data-close-dialog], [data-pick-path="/some/dir"] fills input[name=path]

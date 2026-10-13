@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import re
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 _TRUE = {"true", "yes", "y", "1"}
 _FALSE = {"false", "no", "n", "0", "", "none", "null"}
@@ -68,7 +69,9 @@ class Location(BaseModel):
     country: str | None = None
 
 
-class PhotoOutput(BaseModel):
+class _PhotoCore(BaseModel):
+    model_config = ConfigDict(title="PhotoOutput")  # keeps the base schema byte-identical
+
     description: str
     caption_sentence: str = ""
     keywords: list[str]
@@ -94,7 +97,32 @@ class PhotoOutput(BaseModel):
         return {} if v is None or v == "" else v
 
 
-PHOTO_OUTPUT_SCHEMA: dict = PhotoOutput.model_json_schema()
+class PhotoOutput(_PhotoCore):
+    """Core answer plus the optional filter answers (theme fit, user rules).
+
+    The filter fields are kept raw and never raise: filters.evaluate() reads them leniently,
+    so a garbled filter answer can never fail the describe call.
+    """
+
+    theme_fit: Any = None
+    checks: Any = None
+
+    @field_validator("theme_fit", "checks", mode="before")
+    @classmethod
+    def _keep_containers(cls, v: Any) -> Any:
+        return v if isinstance(v, (dict, list)) else None
+
+
+PHOTO_OUTPUT_SCHEMA: dict = _PhotoCore.model_json_schema()
+
+
+def photo_schema(props: dict, required: list[str]) -> dict:
+    """The base schema with extra top-level properties appended (after `location`)."""
+    schema = copy.deepcopy(PHOTO_OUTPUT_SCHEMA)
+    schema["properties"].update(copy.deepcopy(props))
+    schema["required"] = [*schema.get("required", []), *required]
+    return schema
+
 
 _FENCE = re.compile(r"```(?:json|JSON)?\s*(.*?)```", re.DOTALL)
 _SINGLE = re.compile(r"([{,\[:]\s*)'((?:[^'\\]|\\.)*)'")

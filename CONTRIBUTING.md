@@ -51,7 +51,8 @@ ruff check .
 ruff format --check .
 ```
 
-CI runs ruff and pytest on Ubuntu, macOS and Windows with Python 3.12 and 3.13. Tests must
+`pytest -n auto` runs the tests in parallel (much faster; CI does this). CI runs pytest on
+Ubuntu, macOS and Windows with Python 3.12 and 3.13, and ruff once on Ubuntu 3.12. Tests must
 not assume a GPU, a running Ollama, network access, POSIX paths or POSIX file permissions.
 Use the fake LLM and fake FTP helpers already in `tests/`.
 

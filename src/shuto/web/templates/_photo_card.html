@@ -8,6 +8,7 @@
     {% if c.editorial %}<span class="chip neutral">Editorial</span>{% endif %}
     {% if c.gps %}<span class="chip review" title="This photo contains the place where it was taken">Place included</span>{% endif %}
     <div class="name"><a href="/photo/{{ c.id }}?back={{ show }}">{{ c.name }}</a></div>
+    {% if c.layer %}<span class="chip neutral layer">{{ c.layer }}</span>{% endif %}
     {% if c.reason %}<div class="reason">{{ c.reason }}</div>{% endif %}
     {% if c.snippet %}<div class="snip">{{ c.snippet }}</div>{% endif %}
   </div>

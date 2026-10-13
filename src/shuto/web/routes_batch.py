@@ -7,19 +7,28 @@ from typing import Annotated, Any
 from urllib.parse import quote
 
 from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse, Response
 
+from .. import filters as filters_mod
 from .. import imaging, pipeline
 from ..jobs import JobContext
 from ..local_models import ModelChoiceRequired
 from ..models import ALLOWED, Photo, Status
 from ..pipeline import PipelineError
+from ..report import report_filename
 from . import ux
 from .common import PostForm, WebCtx, short, split_lines
 
 BATCH_JOBS = ("cull", "describe", "prepare", "upload", "export")  # legacy / power-user routes
 PREVIEW_SIDE = 2048  # page preview size; originals can be tens of MB
 FILTERS = ("attention", "good", "aside", "all")
+WHY_FILTERS = ("quality", "copies", "theme", "rules")  # why a photo was set aside
+WHY_LABELS = {
+    "quality": "Quality",
+    "copies": "Copies",
+    "theme": "Your theme",
+    "rules": "Your rules",
+}
 
 
 def _url(batch_id: str, page: str = "") -> str:
@@ -30,6 +39,86 @@ def _filter(value: Any) -> str | None:
     """A review filter from user input, or None when it is not one of the known four."""
     text = str(value or "")
     return text if text in FILTERS else None
+
+
+def _why(value: Any) -> str | None:
+    """A "why set aside" sub-filter from user input, or None when it is not a known one."""
+    text = str(value or "")
+    return text if text in WHY_FILTERS else None
+
+
+def _why_set(photo: Photo) -> set[str]:
+    """Which reasons put a photo in the "Set aside" group (empty for other photos)."""
+    if photo.status == Status.CULLED:
+        return {"quality"}
+    if photo.status in (Status.DUPLICATE, Status.NEAR_DUPLICATE, Status.ALREADY_UPLOADED):
+        return {"copies"}
+    if photo.status == Status.SET_ASIDE:
+        by = (photo.filters or {}).get("set_aside_by") or []
+        found = {"theme" if k == "theme" else "rules" for k in by}
+        return found or {"rules"}
+    return set()
+
+
+def _theme_needs_look(flt: dict[str, Any] | None) -> bool:
+    """True when the theme check (not one of the user's rules) is why a photo needs a look."""
+    theme = (flt or {}).get("theme")
+    return isinstance(theme, dict) and theme.get("effect") not in (None, "ok")
+
+
+def _aside_messages(flt: dict[str, Any] | None) -> list[str]:
+    """Plain-words reasons for the checks that set a photo aside (theme first)."""
+    if not isinstance(flt, dict):
+        return []
+    by = [str(k) for k in flt.get("set_aside_by") or []]
+    only = {
+        "theme": flt.get("theme") if "theme" in by else None,
+        "rules": [
+            r for r in flt.get("rules") or [] if isinstance(r, dict) and f"rule:{r.get('id')}" in by
+        ],
+    }
+    return filters_mod.messages(only)
+
+
+def _check_rows(flt: dict[str, Any] | None) -> list[dict[str, str]]:
+    """One row per check for the photo page: what was asked, the result, the AI's reason."""
+    if not isinstance(flt, dict):
+        return []
+    rows: list[dict[str, str]] = []
+    theme = flt.get("theme")
+    if isinstance(theme, dict):
+        result, tone = {
+            "yes": ("Fits", "ok"),
+            "partly": ("Partly fits", "review"),
+            "no": ("Doesn't fit", "blocked"),
+        }.get(str(theme.get("fit")), ("Not sure", "review"))
+        rows.append(
+            {
+                "what": f'Fits your theme "{theme.get("text", "")}"',
+                "result": result,
+                "tone": tone,
+                "reason": str(theme.get("reason") or ""),
+            }
+        )
+    for r in flt.get("rules") or []:
+        if not isinstance(r, dict):
+            continue
+        res = r.get("result")
+        tone = "ok" if res == "pass" else "review"
+        if res == "fail" and r.get("mode") == "set_aside":
+            tone = "blocked"
+        label = filters_mod.UserRule(
+            id="", kind=str(r.get("kind", "")), text=str(r.get("text", "")), mode=""
+        ).label()
+        rows.append(
+            {
+                "what": label,
+                "result": {"pass": "Passed", "fail": "Not met"}.get(str(res), "Not sure"),
+                "tone": tone,
+                "reason": str(r.get("reason") or ""),
+            }
+        )
+    return rows
 
 
 def _counts(photos: list[Photo]) -> dict[str, int]:
@@ -71,6 +160,19 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
             **extra,
         )
 
+    def ai_facts(batch_id: str) -> dict[str, Any]:
+        """Total and average AI time for the batch, as plain text (None until the AI has run)."""
+        t = pipeline.ai_time_summary(ctx.store, batch_id)
+        if not t["photos"]:
+            return {"ai_time": None}
+        return {
+            "ai_time": {
+                "total": ux.ai_time_text(float(t["total"])),
+                "average": ux.ai_time_text(float(t["average"])),
+                "photos": int(t["photos"]),
+            }
+        }
+
     @app.get("/batch/{batch_id}")
     def batch_page(batch_id: str):
         ctx.get_batch_or_404(batch_id)
@@ -82,7 +184,12 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
 
     def check_facts(request: Request, batch_id: str, counts: dict[str, int]) -> dict[str, Any]:
         """Estimate, model name and plain-words problems for the Check page."""
-        facts: dict[str, Any] = {"estimate": None, "model": None, "problems": []}
+        facts: dict[str, Any] = {
+            "estimate": None,
+            "model": None,
+            "problems": [],
+            "checks": pipeline.active_checks(ctx.cfg),
+        }
         if not (counts.get("imported", 0) + counts.get("ready", 0)):
             return facts
         try:
@@ -137,10 +244,13 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
             if d.aborted:
                 fe = ux.friendly_error(d.aborted)
                 raise PipelineError(f"{fe['what']} {fe['todo']}")
+            wrote = d.described + d.needs_review + d.blocked + d.set_aside
             text += (
-                f" The AI wrote text for {d.described + d.needs_review + d.blocked} photos: "
+                f" The AI wrote text for {wrote} photos: "
                 f"{d.described} look good, {d.needs_review + d.blocked} need a look."
             )
+            if d.set_aside:
+                text += f" {d.set_aside} were set aside because they don't fit your theme or rules."
             if d.failed:
                 text += f" {d.failed} could not be written; press Check again to retry them."
             return text
@@ -153,24 +263,43 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
         gr = p.guardrail or {}
         meta = p.metadata or {}
         reasons: list[str] = []
+        layer = ""
         if p.status == Status.CULLED:
             reasons = list((p.cull or {}).get("reasons") or [])
+            layer = "Quality"
+        elif p.status in (Status.DUPLICATE, Status.NEAR_DUPLICATE, Status.ALREADY_UPLOADED):
+            layer = "Copy"
+        elif p.status == Status.SET_ASIDE:
+            reasons = _aside_messages(p.filters) or filters_mod.messages(p.filters)
+            layer = "Theme" if "theme" in _why_set(p) else "Your rule"
+        elif p.status == Status.DESCRIBED and (p.filters or {}).get("theme", {}).get("fit") == (
+            "partly"
+        ):
+            reasons = filters_mod.messages({"theme": p.filters["theme"]})
+            layer = "Theme"
         elif p.status in (Status.NEEDS_REVIEW, Status.BLOCKED):
             reasons = list(gr.get("messages") or [])
+            layer = "Shutterstock rules" if reasons else ""
+            if not reasons:
+                reasons = filters_mod.messages(p.filters)
+                layer = "Theme" if _theme_needs_look(p.filters) else "Your rule"
         return {
             "id": p.id,
             "name": p.orig_name,
             "status": p.status.value,
             "bucket": ux.bucket(p.status),
             "group": p.near_dup_group,
-            "reason": short(str(reasons[0]), 140) if reasons else "",
+            "reason": short(str(reasons[0]), 220) if reasons else "",
+            "layer": layer,
             "snippet": short(str(meta.get("description") or ""), 90),
             "editorial": bool(meta.get("editorial")),
             "gps": p.has_gps,
         }
 
     @app.get("/batch/{batch_id}/review", response_class=HTMLResponse)
-    def review_page(request: Request, batch_id: str, show: str | None = None):
+    def review_page(
+        request: Request, batch_id: str, show: str | None = None, why: str | None = None
+    ):
         ctx.get_batch_or_404(batch_id)
         photos = ctx.store.list_photos(batch_id)
         by_bucket = {"attention": 0, "good": 0, "aside": 0, "all": len(photos)}
@@ -179,7 +308,14 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
             if b in by_bucket:
                 by_bucket[b] += 1
         chosen = _filter(show) or ("attention" if by_bucket["attention"] else "good")
-        shown = [p for p in photos if _in_filter(p, chosen)]
+        aside = [p for p in photos if ux.bucket(p.status) == "aside"]
+        why_counts = {w: sum(1 for p in aside if w in _why_set(p)) for w in WHY_FILTERS}
+        chosen_why = _why(why) if chosen == "aside" else None
+        shown = [
+            p
+            for p in photos
+            if _in_filter(p, chosen) and (chosen_why is None or chosen_why in _why_set(p))
+        ]
         # Near-duplicate groups stay together, in order of first appearance.
         groups: dict[tuple[str, int], list[Photo]] = {}
         for p in shown:
@@ -195,6 +331,11 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
             show=chosen,
             by_bucket=by_bucket,
             filters=FILTERS,
+            why=chosen_why or "",
+            why_counts=why_counts,
+            why_labels=WHY_LABELS,
+            report_href=_url(batch_id, "report.csv"),
+            **ai_facts(batch_id),
             approved=counts.get("approved", 0) + counts.get("prepared", 0),
             clean=counts.get("described", 0),
             upload_href=_url(batch_id, "upload"),
@@ -262,7 +403,7 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
                     refused = []
                     for pid in ids:
                         try:
-                            pipeline.override_status(ctx.store, pid, Status.READY)
+                            pipeline.override_status(ctx.store, pid, Status.READY, cfg=cfg)
                             changed += 1
                         except PipelineError as exc:
                             refused.append(str(exc))
@@ -368,18 +509,35 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
             exports=_export_names(photos),
             waiting=counts.get("exported", 0),
             finished=sum(counts.get(k, 0) for k in ("submitted", "accepted", "rejected")),
+            report_href=_url(batch_id, "report.csv"),
+            **ai_facts(batch_id),
         )
 
     @app.post("/batch/{batch_id}/submitted")
     def batch_submitted(batch_id: str, form: PostForm):
         ctx.get_batch_or_404(batch_id)
-        ids = pipeline.mark_submitted(ctx.store, batch_id)
+        ids = pipeline.mark_submitted(ctx.store, batch_id, cfg=ctx.cfg)
         if not ids:
             return ctx.back(
                 _url(batch_id, "submit"), error="Nothing is waiting to be marked as submitted."
             )
         return ctx.back(
             "/", notice=f"Marked {len(ids)} photo(s) as submitted. Open a photo to note the result."
+        )
+
+    @app.get("/batch/{batch_id}/report.csv")
+    def report_download(batch_id: str):
+        ctx.get_batch_or_404(batch_id)  # only an existing batch id is accepted; no file path
+        data = pipeline.report_bytes(ctx.cfg, ctx.store, batch_id)
+        name = "shuto-report-" + report_filename(batch_id)
+        return Response(
+            data,
+            media_type="text/csv; charset=utf-8",
+            headers={
+                "Content-Disposition": f'attachment; filename="{name}"',
+                "X-Content-Type-Options": "nosniff",
+                "Cache-Control": "no-store",
+            },
         )
 
     # ------------------------------------------------------------------ legacy job routes
@@ -534,12 +692,25 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
             next_href=_photo_path(next_id, show) if next_id else None,
             next_id=next_id,
             editable=photo.status in pipeline.PRE_UPLOAD_EDITABLE,
-            can_approve=photo.status in (Status.DESCRIBED, Status.NEEDS_REVIEW),
+            can_approve=photo.status in (Status.DESCRIBED, Status.NEEDS_REVIEW, Status.SET_ASIDE),
+            checks=_check_rows(photo.filters),
+            checks_overridden=bool((photo.filters or {}).get("overridden")),
+            checked_with_older_rules=_older_rules(photo),
             can_ready=photo.status != Status.READY
             and Status.READY in ALLOWED.get(photo.status, ()),
             can_result=photo.status in (Status.EXPORTED, Status.SUBMITTED),
             releases_text="\n".join(photo.release_ids),
         )
+
+    def _older_rules(photo: Photo) -> bool:
+        """True when the photo was checked with a different theme or rules than today's."""
+        old = (photo.filters or {}).get("fingerprint")
+        if not old:
+            return False
+        try:
+            return old != pipeline.filter_spec(ctx.cfg).fingerprint()
+        except PipelineError:
+            return False
 
     def _save_edits(photo_id: int, form: Any) -> None:
         """Save the edit form (guardrails re-run); raises PipelineError with a plain reason."""
@@ -602,7 +773,7 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
         ctx.get_photo_or_404(photo_id)
         path = _photo_path(photo_id, _filter(form.get("back")))
         try:
-            pipeline.override_status(ctx.store, photo_id, Status.READY)
+            pipeline.override_status(ctx.store, photo_id, Status.READY, cfg=ctx.cfg)
         except PipelineError as exc:
             return ctx.back(path, error=str(exc))
         return ctx.back(path, notice="Sent back to the AI. Press Check on the batch to run it.")
@@ -641,6 +812,7 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
                 accepted,
                 reason_code=str(form.get("reason") or "") or None,
                 note=str(form.get("note") or "").strip() or None,
+                cfg=ctx.cfg,
             )
         except PipelineError as exc:
             return ctx.back(path, error=str(exc))

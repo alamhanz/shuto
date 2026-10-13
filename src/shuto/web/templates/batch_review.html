@@ -11,7 +11,16 @@
   </a>
   {% endfor %}
 </nav>
+{% if show == 'aside' %}
+<nav class="chips" aria-label="Why photos were set aside">
+  <a class="chip neutral" href="/batch/{{ batch.id|urlencode }}/review?show=aside"{% if not why %} aria-current="true"{% endif %}>Any reason</a>
+  {% for w in why_labels %}
+  <a class="chip neutral" href="/batch/{{ batch.id|urlencode }}/review?show=aside&amp;why={{ w }}"{% if why == w %} aria-current="true"{% endif %}>{{ why_labels[w] }} <span class="chip-count">{{ why_counts[w] }}</span></a>
+  {% endfor %}
+</nav>
+{% endif %}
 <p class="hint">{{ HELP[show] if show in HELP else 'Every photo in this batch.' }}</p>
+{% include "_report_bar.html" %}
 
 <form id="bulk-form" method="post" action="/batch/{{ batch.id|urlencode }}/bulk" class="toolbar" aria-label="Actions for photos">
   <input type="hidden" name="csrf_token" value="{{ csrf }}">
@@ -40,7 +49,7 @@
 {% elif show == 'good' %}
 {{ empty('No photos here', 'Nothing is waiting for approval right now.', '/batch/' ~ (batch.id|urlencode) ~ '/review?show=all', 'Show all photos') }}
 {% elif show == 'aside' %}
-{{ empty('Nothing was set aside', 'No photos were left out because of quality, copies or earlier uploads.') }}
+{{ empty('Nothing was set aside', 'No photos were left out because of quality, copies, earlier uploads, or your theme and rules.') }}
 {% else %}
 {{ empty('No photos here', 'Try another filter above.') }}
 {% endif %}

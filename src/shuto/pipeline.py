@@ -26,9 +26,11 @@ import platformdirs
 
 from . import cull as cull_mod
 from . import deliver, describe, estimate, ftps, guardrails, hardware, imaging, local_models
+from . import filters as filters_mod
 from . import ledger as ledger_mod
+from . import report as report_mod
 from .collect import _safe_batch_name, batch_id_for, group_near_duplicates, scan_folder
-from .config import APP_NAME, Config, default_config_dir
+from .config import APP_NAME, Config, FilterRuleConfig, default_config_dir
 from .csv_export import split_by_kind
 from .imaging import hamming
 from .llm import get_provider
@@ -48,6 +50,7 @@ PRE_UPLOAD_EDITABLE = (
     Status.DESCRIBED,
     Status.NEEDS_REVIEW,
     Status.BLOCKED,
+    Status.SET_ASIDE,
     Status.APPROVED,
     Status.PREPARED,
 )
@@ -317,6 +320,7 @@ def import_folder(
                 if pos != best:
                     store.set_status(pid, Status.NEAR_DUPLICATE)
                     summary.near_duplicates += 1
+    _refresh_reports(cfg, store, set(summary.batches) | set(new_items))
     return summary
 
 
@@ -362,6 +366,8 @@ def cull_batch(
             summary.details.append(
                 {"id": photo.id, "name": photo.orig_name, "reasons": list(data["reasons"])}
             )
+    if photos:
+        refresh_report(cfg, store, batch_id)
     return summary
 
 
@@ -504,6 +510,7 @@ class DoctorReport:
     config_path: str | None
     workspace: str
     selection_unreadable: bool = False
+    checks: list[str] = field(default_factory=list)  # theme and rules that new photos get
 
 
 def doctor(
@@ -546,6 +553,7 @@ def doctor(
         str(config_path) if config_path else None,
         str(cfg.workspace_dir),
         unreadable,
+        active_checks(cfg),
     )
 
 
@@ -701,6 +709,7 @@ _REDESCRIBE = {
     Status.DESCRIBED,
     Status.NEEDS_REVIEW,
     Status.BLOCKED,
+    Status.SET_ASIDE,
     Status.APPROVED,
     Status.PREPARED,
 }
@@ -732,7 +741,14 @@ def estimate_describe(
             local_models.load_benchmarks(benchmark_cache_path()),
         )
         rec = next((r for r in recs if r.model.tag == sel.model), None)
-        return estimate.for_batch(n, "ollama", sel.model, recommendation=rec, concurrency=conc)
+        return estimate.for_batch(
+            n,
+            "ollama",
+            sel.model,
+            recommendation=rec,
+            concurrency=conc,
+            **_estimate_tokens(cfg),
+        )
     return estimate.for_batch(
         n,
         sel.provider,
@@ -740,6 +756,7 @@ def estimate_describe(
         api_model=api_model(sel.provider, sel.model),
         concurrency=conc,
         image_side=side,
+        **_estimate_tokens(cfg),
     )
 
 
@@ -783,11 +800,82 @@ def _release_flags(release_ids: list[str]) -> tuple[bool, bool]:
     return has_model, has_property
 
 
-def _status_for(meta: PhotoMetadata, gr: guardrails.GuardrailResult) -> Status:
+# --------------------------------------------------------------------------- theme + rules
+
+
+def filter_spec(cfg: Config) -> filters_mod.FilterSpec:
+    """The theme and the user's rules that describe asks the model about (from `cfg`, which
+    already includes the web app's `ui.filters` when built with `apply_style_overrides`)."""
+    try:
+        rules = filters_mod.clean_rules([r.model_dump() for r in cfg.filters.rules])
+    except filters_mod.FilterRuleError as exc:
+        raise PipelineError(str(exc)) from exc
+    return filters_mod.FilterSpec(
+        theme=cfg.style.theme or "",
+        theme_check=cfg.filters.theme_check,
+        theme_partly=cfg.filters.theme_partly,
+        rules=tuple(rules),
+    )
+
+
+def active_checks(cfg: Config) -> list[str]:
+    """Plain-English lines for the checks that new photos get (empty when there are none)."""
+    try:
+        spec = filter_spec(cfg)
+    except PipelineError as exc:
+        return [f"Your rules are not usable: {exc}"]
+    lines: list[str] = []
+    if spec.theme_active:
+        partly = "needs a look" if spec.theme_partly == "flag" else "let through"
+        lines.append(f'Theme "{spec.theme.strip()}": set aside if no, {partly} if partly')
+    for rule in spec.rules:
+        action = "set aside" if rule.mode == "set_aside" else "just flag"
+        lines.append(f"{rule.label()} ({action})")
+    return lines
+
+
+def checks_summary(cfg: Config) -> str:
+    """One line for `doctor`: 'theme "X" (set aside if no) + 2 rules', or 'none'."""
+    try:
+        spec = filter_spec(cfg)
+    except PipelineError:
+        return "your rules are not usable"
+    parts = []
+    if spec.theme_active:
+        parts.append(f'theme "{spec.theme.strip()}" (set aside if no)')
+    if spec.rules:
+        parts.append(f"{len(spec.rules)} rule{'s' if len(spec.rules) != 1 else ''}")
+    return " + ".join(parts) or "none"
+
+
+def _filter_counts(cfg: Config) -> tuple[int, int]:
+    """(number of rules, 1 if the theme is checked else 0), tolerant of unusable rules."""
+    n_rules = len(cfg.filters.rules)
+    theme = 1 if cfg.filters.theme_check and (cfg.style.theme or "").strip() else 0
+    return n_rules, theme
+
+
+def _estimate_tokens(cfg: Config) -> dict[str, int]:
+    rules, theme = _filter_counts(cfg)
+    return {
+        "prompt_tokens": 1200 + 40 * rules + 60 * theme,
+        "output_tokens": 600 + 50 * (rules + theme),
+    }
+
+
+def _status_for(
+    meta: PhotoMetadata,
+    gr: guardrails.GuardrailResult,
+    filters: dict[str, Any] | None = None,
+) -> Status:
+    """Shutterstock-rule block wins, then set aside, then needs a look, then looks good."""
     if gr.action == "block":
         return Status.BLOCKED
+    effect = filters_mod.status_effect(filters)
+    if effect == "set_aside":
+        return Status.SET_ASIDE
     extra = [w for w in meta.warnings if w not in gr.messages]
-    if gr.action == "review" or extra:
+    if gr.action == "review" or extra or effect == "flag":
         return Status.NEEDS_REVIEW
     return Status.DESCRIBED
 
@@ -808,7 +896,7 @@ def _evaluate(
         has_property_release=has_property,
     )
     meta.warnings.extend(m for m in gr.messages if m not in meta.warnings)
-    return meta, gr, _status_for(meta, gr)
+    return meta, gr, _status_for(meta, gr, photo.filters)
 
 
 @dataclass
@@ -816,6 +904,7 @@ class DescribeSummary:
     described: int = 0
     needs_review: int = 0
     blocked: int = 0
+    set_aside: int = 0
     failed: int = 0
     approved: int = 0
     errors: list[tuple[int, str]] = field(default_factory=list)
@@ -859,6 +948,7 @@ def describe_batch(
     notes = batch.notes if batch else ""
     restrictions = load_restrictions(cfg)
     style = describe.Style.from_config(cfg.style)
+    spec = filter_spec(cfg)
     feedback = describe.feedback_lines(store.rejection_stats(), store.recent_rejection_examples())
     side = cfg.llm.image_max_side or llm.default_image_side
     conc = max(1, cfg.llm.concurrency or llm.default_concurrency)
@@ -889,6 +979,8 @@ def describe_batch(
                 timeout_s=cfg.llm.timeout_s,
                 has_model_release=has_model,
                 has_property_release=has_property,
+                filters=spec,
+                at=_now_iso(),
             )
         except LLMError as exc:
             store.log_llm_call(
@@ -919,6 +1011,7 @@ def describe_batch(
         )
         meta = res.metadata.to_dict()
         meta["location"] = res.location
+        found = res.filters.to_dict() if res.filters else None
         _drop_prepared(store, photo)
         if photo.status != Status.READY:
             store.set_status(pid, Status.READY)
@@ -928,8 +1021,9 @@ def describe_batch(
             metadata_source=f"llm:{llm.name}/{llm.model}",
             detected=res.detected,
             guardrail=res.guardrails.to_dict(),
+            filters=found,
         )
-        status = _status_for(res.metadata, res.guardrails)
+        status = _status_for(res.metadata, res.guardrails, found)
         store.set_status(pid, status)
         if status == Status.DESCRIBED and cfg.review.auto_approve_clean:
             store.set_status(pid, Status.APPROVED, detail={"auto": True})
@@ -949,6 +1043,8 @@ def describe_batch(
             progress(done, len(photos), photo.orig_name)
             if status == Status.BLOCKED:
                 summary.blocked += 1
+            elif status == Status.SET_ASIDE:
+                summary.set_aside += 1
             elif status == Status.NEEDS_REVIEW:
                 summary.needs_review += 1
             elif status == Status.DESCRIBED:
@@ -957,6 +1053,7 @@ def describe_batch(
                 summary.failed += 1
                 assert photo.id is not None
                 summary.errors.append((photo.id, err))
+    refresh_report(cfg, store, batch_id)
     return summary
 
 
@@ -999,11 +1096,14 @@ def update_metadata(
     editorial: bool | None = None,
     mature: bool | None = None,
     release_ids: list[str] | None = None,
+    refresh: bool = True,
 ) -> Photo:
     """Edit metadata; guardrails re-run on every save and decide the new status.
 
     A prepared photo goes back to approved (its stale copy is deleted); an approved photo that
-    now violates a guardrail drops to needs_review/blocked.
+    now violates a guardrail drops to needs_review/blocked. The AI is never asked again: a
+    set-aside photo stays set aside (unless a guardrail now blocks it). `refresh=False` skips
+    rewriting the batch report (bulk callers refresh once).
     """
     photo = get_photo(store, photo_id)
     if photo.status not in PRE_UPLOAD_EDITABLE:
@@ -1028,6 +1128,9 @@ def update_metadata(
         if extra in data:
             stored[extra] = data[extra]
     was = photo.status
+    if was in (Status.APPROVED, Status.PREPARED):
+        # An edit never moves an approved photo because of the theme or rules (only guardrails).
+        status = _status_for(meta, gr)
     if was == Status.PREPARED:
         _drop_prepared(store, photo)
         store.set_status(photo_id, Status.APPROVED)
@@ -1038,6 +1141,8 @@ def update_metadata(
             store.set_status(photo_id, status, force=True, detail={"reason": "edited"})
     elif status != was:
         store.set_status(photo_id, status)
+    if refresh:
+        refresh_report(cfg, store, photo.batch_id)
     return get_photo(store, photo_id)
 
 
@@ -1055,7 +1160,12 @@ def approve(
     photo_ids: Iterable[int] | None = None,
     include_needs_review: bool = False,
 ) -> ApproveSummary:
-    """Manual approval. Guardrails are re-checked; blocked photos are always refused."""
+    """Manual approval. Guardrails are re-checked; blocked photos are always refused.
+
+    A photo that was set aside (or flagged) by the theme/rules check can be approved by id
+    ("Approve anyway"); that is recorded in `Photo.filters["overridden"]` and as a
+    `filters_overridden` event. Approving without ids never includes set-aside photos.
+    """
     summary = ApproveSummary()
     if photo_ids is not None:
         photos = [get_photo(store, i) for i in photo_ids]
@@ -1067,7 +1177,7 @@ def approve(
         assert pid is not None
         if photo.status == Status.APPROVED:
             continue
-        if photo.status not in (Status.DESCRIBED, Status.NEEDS_REVIEW):
+        if photo.status not in (Status.DESCRIBED, Status.NEEDS_REVIEW, Status.SET_ASIDE):
             summary.refused[pid] = f"status is {photo.status.value}"
             continue
         meta, gr, _ = _evaluate(cfg, store, photo, photo.metadata or {})
@@ -1076,8 +1186,16 @@ def approve(
             store.set_status(pid, Status.BLOCKED)
             summary.refused[pid] = "blocked by guardrails: " + "; ".join(gr.messages[:2])
             continue
+        if photo.filters and filters_mod.status_effect(photo.filters) != "ok":
+            at = _now_iso()
+            overridden = {"at": at, "status_was": photo.status.value}
+            store.update_photo(pid, filters={**photo.filters, "overridden": overridden})
+            store.log_event(
+                "filters_overridden", photo_id=pid, batch_id=photo.batch_id, detail=overridden
+            )
         store.set_status(pid, Status.APPROVED)
         summary.approved.append(pid)
+    _refresh_reports(cfg, store, {p.batch_id for p in photos if p.batch_id})
     return summary
 
 
@@ -1091,8 +1209,13 @@ _KEEPS_PREPARED = {
 }
 
 
-def override_status(store: Store, photo_id: int, status: Status | str) -> Photo:
-    """Manual status change that follows models.ALLOWED (e.g. culled -> ready, any -> ready)."""
+def override_status(
+    store: Store, photo_id: int, status: Status | str, *, cfg: Config | None = None
+) -> Photo:
+    """Manual status change that follows models.ALLOWED (e.g. culled -> ready, any -> ready).
+
+    Pass `cfg` to refresh the batch report afterwards.
+    """
     before = get_photo(store, photo_id)
     try:
         store.set_status(photo_id, Status(status))
@@ -1100,6 +1223,8 @@ def override_status(store: Store, photo_id: int, status: Status | str) -> Photo:
         raise PipelineError(str(exc)) from exc
     if Status(status) not in _KEEPS_PREPARED:
         _drop_prepared(store, before)
+    if cfg is not None:
+        refresh_report(cfg, store, before.batch_id)
     return get_photo(store, photo_id)
 
 
@@ -1167,6 +1292,8 @@ def prepare_batch(
         store.update_photo(pid, prepared_path=str(dest), submit_name=name)
         store.set_status(pid, Status.PREPARED)
         summary.prepared.append(name)
+    if summary.prepared:
+        refresh_report(cfg, store, batch_id)
     return summary
 
 
@@ -1233,6 +1360,7 @@ def upload_batch(
     deliver.upload_files(creds, files, on_result, **kwargs)
     if summary.uploaded:
         refresh_ledger(cfg, store)
+        refresh_report(cfg, store, batch_id)
     return summary
 
 
@@ -1380,17 +1508,23 @@ def export_batch(
         store.update_photo(photo.id, exported_at=_now_iso(), export_file=str(by_kind[kind]))
         if photo.status == Status.UPLOADED:
             store.set_status(photo.id, Status.EXPORTED)
+    refresh_report(cfg, store, batch_id)
     return summary
 
 
-def mark_submitted(store: Store, batch_id: str) -> list[int]:
-    """After the manual Submit on the Shutterstock portal: exported -> submitted."""
+def mark_submitted(store: Store, batch_id: str, *, cfg: Config | None = None) -> list[int]:
+    """After the manual Submit on the Shutterstock portal: exported -> submitted.
+
+    Pass `cfg` to refresh the batch report afterwards.
+    """
     ids = []
     for photo in store.list_photos(batch_id, [Status.EXPORTED]):
         assert photo.id is not None
         store.update_photo(photo.id, submitted_at=_now_iso())
         store.set_status(photo.id, Status.SUBMITTED)
         ids.append(photo.id)
+    if cfg is not None and ids:
+        refresh_report(cfg, store, batch_id)
     return ids
 
 
@@ -1403,8 +1537,13 @@ def record_result(
     accepted: bool,
     reason_code: str | None = None,
     note: str | None = None,
+    *,
+    cfg: Config | None = None,
 ) -> Photo:
-    """Record Shutterstock's verdict. Rejection reasons feed later describe prompts."""
+    """Record Shutterstock's verdict. Rejection reasons feed later describe prompts.
+
+    Pass `cfg` to refresh the batch report afterwards.
+    """
     photo = get_photo(store, photo_id)
     if not accepted:
         if reason_code not in REASON_CODES:
@@ -1420,6 +1559,8 @@ def record_result(
         ) from exc
     if not accepted and reason_code:
         store.add_rejection(photo_id, reason_code, note)
+    if cfg is not None:
+        refresh_report(cfg, store, photo.batch_id)
     return get_photo(store, photo_id)
 
 
@@ -1440,6 +1581,88 @@ def batch_report(store: Store, batch_id: str | None = None) -> list[dict[str, An
             }
         )
     return out
+
+
+# --------------------------------------------------------------------------- batch report
+
+
+def report_path(cfg: Config, batch_id: str) -> Path:
+    """Where the always-current report CSV of a batch lives: <workspace>/reports/<name>.csv."""
+    return cfg.workspace_path("reports", report_mod.report_filename(batch_id))
+
+
+def build_report(cfg: Config, store: Store, batch_id: str) -> tuple[list[str], list[list[str]]]:
+    """Header and records of the batch report, built from the database."""
+    from .web import ux  # plain-words status names; imported late (web imports this module)
+
+    photos = store.list_photos(batch_id)
+    by_id = {p.id: p for p in photos}
+    keepers: dict[int, str] = {}
+    for p in photos:
+        if p.near_dup_group is not None and p.status != Status.NEAR_DUPLICATE:
+            keepers.setdefault(p.near_dup_group, p.orig_name)
+    duplicate_of: dict[int, str] = {}
+    for p in photos:
+        if p.id is not None and p.status == Status.NEAR_DUPLICATE and p.near_dup_group is not None:
+            if p.near_dup_group in keepers:
+                duplicate_of[p.id] = keepers[p.near_dup_group]
+    for ev in store.batch_events(batch_id, ["already_uploaded"]):
+        other_id = (ev["detail"] or {}).get("look_alike_of")
+        other = store.get_photo(other_id) if isinstance(other_id, int) else None
+        if other is not None and ev["photo_id"] in by_id:
+            duplicate_of[ev["photo_id"]] = other.submit_name or other.orig_name
+    rejections: dict[int, tuple[str, str]] = {}
+    for p in photos:
+        if p.id is not None and p.status == Status.REJECTED:
+            found = store.list_rejections(p.id)
+            if found:
+                last = found[-1]
+                why = last.reason_code + (f": {last.note}" if last.note else "")
+                rejections[p.id] = (last.at, why)
+    return report_mod.build_rows(
+        photos,
+        times=store.status_times(batch_id),
+        duplicate_of=duplicate_of,
+        labels=ux.label,
+        rejections=rejections,
+        ai_times=store.ai_times(batch_id),
+    )
+
+
+def ai_time_summary(store: Store, batch_id: str) -> dict[str, float | int]:
+    """Total and average AI seconds per photo for a batch (the figures in the report)."""
+    return report_mod.ai_time_totals(store.ai_times(batch_id))
+
+
+def report_bytes(cfg: Config, store: Store, batch_id: str) -> bytes:
+    """The report as CSV bytes (UTF-8 with BOM), built in memory; nothing is read from disk."""
+    header, records = build_report(cfg, store, batch_id)
+    return report_mod.render(header, records)
+
+
+def write_report(cfg: Config, store: Store, batch_id: str) -> Path:
+    """Write the report file for a batch (atomic) and return its path."""
+    header, records = build_report(cfg, store, batch_id)
+    return report_mod.write_report(report_path(cfg, batch_id), header, records)
+
+
+def refresh_report(cfg: Config, store: Store, batch_id: str | None) -> None:
+    """Best-effort rewrite of the batch report after a batch step. A file problem (for example
+    Excel holding the file open) never fails the step; it is logged as `report_failed`."""
+    if not batch_id:
+        return
+    try:
+        write_report(cfg, store, batch_id)
+    except Exception as exc:
+        try:
+            store.log_event("report_failed", batch_id=batch_id, detail={"error": str(exc)})
+        except Exception:
+            pass
+
+
+def _refresh_reports(cfg: Config, store: Store, batch_ids: Iterable[str]) -> None:
+    for batch_id in sorted(batch_ids):
+        refresh_report(cfg, store, batch_id)
 
 
 # --------------------------------------------------------------------------- batch services (web)
@@ -1504,7 +1727,14 @@ def estimate_check(cfg: Config, store: Store, batch_id: str) -> estimate.Estimat
             local_models.load_benchmarks(benchmark_cache_path()),
         )
         rec = next((r for r in recs if r.model.tag == sel.model), None)
-        est = estimate.for_batch(n, "ollama", sel.model, recommendation=rec, concurrency=conc)
+        est = estimate.for_batch(
+            n,
+            "ollama",
+            sel.model,
+            recommendation=rec,
+            concurrency=conc,
+            **_estimate_tokens(cfg),
+        )
     else:
         est = estimate.for_batch(
             n,
@@ -1513,6 +1743,7 @@ def estimate_check(cfg: Config, store: Store, batch_id: str) -> estimate.Estimat
             api_model=api_model(sel.provider, sel.model),
             concurrency=conc,
             image_side=side,
+            **_estimate_tokens(cfg),
         )
     return replace(est, text=f"up to {est.text}")
 
@@ -1611,6 +1842,7 @@ def bulk_edit(
     from .web import ux  # plain-words status names; imported late (web imports this module)
 
     summary = BulkEditSummary()
+    batches: set[str] = set()
     for pid in photo_ids:
         photo = store.get_photo(pid)
         if photo is None:
@@ -1631,11 +1863,15 @@ def bulk_edit(
                 keywords=keywords if (add or drop) else None,
                 categories=list(categories) if categories is not None else None,
                 editorial=editorial,
+                refresh=False,
             )
         except PipelineError as exc:
             summary.refused[pid] = str(exc)
             continue
         summary.changed.append(pid)
+        if photo.batch_id:
+            batches.add(photo.batch_id)
+    _refresh_reports(cfg, store, batches)
     return summary
 
 
@@ -1660,6 +1896,7 @@ UI_SETTING_KEYS = (
     "onboarded",
     "last_folder",
     "style",
+    "filters",
     "bedrock_profile",
     "update_check",
     "update_cache",
@@ -1718,6 +1955,33 @@ def _clean_style(value: Any) -> dict[str, Any]:
     return out
 
 
+def _clean_filters(value: Any) -> dict[str, Any]:
+    """Validate the theme/rules settings. Only submitted keys are stored (a stored key wins over
+    the config file). Raises PipelineError with a plain-English message."""
+    if not isinstance(value, dict):
+        raise PipelineError("The rules settings must be a set of named values.")
+    out: dict[str, Any] = {}
+    if "theme_check" in value:
+        out["theme_check"] = bool(value["theme_check"])
+    if "theme_partly" in value:
+        partly = str(value["theme_partly"] or "").strip().casefold()
+        if partly not in filters_mod.PARTLY_MODES:
+            raise PipelineError('Photos that fit the theme "partly" can be let through or flagged.')
+        out["theme_partly"] = partly
+    if "rules" in value:
+        try:
+            rules = filters_mod.clean_rules(value["rules"])
+        except filters_mod.FilterRuleError as exc:
+            raise PipelineError(str(exc)) from exc
+        out["rules"] = [{"id": r.id, "kind": r.kind, "text": r.text, "mode": r.mode} for r in rules]
+    return out
+
+
+def get_filter_rules(cfg: Config) -> list[filters_mod.UserRule]:
+    """The rules new photos are checked with (config plus web app settings)."""
+    return list(filter_spec(cfg).rules)
+
+
 def _clean_update_cache(value: Any) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise PipelineError("The update cache must be a mapping.")
@@ -1734,6 +1998,13 @@ def set_ui_setting(store: Store, name: str, value: Any) -> Any:
     key = _ui_key(name)
     if key == "ui.style":
         value = _clean_style(value)
+    elif key == "ui.filters":
+        new = _clean_filters(value)
+        try:
+            old = _clean_filters(store.get_setting("ui.filters") or {})
+        except PipelineError:  # a damaged saved value is replaced by the new one
+            old = {}
+        value = {**old, **new}
     elif key == "ui.bedrock_profile":
         value = str(value or "").strip()
         if value and not PROFILE_RE.match(value):
@@ -1746,9 +2017,30 @@ def set_ui_setting(store: Store, name: str, value: Any) -> Any:
     return value
 
 
+def _apply_filter_overrides(cfg: Config, store: Store) -> Config:
+    saved = store.get_setting("ui.filters")
+    if not isinstance(saved, dict) or not saved:
+        return cfg
+    update: dict[str, Any] = {}
+    if isinstance(saved.get("theme_check"), bool):
+        update["theme_check"] = saved["theme_check"]
+    if saved.get("theme_partly") in filters_mod.PARTLY_MODES:
+        update["theme_partly"] = saved["theme_partly"]
+    if isinstance(saved.get("rules"), list):
+        try:
+            update["rules"] = [
+                FilterRuleConfig(id=r.id, kind=r.kind, text=r.text, mode=r.mode)
+                for r in filters_mod.clean_rules(saved["rules"])
+            ]
+        except ValueError:  # a damaged saved value never stops the app; the file's rules stay
+            pass
+    return cfg.model_copy(update={"filters": cfg.filters.model_copy(update=update)})
+
+
 def apply_style_overrides(cfg: Config, store: Store) -> Config:
-    """Config copy with the style set in the web app (theme, tone, always-include, extras,
-    region focus). A key that is present wins over the config file, even when empty."""
+    """Config copy with the style and the theme/rules set in the web app (theme, tone,
+    always-include, extras, region focus, `ui.filters`). A key that is present wins over the
+    config file, even when empty."""
     profile = store.get_setting("ui.bedrock_profile")
     if isinstance(profile, str):
         cfg = cfg.model_copy(
@@ -1758,6 +2050,7 @@ def apply_style_overrides(cfg: Config, store: Store) -> Config:
                 )
             }
         )
+    cfg = _apply_filter_overrides(cfg, store)
     style = store.get_setting("ui.style") or {}
     if not style:
         return cfg

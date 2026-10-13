@@ -35,7 +35,8 @@ class FakeProvider:
 
     `response` may be a dict, a raw string (e.g. deliberately broken JSON), a callable
     (req) -> dict | str, or a list of those consumed in call order (the last one repeats).
-    Every request is recorded in `calls`.
+    Every request is recorded in `calls` and every schema in `schemas`. When the schema asks for
+    `theme_fit` and a dict response lacks it, a passing answer is added (never for `checks`).
     """
 
     name = "fake"
@@ -46,15 +47,23 @@ class FakeProvider:
         self.model = model
         self._responses = response if isinstance(response, list) else [response]
         self.calls: list[LLMRequest] = []
+        self.schemas: list[dict] = []
 
     def complete(self, req: LLMRequest, schema: dict) -> tuple[str, dict | None, int, int]:
         idx = min(len(self.calls), len(self._responses) - 1)
         self.calls.append(req)
+        self.schemas.append(schema)
         resp = self._responses[idx]
         if resp is None:
             resp = DEFAULT_RESPONSE
         if callable(resp):
             resp = resp(req)
+        if (
+            isinstance(resp, dict)
+            and "theme_fit" in (schema.get("properties") or {})
+            and "theme_fit" not in resp
+        ):
+            resp = {**resp, "theme_fit": {"reason": "Fake answer.", "fit": "yes"}}
         if isinstance(resp, dict):
             return json.dumps(resp), resp, 100, 50
         return str(resp), None, 100, 50

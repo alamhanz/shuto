@@ -5,6 +5,7 @@ import yaml
 
 from shuto import cli, deliver, local_models, pipeline
 from shuto.cli import build_parser, main
+from shuto.config import load_config
 
 from .conftest import FakeOllama
 
@@ -39,6 +40,12 @@ PARSE_CASES = [
     ["check-ftps", "--upload", "f.jpg"],
     ["restrictions", "list", "--level", "prohibited"],
     ["restrictions", "check", "some text"],
+    ["rules"],
+    ["rules", "list"],
+    ["rules", "add", "--avoid", "people"],
+    ["rules", "remove", "r1"],
+    ["rules", "theme", "off"],
+    ["report", "2025-W10"],
 ]
 
 
@@ -273,3 +280,134 @@ def test_doctor_says_when_the_model_choice_cannot_be_read(config_file, capsys, m
     out = capsys.readouterr().out
     assert "could not be read" in out
     assert "(not chosen)" not in out and "shuto models use" not in out
+
+
+# --------------------------------------------------------------------------- rules and report
+
+
+def _rules_out(config_file, capsys, *argv):
+    code = run(config_file, "rules", *argv)
+    captured = capsys.readouterr()
+    return code, captured.out, captured.err
+
+
+def test_rules_parse_cases():
+    p = build_parser()
+    assert p.parse_args(["rules"]).rules_cmd is None
+    assert p.parse_args(["rules", "add", "--avoid", "people", "--flag"]).flag is True
+    assert p.parse_args(["rules", "mode", "r1", "set-aside"]).mode == "set-aside"
+    assert p.parse_args(["report", "b", "--out", "x.csv"]).out == "x.csv"
+    for bad in (["rules", "add"], ["rules", "add", "--avoid", "a", "--include", "b"]):
+        with pytest.raises(SystemExit):
+            p.parse_args(bad)
+
+
+def test_rules_add_list_mode_remove(config_file, capsys):
+    code, out, _ = _rules_out(config_file, capsys)
+    assert code == 0 and "No rules of your own yet" in out
+
+    code, out, _ = _rules_out(config_file, capsys, "add", "--avoid", "people")
+    assert code == 0 and "Added rule" in out and "from now on" in out
+    code, out, _ = _rules_out(config_file, capsys, "add", "--include", "a car", "--flag")
+    assert code == 0
+    code, out, _ = _rules_out(config_file, capsys, "list")
+    assert "Must avoid: people" in out and "set aside" in out
+    assert "Must include: a car" in out and "just flag" in out
+
+    store = pipeline.open_store(load_config(str(config_file)))
+    saved = pipeline.get_ui_setting(store, "filters")["rules"]
+    assert [r["kind"] for r in saved] == ["avoid", "include"]
+    avoid_id = saved[0]["id"]
+
+    assert _rules_out(config_file, capsys, "mode", avoid_id, "flag")[0] == 0
+    out = _rules_out(config_file, capsys, "list")[1]
+    assert out.count("just flag") == 2
+
+    code, out, _ = _rules_out(config_file, capsys, "remove", avoid_id)
+    assert code == 0
+    out = _rules_out(config_file, capsys, "list")[1]
+    assert "people" not in out and "a car" in out
+
+    assert _rules_out(config_file, capsys, "clear")[0] == 0
+    assert "No rules of your own yet" in _rules_out(config_file, capsys, "list")[1]
+
+
+def test_rules_validation_errors(config_file, capsys):
+    code, _, err = _rules_out(config_file, capsys, "add", "--avoid", "x")
+    assert code == 1 and err.startswith("error:")
+    code, _, err = _rules_out(config_file, capsys, "remove", "nope")
+    assert code == 1 and "no rule with id" in err
+    code, _, err = _rules_out(config_file, capsys, "mode", "nope", "flag")
+    assert code == 1 and "no rule with id" in err
+    for i in range(10):
+        assert _rules_out(config_file, capsys, "add", "--avoid", f"thing {i}")[0] == 0
+    code, _, err = _rules_out(config_file, capsys, "add", "--avoid", "one more")
+    assert code == 1 and "10" in err
+    assert "thing 9" in _rules_out(config_file, capsys, "list")[1]
+
+
+def test_rules_theme_and_partly(config_file, capsys):
+    code, out, _ = _rules_out(config_file, capsys, "theme", "off")
+    assert code == 0 and "off" in out
+    assert "Theme check: off" in _rules_out(config_file, capsys, "list")[1]
+    assert _rules_out(config_file, capsys, "partly", "flag")[0] == 0
+    assert "needs a look" in _rules_out(config_file, capsys, "list")[1]
+    assert _rules_out(config_file, capsys, "theme", "on")[0] == 0
+    assert "Theme check: on" in _rules_out(config_file, capsys, "list")[1]
+
+
+def test_rules_theme_off_keeps_the_rules(config_file, capsys):
+    _rules_out(config_file, capsys, "add", "--avoid", "people")
+    assert _rules_out(config_file, capsys, "theme", "off")[0] == 0
+    out = _rules_out(config_file, capsys, "list")[1]
+    assert "Must avoid: people" in out and "Theme check: off" in out
+
+
+def test_rules_partly_flag_keeps_the_rules(config_file, capsys):
+    _rules_out(config_file, capsys, "add", "--avoid", "people")
+    assert _rules_out(config_file, capsys, "partly", "flag")[0] == 0
+    out = _rules_out(config_file, capsys, "list")[1]
+    assert "Must avoid: people" in out and "needs a look" in out
+
+
+def test_rules_add_keeps_the_theme_settings(config_file, capsys):
+    _rules_out(config_file, capsys, "theme", "off")
+    _rules_out(config_file, capsys, "partly", "flag")
+    assert _rules_out(config_file, capsys, "add", "--avoid", "people")[0] == 0
+    out = _rules_out(config_file, capsys, "list")[1]
+    assert "Must avoid: people" in out and "Theme check: off" in out and "needs a look" in out
+
+
+def test_rules_are_shared_with_the_web_settings(config_file, capsys):
+    store = pipeline.open_store(load_config(str(config_file)))
+    pipeline.set_ui_setting(
+        store, "filters", {"rules": [{"kind": "avoid", "text": "logos", "mode": "flag"}]}
+    )
+    assert "Must avoid: logos" in _rules_out(config_file, capsys, "list")[1]
+
+
+def test_doctor_shows_checks(config_file, capsys, monkeypatch):
+    monkeypatch.setattr(pipeline, "ollama_client", lambda cfg: FakeOllama([]))
+    assert run(config_file, "doctor") == 0
+    assert "Checks:    none" in capsys.readouterr().out
+    run(config_file, "rules", "add", "--avoid", "people")
+    capsys.readouterr()
+    assert run(config_file, "doctor") == 0
+    out = capsys.readouterr().out
+    assert "Checks:    Must avoid: people (set aside)" in out
+
+
+def test_report_command(config_file, photos_dir, tmp_path, capsys):
+    assert run(config_file, "report", "2025-W10") == 1  # no such batch
+    assert "no photos" in capsys.readouterr().err
+    assert run(config_file, "import", str(photos_dir)) == 0
+    assert run(config_file, "cull", "2025-W10") == 0
+    assert run(config_file, "describe", "2025-W10", "--yes") == 0
+    assert "set aside 0" in capsys.readouterr().out
+    assert run(config_file, "report", "2025-W10") == 0
+    out = capsys.readouterr().out
+    path = tmp_path / "ws" / "reports" / "2025-W10.csv"
+    assert str(path) in out and path.read_bytes().startswith(b"\xef\xbb\xbf")
+    target = tmp_path / "elsewhere" / "r.csv"
+    assert run(config_file, "report", "2025-W10", "--out", str(target)) == 0
+    assert target.exists() and "file" in target.read_text(encoding="utf-8-sig")

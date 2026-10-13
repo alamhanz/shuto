@@ -25,7 +25,7 @@ from shuto.models import (
     Status,
 )
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 BUSY_TIMEOUT_S = 30  # writers wait this long for a lock (slow CI disks, antivirus)
 
 _SCHEMA_V1 = """
@@ -67,6 +67,7 @@ _JSON_FIELDS = {
     "metadata": "metadata_json",
     "detected": "detected_json",
     "guardrail": "guardrail_json",
+    "filters": "filters_json",
     "release_ids": "release_ids",
 }
 _PLAIN_FIELDS = {
@@ -166,6 +167,11 @@ class Store:
                         if stmt.strip():
                             conn.execute(stmt)
                     conn.execute("PRAGMA user_version=1")
+                if version < 2:
+                    cols = {r["name"] for r in conn.execute("PRAGMA table_info(photos)")}
+                    if "filters_json" not in cols:
+                        conn.execute("ALTER TABLE photos ADD COLUMN filters_json TEXT")
+                    conn.execute("PRAGMA user_version=2")
             except BaseException:
                 conn.execute("ROLLBACK")
                 raise
@@ -476,6 +482,21 @@ class Store:
             ).fetchone()
         return dict(row)
 
+    def ai_times(self, batch_id: str) -> dict[int, tuple[float, int]]:
+        """Per photo: (seconds, tries) of its latest successful describe call. A call's seconds
+        already include its retries; tries is retries + 1."""
+        with self._read() as conn:
+            rows = conn.execute(
+                "SELECT c.photo_id, c.seconds, c.retries FROM llm_calls c "
+                "JOIN photos p ON p.id = c.photo_id WHERE p.batch_id=? AND c.ok=1 "
+                "AND c.id = (SELECT MAX(id) FROM llm_calls WHERE photo_id=c.photo_id AND ok=1)",
+                (batch_id,),
+            ).fetchall()
+        return {
+            int(r["photo_id"]): (float(r["seconds"] or 0.0), int(r["retries"] or 0) + 1)
+            for r in rows
+        }
+
     # -- jobs ---------------------------------------------------------------------------
 
     def create_job(self, kind: str, batch_id: str | None = None, total: int = 0) -> int:
@@ -533,6 +554,38 @@ class Store:
             }
             for r in rows
         ]
+
+    def batch_events(self, batch_id: str, kinds: Iterable[str]) -> list[dict[str, Any]]:
+        """Events of one batch (by `batch_id`) of the given kinds, oldest first."""
+        kinds = list(kinds)
+        if not kinds:
+            return []
+        marks = ",".join("?" * len(kinds))
+        with self._read() as conn:
+            rows = conn.execute(
+                f"SELECT * FROM events WHERE batch_id=? AND kind IN ({marks}) ORDER BY id",
+                (batch_id, *kinds),
+            ).fetchall()
+        return [
+            {
+                "id": r["id"],
+                "photo_id": r["photo_id"],
+                "batch_id": r["batch_id"],
+                "kind": r["kind"],
+                "detail": _loads(r["detail_json"]),
+                "at": r["at"],
+            }
+            for r in rows
+        ]
+
+    def status_times(self, batch_id: str) -> dict[int, dict[str, str]]:
+        """Per photo: latest time it entered each status, as `{photo_id: {status: at}}`."""
+        out: dict[int, dict[str, str]] = {}
+        for ev in self.batch_events(batch_id, ["status"]):
+            to = (ev["detail"] or {}).get("to")
+            if ev["photo_id"] is not None and to:
+                out.setdefault(ev["photo_id"], {})[to] = ev["at"]
+        return out
 
     def get_setting(self, key: str, default: Any = None) -> Any:
         with self._read() as conn:

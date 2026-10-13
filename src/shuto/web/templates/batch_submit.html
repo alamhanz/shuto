@@ -4,6 +4,7 @@
 {% block stepper %}{% include "_batch_stepper.html" %}{% endblock %}
 {% block content %}
 <h1>Submit on Shutterstock</h1>
+{% include "_report_bar.html" %}
 {% if waiting or exports or finished %}
 <p>Your photos are uploaded. The last step is yours: shuto never presses Submit for you. Follow these steps in your web browser.</p>
 <ol class="steps-list">

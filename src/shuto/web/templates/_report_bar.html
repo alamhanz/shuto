@@ -1,0 +1,6 @@
+{% from "_ui.html" import icon %}
+<div class="report-bar row">
+  <a class="btn secondary" href="{{ report_href }}">{{ icon('download') }}Download report</a>
+  <span class="hint">A spreadsheet with every check and its reason, one row per photo.
+  {%- if ai_time %} AI time: {{ ai_time.total }} in total, {{ ai_time.average }} per photo on average ({{ ai_time.photos }} photo{{ '' if ai_time.photos == 1 else 's' }}).{% endif %}</span>
+</div>

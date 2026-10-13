@@ -95,3 +95,86 @@ def test_no_secret_fields():
                 yield from names(ann)
 
     assert not [n for n in names(Config) if "password" in n or "api_key" in n or "secret" in n]
+
+
+def _filters_cfg(tmp_path, body):
+    p = tmp_path / "f.yaml"
+    p.write_text(body, encoding="utf-8")
+    return load_config(p)
+
+
+def test_filters_defaults():
+    cfg = load_config()
+    assert cfg.filters.theme_check is True
+    assert cfg.filters.theme_partly == "pass"
+    assert cfg.filters.rules == []
+
+
+def test_example_config_has_filters_section():
+    cfg = load_config(EXAMPLE)
+    assert cfg.filters.rules == []
+    assert cfg.filters.theme_check is True
+
+
+def test_filter_rules_load(tmp_path):
+    cfg = _filters_cfg(
+        tmp_path,
+        "filters:\n  theme_partly: flag\n  rules:\n"
+        "    - {kind: avoid, text: '  people   in  shot ', mode: flag}\n"
+        "    - {kind: include, text: '街の風景', id: r1}\n",
+    )
+    assert cfg.filters.theme_partly == "flag"
+    first, second = cfg.filters.rules
+    assert (first.kind, first.text, first.mode, first.id) == (
+        "avoid",
+        "people in shot",
+        "flag",
+        None,
+    )
+    assert (second.mode, second.id, second.text) == ("set_aside", "r1", "街の風景")
+
+
+def test_ten_rules_ok_eleven_rejected(tmp_path):
+    def rows(n):
+        return "".join(f"    - {{kind: avoid, text: 'thing {i}'}}\n" for i in range(n))
+
+    assert len(_filters_cfg(tmp_path, "filters:\n  rules:\n" + rows(10)).filters.rules) == 10
+    with pytest.raises(ConfigError, match=r"filters\.rules"):
+        _filters_cfg(tmp_path, "filters:\n  rules:\n" + rows(11))
+
+
+@pytest.mark.parametrize(
+    "rule",
+    [
+        "{kind: maybe, text: people}",
+        "{kind: avoid, text: x}",
+        "{kind: avoid, text: '" + "a" * 81 + "'}",
+        "{kind: avoid, text: '   '}",
+        '{kind: avoid, text: "bell\\x07"}',
+        "{kind: avoid, text: people, mode: delete}",
+        "{kind: avoid}",
+        "{kind: avoid, text: people, extra: 1}",
+    ],
+)
+def test_bad_filter_rules_rejected(tmp_path, rule):
+    with pytest.raises(ConfigError, match=r"filters\.rules"):
+        _filters_cfg(tmp_path, f"filters:\n  rules:\n    - {rule}\n")
+
+
+def test_rule_newlines_become_spaces(tmp_path):
+    cfg = _filters_cfg(tmp_path, 'filters:\n  rules:\n    - {kind: avoid, text: "two\\nlines"}\n')
+    assert cfg.filters.rules[0].text == "two lines"
+
+
+def test_rule_text_limits_inclusive(tmp_path):
+    cfg = _filters_cfg(
+        tmp_path,
+        "filters:\n  rules:\n    - {kind: avoid, text: ab}\n"
+        f"    - {{kind: avoid, text: '{'a' * 80}'}}\n",
+    )
+    assert [len(r.text) for r in cfg.filters.rules] == [2, 80]
+
+
+def test_bad_theme_partly_rejected(tmp_path):
+    with pytest.raises(ConfigError, match=r"filters\.theme_partly"):
+        _filters_cfg(tmp_path, "filters:\n  theme_partly: maybe\n")

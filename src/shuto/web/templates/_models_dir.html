@@ -1,0 +1,46 @@
+{% from "_ui.html" import field, icon %}
+<p>AI models are big files, often several GB each. By default Ollama keeps them on the same drive as Windows or macOS. If that drive is getting full, you can keep them on another drive.</p>
+<dl class="facts">
+  <dt>Models are kept in</dt><dd><code>{{ ms.current }}</code>{% if ms.free_gb is not none %}, {{ "%.0f"|format(ms.free_gb) }} GB free{% endif %}{% if not ms.custom %} (the standard folder){% endif %}</dd>
+  {% if ms.has_models %}<dt>Downloaded so far</dt><dd>about {{ ms.models_gb }} GB</dd>{% endif %}
+</dl>
+{% if not ms.supported %}
+<p class="flash warn" role="note">{{ icon('alert') }}<span>{{ ms.linux_text }} <a href="/help#for-helpers">Open Help</a></span></p>
+{% elif ms.machine %}
+<p class="flash warn" role="note">{{ icon('alert') }}<span>{{ ms.machine_text }} <a href="/help#for-helpers">Open Help</a></span></p>
+{% else %}
+{% if ms.mac_warning %}<p class="flash warn" role="note">{{ icon('alert') }}<span>{{ ms.mac_warning }}</span></p>{% endif %}
+{% if ms.drives %}
+<p>Drives with room for your models. Press one to use it:</p>
+<p class="chips">{% for v in ms.drives %}<button type="button" class="chip" data-pick-path="{{ v.suggested_path }}">{{ v.mount }} ({{ "%.0f"|format(v.free_gb) }} GB free)</button>{% endfor %}</p>
+{% endif %}
+<form hx-post="/settings/models-dir" hx-target="#job-area" hx-swap="innerHTML" class="stack"
+      hx-confirm="Ollama will close and start again, which takes up to half a minute. Anything it is doing now will stop. Continue?">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <input type="hidden" name="return_to" value="{{ return_to }}">
+  {% call field('path', 'New folder for AI models', help='Choose a folder with the button, or paste its location. shuto creates it if it does not exist.') %}
+  <input id="path" name="path" size="50" required aria-describedby="path-help" placeholder="D:\ollama\models">
+  {% endcall %}
+  <p><button type="button" class="secondary" data-open-dialog="browse-dialog" hx-get="/browse" hx-vals='{"path": ""}' hx-target="#browse-pane" hx-swap="outerHTML">{{ icon('folder') }} Choose folder...</button></p>
+  {% if ms.has_models %}
+  <p><label><input type="checkbox" name="move" value="yes" checked> Move the models I already downloaded (about {{ ms.models_gb }} GB). The old copies are deleted only after the new ones are checked.</label></p>
+  {% endif %}
+  <p><button type="submit" class="btn primary">Save and restart Ollama</button></p>
+</form>
+{% if ms.custom and ms.machine_any %}
+<p class="hint">{{ ms.machine_reset_text }}</p>
+{% elif ms.custom %}
+<form hx-post="/settings/models-dir/reset" hx-target="#job-area" hx-swap="innerHTML" class="stack"
+      hx-confirm="Go back to the standard folder? Ollama will close and start again, which takes up to half a minute.">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <input type="hidden" name="return_to" value="{{ return_to }}">
+  {% if ms.has_models %}<p><label><input type="checkbox" name="move" value="yes"> Move the models back to the standard folder too</label></p>{% endif %}
+  <p><button type="submit" class="secondary">Use the standard folder</button></p>
+</form>
+{% endif %}
+<dialog id="browse-dialog" aria-labelledby="browse-title">
+  <h2 id="browse-title">Choose a folder</h2>
+  <div id="browse-pane"><p class="hint">Loading folders...</p></div>
+  <p><button type="button" class="secondary" data-close-dialog>Close</button></p>
+</dialog>
+{% endif %}

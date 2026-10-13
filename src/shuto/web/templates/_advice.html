@@ -12,16 +12,38 @@
     </form>
   {% else %}
     <p class="bad">{{ advice.message }}</p>
+    {% if replaceable %}
+    <p>Or make room by replacing a model you already downloaded (never the one in use):</p>
+    {% for m in replaceable %}
+    <form hx-post="/settings/pull" hx-target="#job-area" hx-swap="innerHTML"
+          hx-confirm="Remove {{ m.tag }} from this computer (frees about {{ '%.1f'|format(m.size_gb) }} GB) and then download {{ tag }} (about {{ advice.need_gb }} GB)? {{ m.tag }} can be downloaded again later.">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <input type="hidden" name="tag" value="{{ tag }}">
+      <input type="hidden" name="replace" value="{{ m.tag }}">
+      <input type="hidden" name="return_to" value="{{ return_to }}">
+      <input type="hidden" name="confirm" value="yes">
+      <button type="submit" class="secondary">Replace: remove {{ m.tag }} and download {{ tag }}</button>
+    </form>
+    {% endfor %}
+    {% endif %}
     {% if advice.volumes %}
     <p>These drives have enough room:</p>
     <ul>{% for v in advice.volumes %}
       <li>{{ v.mount }} ({{ "%.0f"|format(v.free_gb) }} GB free). Suggested folder: <code>{{ v.suggested_path }}</code></li>
     {% endfor %}</ul>
+    {% if can_set %}
+    <ol>
+      <li>Pick one of these drives.</li>
+      <li>Open <a href="{{ storage_href }}">Where to keep AI models</a> and choose a folder on that drive. shuto restarts Ollama for you.</li>
+      <li>Come back here and download the model.</li>
+    </ol>
+    {% else %}
     <ol>
       <li>Pick one of these drives.</li>
       <li>Ask whoever set up your computer to make Ollama keep its models there. The exact steps are in <a href="/help#for-helpers">Help, under "For helpers"</a>.</li>
       <li>Restart Ollama, then come back to this page.</li>
     </ol>
+    {% endif %}
     {% endif %}
     {% if advice.api_options %}
     <p>Or skip the download and use an online AI (it costs money):</p>

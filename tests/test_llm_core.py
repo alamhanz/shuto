@@ -194,6 +194,13 @@ def test_ollama_pull_progress(monkeypatch):
     assert [e["status"] for e in events] == ["pulling manifest", "downloading", "success"]
 
 
+def test_ollama_delete_uses_the_delete_api(monkeypatch):
+    seen = patch_urlopen(monkeypatch, lambda r: FakeResp({}))
+    OllamaClient("http://x:1").delete("gemma3:4b")
+    assert seen[0].get_method() == "DELETE" and seen[0].full_url == "http://x:1/api/delete"
+    assert json.loads(seen[0].data) == {"model": "gemma3:4b"}
+
+
 def test_ollama_pull_error(monkeypatch):
     patch_urlopen(monkeypatch, lambda r: FakeResp(lines=[b'{"error": "nope"}\n']))
     with pytest.raises(LLMError, match="nope"):

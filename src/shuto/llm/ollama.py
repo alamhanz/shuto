@@ -34,12 +34,18 @@ class OllamaClient:
     def _timeout(self) -> LLMError:
         return LLMError(f"Ollama timed out at {self.url}", retryable=True)
 
-    def _open(self, path: str, body: dict | None = None, timeout: float | None = None):
+    def _open(
+        self,
+        path: str,
+        body: dict | None = None,
+        timeout: float | None = None,
+        method: str | None = None,
+    ):
         data = json.dumps(body).encode("utf-8") if body is not None else None
         req = urllib.request.Request(
             self.url + path,
             data=data,
-            method="POST" if body is not None else "GET",
+            method=method or ("POST" if body is not None else "GET"),
             headers={"Content-Type": "application/json"},
         )
         try:
@@ -81,6 +87,10 @@ class OllamaClient:
 
     def tags(self) -> list[dict]:
         return list(self._json("/api/tags", timeout=10).get("models", []))
+
+    def delete(self, tag: str) -> None:
+        """Remove a downloaded model from this computer (Ollama frees its files)."""
+        _close(self._open("/api/delete", {"model": tag}, timeout=60, method="DELETE"))
 
     def ps(self) -> list[dict]:
         return list(self._json("/api/ps", timeout=10).get("models", []))

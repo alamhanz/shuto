@@ -2,15 +2,15 @@
 {%- set bid = (job.batch_id or '')|urlencode -%}
 {%- set titles = {
   'import': 'Adding your photos', 'pull': 'Downloading the AI model',
-  'benchmark': 'Measuring speed', 'ftps_test': 'Testing the upload login',
+  'benchmark': 'Measuring speed', 'models_dir': 'Changing where AI models are kept', 'ftps_test': 'Testing the upload login',
   'check': 'Checking your photos', 'deliver': 'Uploading your photos',
   'cull': 'Checking photo quality', 'describe': 'Writing titles and keywords',
   'prepare': 'Getting photos ready', 'upload': 'Uploading your photos',
   'export': 'Making the Shutterstock info file'} -%}
-{%- set outside = ['import', 'pull', 'benchmark', 'ftps_test'] -%}
+{%- set outside = ['import', 'pull', 'benchmark', 'ftps_test', 'models_dir'] -%}
 {%- if job.kind in outside -%}
-  {%- set go = next_href|default({'import': '/', 'pull': '/settings', 'benchmark': '/settings', 'ftps_test': '/settings'}[job.kind]) -%}
-  {%- set again = {'import': '/add', 'pull': '/settings', 'benchmark': '/settings', 'ftps_test': '/settings'}[job.kind] -%}
+  {%- set go = next_href|default({'import': '/', 'pull': '/settings', 'benchmark': '/settings', 'ftps_test': '/settings', 'models_dir': '/settings'}[job.kind]) -%}
+  {%- set again = {'import': '/add', 'pull': '/settings', 'benchmark': '/settings', 'ftps_test': '/settings', 'models_dir': '/settings'}[job.kind] -%}
 {%- else -%}
   {%- set go = next_href|default('/batch/' ~ bid ~ ('/review' if job.kind == 'check' else '/submit' if job.kind == 'deliver' else '')) -%}
   {%- set again = '/batch/' ~ bid ~ ('/check' if job.kind == 'check' else '/upload' if job.kind == 'deliver' else '') -%}

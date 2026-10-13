@@ -9,7 +9,7 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import asdict, dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any, Literal
 
@@ -29,6 +29,7 @@ DATA_DIR = Path(__file__).parent / "data"
 SAMPLE_PATH = DATA_DIR / "sample.jpg"
 QUALITY_LABELS = {1: "draft", 2: "basic", 3: "good", 4: "high", 5: "best"}
 DISK_HEADROOM_GB = 1.0
+STALE_AFTER_DAYS = 183  # about six months: the model list is then worth a second look
 
 
 class ModelChoiceRequired(Exception):
@@ -118,6 +119,30 @@ def load_catalog(extra: Path | None = None) -> tuple[list[LocalModel], list[ApiM
             a = _api(d)
             api[(a.provider, a.model)] = a
     return list(local.values()), list(api.values())
+
+
+def catalog_updated() -> date | None:
+    """When the bundled model list was last checked (the `updated:` date in models.yaml)."""
+    try:
+        doc = yaml.safe_load((DATA_DIR / "models.yaml").read_text(encoding="utf-8")) or {}
+        value = doc.get("updated")
+        if isinstance(value, datetime):
+            return value.date()
+        if isinstance(value, date):
+            return value
+        return date.fromisoformat(str(value))
+    except (OSError, ValueError, yaml.YAMLError, AttributeError):
+        return None
+
+
+def catalog_staleness(today: date | None = None) -> tuple[str, bool]:
+    """('12 October 2026', False): the list date in plain words, and whether it is old
+    (more than STALE_AFTER_DAYS days). ('', False) when the date is unknown."""
+    updated = catalog_updated()
+    if updated is None:
+        return "", False
+    age = ((today or date.today()) - updated).days
+    return f"{updated.day} {updated:%B %Y}", age > STALE_AFTER_DAYS
 
 
 # ---------------------------------------------------------------- fit + speed

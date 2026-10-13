@@ -3,6 +3,10 @@
 {% if not cards %}
 <p class="flash warn">{{ icon('alert') }}<span>No AI model on this list fits this computer. Use an online AI below.</span></p>
 {% endif %}
+{% if list_updated %}
+<p class="snip">Model list last updated: {{ list_updated }}</p>
+{% if list_old %}<p class="flash warn" role="note">{{ icon('alert') }}<span>This list is more than six months old, so better AI models may exist by now. A newer version of shuto will have a fresher list.</span></p>{% endif %}
+{% endif %}
 <div class="cards">
   {% for r in cards %}
   <article class="card" id="row-{{ loop.index }}" aria-labelledby="m-{{ loop.index }}">
@@ -29,6 +33,15 @@
           <input type="hidden" name="csrf_token" value="{{ csrf }}">
           <input type="hidden" name="tag" value="{{ r.tag }}">
           <button type="submit" class="secondary">Measure speed</button>
+        </form>
+        {% endif %}
+        {% if selected != 'ollama:' ~ r.tag %}
+        <form method="post" action="/settings/model/remove" hx-post="/settings/model/remove" hx-confirm="Remove {{ r.tag }} from this computer? This frees about {{ '%.1f'|format(r.size_gb) }} GB. You can download it again later.">
+          <input type="hidden" name="csrf_token" value="{{ csrf }}">
+          <input type="hidden" name="tag" value="{{ r.tag }}">
+          <input type="hidden" name="return_to" value="{{ return_to }}">
+          <input type="hidden" name="confirm" value="yes">
+          <button type="submit" class="danger">Remove from this computer</button>
         </form>
         {% endif %}
         {% else %}

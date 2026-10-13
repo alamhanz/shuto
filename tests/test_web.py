@@ -7,7 +7,7 @@ import re
 import pytest
 from fastapi.testclient import TestClient
 
-from shuto import pipeline
+from shuto import hardware, local_models, ollama_store, pipeline
 from shuto.models import Status
 from shuto.web import create_app
 
@@ -343,6 +343,7 @@ def test_download_needs_explicit_confirm(web, cfg, ollama):
 
 
 def test_advice_when_model_does_not_fit_disk(web, cfg, monkeypatch):
+    monkeypatch.setattr(ollama_store, "supported", lambda name=None: True)
     from shuto import local_models
 
     tag = pipeline.list_models(cfg)[0].tag
@@ -368,7 +369,11 @@ def test_advice_when_model_does_not_fit_disk(web, cfg, monkeypatch):
     )
     text = web.get(f"/settings/advice?tag={tag}").text
     assert "~$0.002 per image" in text and "D:\\ollama" in text
-    assert "setx" not in text and "OLLAMA_MODELS" not in text and "/help#for-helpers" in text
+    assert "setx" not in text and "OLLAMA_MODELS" not in text
+    assert "/settings#storage" in text and "/help#for-helpers" not in text
+    monkeypatch.setattr(ollama_store, "supported", lambda name=None: False)
+    text = web.get(f"/settings/advice?tag={tag}").text
+    assert "/help#for-helpers" in text and "/settings#storage" not in text
     assert "Yes, download" not in text
     r = web.post("/settings/pull", {"tag": tag, "confirm": "yes"})
     assert "Not enough room" in r.text
@@ -763,3 +768,368 @@ def test_ftps_back_is_local_only(web, monkeypatch):
     for bad in ("//evil.example", "http://evil.example", "/" + chr(92) + "evil.example"):
         r = web.post("/settings/ftps", {"username": "a", "password": "b", "back": bad})
         assert r.headers["location"].startswith("/settings?")
+
+
+# ---------------------------------------------------------------- where to keep AI models
+
+
+def test_settings_and_wizard_show_models_folder_section(web, monkeypatch):
+    monkeypatch.setattr(ollama_store, "supported", lambda name=None: True)
+    html = web.get("/settings").text
+    assert 'id="storage"' in html and "Where to keep AI models" in html
+    assert 'hx-post="/settings/models-dir"' in html and "Save and restart Ollama" in html
+    assert "hx-confirm" in html and 'data-open-dialog="browse-dialog"' in html
+    wiz = web.get("/welcome?step=3&storage=1").text
+    assert 'id="storage" open' in wiz and 'name="return_to" value="/welcome?step=3"' in wiz
+
+
+def test_models_folder_section_on_linux_points_to_help(web, monkeypatch):
+    monkeypatch.setattr(ollama_store, "supported", lambda name=None: False)
+    html = web.get("/settings").text
+    assert "/help#for-helpers" in html and "Save and restart Ollama" not in html
+    r = web.post("/settings/models-dir", {"path": "/mnt/x"})
+    assert "administrator" in r.text and 'id="job-' not in r.text
+
+
+def test_models_folder_reset_button_and_move_checkbox(web, monkeypatch, tmp_path):
+    monkeypatch.setattr(ollama_store, "supported", lambda name=None: True)
+    monkeypatch.setattr(hardware, "ollama_models_dir", lambda *a, **k: tmp_path / "m")
+    monkeypatch.setenv("OLLAMA_MODELS", str(tmp_path / "m"))
+    monkeypatch.setattr(ollama_store, "saved_value", lambda os_name=None: str(tmp_path / "m"))
+    ollama_store_files = tmp_path / "m" / "blobs"
+    ollama_store_files.mkdir(parents=True)
+    (ollama_store_files / "sha256-a").write_bytes(b"x" * 10)
+    html = web.get("/settings").text
+    assert "/settings/models-dir/reset" in html and "Use the standard folder" in html
+    assert 'name="move" value="yes" checked' in html
+
+
+def test_models_dir_posts_need_csrf(web):
+    assert web.post("/settings/models-dir", {"path": "/x"}, token=False).status_code == 403
+    assert web.post("/settings/models-dir/reset", token=False).status_code == 403
+
+
+def test_models_dir_rejects_bad_folder_without_starting_a_job(web, monkeypatch):
+    monkeypatch.setattr(ollama_store, "supported", lambda name=None: True)
+    r = web.post("/settings/models-dir", {"path": "relative/dir"})
+    assert r.status_code == 200 and "full location" in r.text and 'id="job-' not in r.text
+
+
+def test_models_dir_starts_job_and_reports(web, monkeypatch, tmp_path):
+    monkeypatch.setattr(ollama_store, "supported", lambda name=None: True)
+    monkeypatch.setenv("OLLAMA_MODELS", str(tmp_path / "old"))
+    seen = {}
+
+    def fake_change(target, *, move, client, progress, cancelled, os_name=None):
+        seen.update(target=target, move=move)
+        progress(1, 2, "Copying models")
+        return "Ollama now keeps its models in X."
+
+    monkeypatch.setattr(ollama_store, "change_models_dir", fake_change)
+    new = tmp_path / "new"
+    job, text = web.run_job(
+        "/settings/models-dir", {"path": str(new), "move": "yes", "return_to": "/welcome?step=3"}
+    )
+    assert job.state == "done" and job.kind == "models_dir"
+    assert seen == {"target": new, "move": True}
+    assert "keeps its models in X" in text and 'href="/welcome?step=3"' in text
+    job, text = web.run_job("/settings/models-dir/reset", {})
+    assert job.state == "done" and seen["target"] is None and seen["move"] is False
+
+
+def test_models_dir_failure_is_shown_in_plain_words(web, monkeypatch, tmp_path):
+    monkeypatch.setattr(ollama_store, "supported", lambda name=None: True)
+    monkeypatch.setenv("OLLAMA_MODELS", str(tmp_path / "old"))
+
+    def boom(*a, **k):
+        raise ollama_store.StoreError("Ollama would not close. Quit Ollama yourself.")
+
+    monkeypatch.setattr(ollama_store, "change_models_dir", boom)
+    job, text = web.run_job("/settings/models-dir", {"path": str(tmp_path / "new")})
+    assert job.state == "failed"
+    assert "Ollama would not close" in text and "StoreError" not in text
+
+
+# ---------------------------------------------------------------- where to keep AI models (fixes)
+
+
+def test_machine_wide_models_folder_hides_save_and_reset(web, monkeypatch, tmp_path):
+    monkeypatch.setattr(ollama_store, "supported", lambda name=None: True)
+    monkeypatch.setattr(ollama_store, "machine_wide_value", lambda os_name=None: "E:\\models")
+    monkeypatch.setenv("OLLAMA_MODELS", "E:\\models")
+    html = web.get("/settings").text
+    assert "whole computer" in html and "/help#for-helpers" in html
+    assert "Save and restart Ollama" not in html and "Use the standard folder" not in html
+    for path, data in (
+        ("/settings/models-dir", {"path": str(tmp_path / "n")}),
+        ("/settings/models-dir/reset", {}),
+    ):
+        r = web.post(path, data)
+        assert "whole computer" in r.text and 'id="job-' not in r.text
+
+
+def test_busy_models_job_does_not_change_the_return_page(web, cfg, ollama, monkeypatch):
+    import threading
+
+    gate = threading.Event()
+    first = web.state.runner.submit("pull", "models", lambda ctx: gate.wait(10))
+    tag = next(r.tag for r in pipeline.list_models(cfg) if not r.pulled and r.fits_hardware)
+    try:
+        r = web.post(
+            "/settings/pull", {"tag": tag, "confirm": "yes", "return_to": "/welcome?step=3"}
+        )
+        assert 'id="job-' not in r.text  # refused: a models job is already running
+        assert "/welcome?step=3" not in web.get(f"/jobs/{first}").text
+    finally:
+        gate.set()
+        web.state.runner.wait(first, timeout=10)
+
+
+# ---------------------------------------------------------------- model list date + removing models
+
+
+def test_model_list_shows_its_date_and_no_note_when_fresh(web, monkeypatch):
+    from datetime import date
+
+    monkeypatch.setattr(local_models, "catalog_updated", lambda: date.today())
+    html = web.get("/settings").text
+    assert "Model list last updated:" in html and "more than six months old" not in html
+    assert f"{date.today().day} {date.today():%B %Y}" in html
+    assert "Model list last updated:" in web.get("/welcome?step=3").text
+
+
+def test_old_model_list_gets_a_gentle_note(web, monkeypatch):
+    from datetime import date, timedelta
+
+    monkeypatch.setattr(local_models, "catalog_updated", lambda: date.today() - timedelta(days=184))
+    assert "more than six months old" in web.get("/settings").text
+    monkeypatch.setattr(local_models, "catalog_updated", lambda: date.today() - timedelta(days=183))
+    assert "more than six months old" not in web.get("/settings").text
+
+
+def test_bundled_model_list_has_a_date():
+    updated = local_models.catalog_updated()
+    assert updated is not None
+    text, old = local_models.catalog_staleness(updated)
+    assert text and old is False
+
+
+def test_remove_button_only_for_downloaded_models_not_in_use(web, cfg, ollama):
+    ollama.pulled = ["gemma3:4b", "gemma3:12b"]
+    web.post("/settings/use", {"spec": "gemma3:4b"})
+    html = web.get("/settings").text
+    assert "Remove from this computer</button>" in html
+    assert "Remove gemma3:12b from this computer?" in html
+    assert "Remove gemma3:4b from this computer" not in html
+
+
+def test_remove_model_deletes_through_ollama(web, ollama):
+    ollama.pulled = ["gemma3:4b", "gemma3:12b"]
+    web.post("/settings/use", {"spec": "gemma3:4b"})
+    r = web.post("/settings/model/remove", {"tag": "gemma3:12b", "confirm": "yes"})
+    assert r.status_code == 303 and "notice=" in r.headers["location"]
+    assert ollama.delete_calls == ["gemma3:12b"] and ollama.pulled == ["gemma3:4b"]
+
+
+def test_remove_model_needs_confirm_and_refuses_the_model_in_use(web, ollama):
+    ollama.pulled = ["gemma3:4b", "gemma3:12b"]
+    web.post("/settings/use", {"spec": "gemma3:4b"})
+    r = web.post("/settings/model/remove", {"tag": "gemma3:12b"})
+    assert "error=" in r.headers["location"] and ollama.delete_calls == []
+    r = web.post("/settings/model/remove", {"tag": "gemma3:4b", "confirm": "yes"})
+    assert "error=" in r.headers["location"] and ollama.delete_calls == []
+    r = web.post("/settings/model/remove", {"tag": "llava:7b", "confirm": "yes"})
+    assert "error=" in r.headers["location"] and ollama.delete_calls == []
+    assert web.post("/settings/model/remove", {"tag": "x"}, token=False).status_code == 403
+
+
+def test_remove_model_failure_is_reported(web, ollama, monkeypatch):
+    ollama.pulled = ["gemma3:12b"]
+
+    def boom(tag):
+        raise RuntimeError("Ollama is not running at http://x")
+
+    monkeypatch.setattr(ollama, "delete", boom)
+    r = web.post("/settings/model/remove", {"tag": "gemma3:12b", "confirm": "yes"})
+    assert "error=" in r.headers["location"] and ollama.pulled == ["gemma3:12b"]
+
+
+# ---------------------------------------------------------------- replace when the disk is short
+
+MB = 1024 * 1024
+
+
+def _models_on_disk(tmp_path, monkeypatch, models: dict[str, dict[str, int]]):
+    """A fake Ollama models folder: {name: {blob_hex: size_bytes}}. Returns the folder."""
+    root = tmp_path / "ollama-models"
+    for name, blobs in models.items():
+        model, _, tag = name.partition(":")
+        manifest = root / "manifests" / "registry.ollama.ai" / "library" / model / tag
+        manifest.parent.mkdir(parents=True, exist_ok=True)
+        layers = [{"digest": f"sha256:{h}"} for h in blobs]
+        manifest.write_text(json.dumps({"config": layers[0], "layers": layers[1:]}))
+        (root / "blobs").mkdir(exist_ok=True)
+        for h, size in blobs.items():
+            (root / "blobs" / f"sha256-{h}").write_bytes(b"x" * size)
+    monkeypatch.setattr(ollama_store, "current_models_dir", lambda: root)
+    return root
+
+
+def _short_disk(monkeypatch, free_gb=0.0, need_gb=4 * MB / 1024**3):
+    monkeypatch.setattr(
+        pipeline,
+        "model_disk_advice",
+        lambda cfg, t: local_models.DiskAdvice(
+            tag=t,
+            fits=False,
+            models_dir="/m",
+            free_gb=free_gb,
+            need_gb=need_gb,
+            message="Not enough room.",
+        ),
+    )
+
+
+def _setup_three(web, ollama, tmp_path, monkeypatch):
+    ollama.pulled = ["gemma3:4b", "gemma3:12b", "moondream:latest"]
+    _models_on_disk(
+        tmp_path,
+        monkeypatch,
+        {
+            "gemma3:4b": {"a1": 6 * MB},
+            "gemma3:12b": {"b1": 5 * MB, "shared": 9 * MB},
+            "moondream:latest": {"c1": 1 * MB},
+        },
+    )
+    web.post("/settings/use", {"spec": "gemma3:4b"})
+    _short_disk(monkeypatch)
+
+
+def test_replace_is_offered_when_removing_a_model_makes_room(
+    web, cfg, ollama, monkeypatch, tmp_path
+):
+    _setup_three(web, ollama, tmp_path, monkeypatch)
+    text = web.get("/settings/advice?tag=qwen3-vl:8b").text
+    assert "Replace: remove gemma3:12b and download qwen3-vl:8b" in text
+    assert 'name="replace" value="gemma3:12b"' in text and "hx-confirm" in text
+    assert "remove gemma3:4b" not in text  # the model in use is never offered
+    assert "remove moondream" not in text  # too small to make room
+
+
+def test_replace_counts_only_blobs_no_other_model_uses(web, cfg, ollama, monkeypatch, tmp_path):
+    ollama.pulled = ["gemma3:4b", "gemma3:12b", "moondream:latest"]
+    _models_on_disk(
+        tmp_path,
+        monkeypatch,
+        {
+            "gemma3:4b": {"a1": 6 * MB},
+            # a1x is also used by moondream, so removing gemma3:12b frees only 1 MB
+            "gemma3:12b": {"b1": 1 * MB, "a1x": 9 * MB},
+            "moondream:latest": {"c1": 1 * MB, "a1x": 9 * MB},
+        },
+    )
+    web.post("/settings/use", {"spec": "gemma3:4b"})
+    _short_disk(monkeypatch)
+    text = web.get("/settings/advice?tag=qwen3-vl:8b").text
+    assert "Replace:" not in text
+    r = web.post(
+        "/settings/pull", {"tag": "qwen3-vl:8b", "replace": "gemma3:12b", "confirm": "yes"}
+    )
+    assert "would not free enough room" in r.text and ollama.delete_calls == []
+
+
+def test_replace_is_not_offered_for_models_outside_the_list(
+    web, cfg, ollama, monkeypatch, tmp_path
+):
+    ollama.pulled = ["gemma3:4b", "my-own-model:latest"]
+    _models_on_disk(
+        tmp_path,
+        monkeypatch,
+        {"gemma3:4b": {"a1": 6 * MB}, "my-own-model:latest": {"z1": 50 * MB}},
+    )
+    web.post("/settings/use", {"spec": "gemma3:4b"})
+    _short_disk(monkeypatch)
+    assert "my-own-model" not in web.get("/settings/advice?tag=qwen3-vl:8b").text
+    r = web.post(
+        "/settings/pull",
+        {"tag": "qwen3-vl:8b", "replace": "my-own-model:latest", "confirm": "yes"},
+    )
+    assert "cannot be removed" in r.text and ollama.delete_calls == []
+    r = web.post("/settings/model/remove", {"tag": "my-own-model:latest", "confirm": "yes"})
+    assert "error=" in r.headers["location"] and ollama.delete_calls == []
+
+
+def test_replace_removes_then_downloads(web, cfg, ollama, monkeypatch, tmp_path):
+    _setup_three(web, ollama, tmp_path, monkeypatch)
+    job, text = web.run_job(
+        "/settings/pull", {"tag": "qwen3-vl:8b", "replace": "gemma3:12b", "confirm": "yes"}
+    )
+    assert job.state == "done"
+    assert ollama.delete_calls == ["gemma3:12b"] and ollama.pull_calls == ["qwen3-vl:8b"]
+    assert "gemma3:12b was removed" in text
+
+
+def test_replace_queued_then_model_chosen_deletes_nothing(web, cfg, ollama, monkeypatch, tmp_path):
+    import threading
+
+    _setup_three(web, ollama, tmp_path, monkeypatch)
+    gate = threading.Event()
+    blocker = web.state.runner.submit("describe", "other-batch", lambda ctx: gate.wait(10))
+    try:
+        r = web.post(
+            "/settings/pull", {"tag": "qwen3-vl:8b", "replace": "gemma3:12b", "confirm": "yes"}
+        )
+        match = re.search(r'id="job-(\d+)"', r.text)
+        assert match, r.text
+        web.post("/settings/use", {"spec": "gemma3:12b"})  # chosen while the job waits
+    finally:
+        gate.set()
+        web.state.runner.wait(blocker, timeout=10)
+    job = web.state.runner.wait(int(match.group(1)), timeout=30)
+    assert job.state == "failed" and "now the model in use" in (job.error or "")
+    assert ollama.delete_calls == [] and ollama.pull_calls == []
+
+
+def test_remove_and_replace_refuse_when_the_choice_cannot_be_read(
+    web, cfg, ollama, monkeypatch, tmp_path
+):
+    _setup_three(web, ollama, tmp_path, monkeypatch)
+
+    def boom(*a, **k):
+        raise OSError("settings unreadable")
+
+    monkeypatch.setattr(pipeline, "resolve_selection", boom)
+    r = web.post("/settings/model/remove", {"tag": "gemma3:12b", "confirm": "yes"})
+    assert "error=" in r.headers["location"] and ollama.delete_calls == []
+    assert "Replace:" not in web.get("/settings/advice?tag=qwen3-vl:8b").text
+    r = web.post(
+        "/settings/pull", {"tag": "qwen3-vl:8b", "replace": "gemma3:12b", "confirm": "yes"}
+    )
+    assert "cannot be removed" in r.text and ollama.delete_calls == []
+
+
+def test_replace_refuses_the_model_in_use(web, cfg, ollama, monkeypatch, tmp_path):
+    _setup_three(web, ollama, tmp_path, monkeypatch)
+    r = web.post("/settings/pull", {"tag": "qwen3-vl:8b", "replace": "gemma3:4b", "confirm": "yes"})
+    assert "cannot be removed" in r.text
+    assert ollama.delete_calls == [] and ollama.pull_calls == []
+
+
+def test_replace_needs_confirm(web, ollama, monkeypatch, tmp_path):
+    ollama.pulled = ["gemma3:12b"]
+    _models_on_disk(tmp_path, monkeypatch, {"gemma3:12b": {"b1": 5 * MB}})
+    _short_disk(monkeypatch)
+    r = web.post("/settings/pull", {"tag": "qwen3-vl:8b", "replace": "gemma3:12b"})
+    assert "not confirmed" in r.text and ollama.delete_calls == []
+
+
+def test_reset_is_refused_when_a_machine_wide_value_exists_too(web, monkeypatch, tmp_path):
+    monkeypatch.setattr(ollama_store, "supported", lambda name=None: True)
+    monkeypatch.setattr(ollama_store, "machine_wide_value", lambda os_name=None: None)
+    monkeypatch.setattr(ollama_store, "machine_any_value", lambda os_name=None: "E:\\admin")
+    monkeypatch.setenv("OLLAMA_MODELS", str(tmp_path / "mine"))
+    html = web.get("/settings").text
+    assert "Save and restart Ollama" in html  # the user's own value can still be changed
+    assert "Use the standard folder" not in html and "administrator" in html
+    r = web.post("/settings/models-dir/reset", {})
+    assert "administrator" in r.text and 'id="job-' not in r.text

@@ -57,10 +57,38 @@ The sample image is CC0, from Wikimedia Commons; see
 Models are large. Before a pull, shuto checks free space where Ollama stores models and, if it
 is short, lists other drives with enough room and the cheaper API options.
 
-To store models on another drive, set `OLLAMA_MODELS` to a folder there and restart Ollama.
-Models already pulled stay in the old folder unless you move them.
+To store models on another drive, open the web app, go to **Settings, Where to keep AI models**
+(the setup wizard has the same box on the AI model step), pick or type a folder and press
+**Save and restart Ollama**. Tick **Move the models I already downloaded** to bring your existing
+models along. No terminal is needed on Windows or macOS.
 
-**Linux** (systemd service):
+What shuto does for you:
+
+- **Windows**: saves a per-user `OLLAMA_MODELS` setting (no administrator rights), closes Ollama
+  (including the tray app) and starts it again.
+- **macOS**: runs `launchctl setenv OLLAMA_MODELS ...`, adds a small login item
+  (`~/Library/LaunchAgents/com.shuto.ollama-models.plist`) so it survives a reboot, then quits
+  and reopens the Ollama app. **Use the standard folder** removes both again.
+- Moving models: Ollama is stopped, the files are copied to the new folder, every size is
+  checked, Ollama is restarted and must still list every model named by the old `manifests/`,
+  and only then are the old files deleted (manifests first). Folders are compared by real
+  identity, so a link, junction, drive alias or different capitalisation of the current folder
+  is refused. If anything fails the setting is put back, Ollama is restarted on it, and only
+  the files this run copied are removed. shuto checks the free space on the new drive first.
+- A folder that already holds models is merged. A file with the same name but different content
+  is never overwritten: shuto stops before changing anything and says so.
+- A Windows `OLLAMA_MODELS` set for the whole computer (by an administrator) cannot be changed
+  by shuto. Settings explains this and hides Save and Reset; ask someone with administrator
+  rights.
+- macOS: after a restart, the Ollama login item and shuto's login item run in no fixed order. If
+  Ollama then shows no models, Settings says so: quit Ollama from the menu bar and open it again.
+
+You can also remove a downloaded model from the model list (**Remove from this computer**; never
+the one in use). If a download does not fit on the disk, **Replace: remove X and download Y**
+offers the downloaded models whose removal makes room. Both ask for confirmation. The list shows
+when it was last updated and gently flags it after about six months.
+
+**Linux** needs an administrator, so it stays manual (systemd service):
 
 ```
 sudo systemctl edit ollama
@@ -72,22 +100,6 @@ sudo systemctl restart ollama
 
 The `ollama` service user needs write access to that folder. If you run `ollama serve` by
 hand, use `export OLLAMA_MODELS=/mnt/bigdisk/ollama` first.
-
-**macOS**:
-
-```
-launchctl setenv OLLAMA_MODELS /Volumes/BigDisk/ollama
-```
-
-Then quit and reopen the Ollama app. (For `ollama serve` in a terminal, use `export` instead.)
-
-**Windows** (PowerShell):
-
-```
-setx OLLAMA_MODELS "D:\ollama\models"
-```
-
-Then quit Ollama from the system tray and start it again. `setx` only affects new processes.
 
 `shuto doctor` prints the models folder in use and the free space there.
 

@@ -186,10 +186,10 @@ class JobRunner:
                     state = "cancelled"
                 except Exception as exc:
                     state, error = "failed", f"{type(exc).__name__}: {exc}"
-            self._texts.pop(job_id, None)
             self.store.update_job(
                 job_id, state=state, error=error, finished_at=datetime.now().isoformat()
             )
+            self._texts.pop(job_id, None)
             with self._lock:
                 if batch_id is not None:
                     self._active.pop(batch_id, None)

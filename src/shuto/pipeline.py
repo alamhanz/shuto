@@ -1724,7 +1724,7 @@ def check_batch(
         if name and done < count:
             text += f" (just finished: {name})"
         units = quality_units + (CHECK_SCALE - quality_units) * done // max(count, 1)
-        progress(units, CHECK_SCALE, text)
+        progress(min(units, CHECK_SCALE - 1), CHECK_SCALE, text)
 
     to_cull = len(store.list_photos(batch_id, [Status.IMPORTED]))
     if to_cull:
@@ -1736,6 +1736,12 @@ def check_batch(
     started[0] = time.monotonic()
     if to_describe:
         describe_progress(0, to_describe)
+    else:
+        progress(
+            CHECK_SCALE - 1,
+            CHECK_SCALE,
+            "No photos left for the AI after the quality check",
+        )
     described = describe_batch(
         cfg, store, batch_id, llm=llm, progress=describe_progress, cancel=cancel
     )

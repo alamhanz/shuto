@@ -52,7 +52,11 @@ CACHE_TTL_S = 10.0  # how long a model check is reused between page loads
 
 @dataclass(frozen=True)
 class ModelStatus:
-    """Can the AI write text right now? state: ready | missing | unknown (cannot tell)."""
+    """Can the AI write text right now?
+
+    state: ready | missing | downloading (the model the user asked for is on its way) |
+    unknown (cannot tell).
+    """
 
     state: str
     message: str = ""
@@ -82,6 +86,8 @@ class WebState:
         self.csrf = _stdlib_secrets.token_urlsafe(32)
         # (provider, model, ollama url) -> (when, ModelStatus); cleared by any change
         self.model_cache: dict[tuple[str, str, str], tuple[float, Any]] = {}
+        # model the user started downloading in the setup wizard; chosen when the download ends
+        self.pending_model: str | None = None
         self.allowed_hosts = LOOPBACK_HOSTS | {h.lower() for h in extra_hosts}
         if cfg.web.host not in ("0.0.0.0", "::"):
             self.allowed_hosts.add(hostname(cfg.web.host))
@@ -150,7 +156,21 @@ class WebCtx:
             request.state.model_status = status
         return status
 
+    def fresh_model_status(self) -> ModelStatus:
+        """Like `model_status` but always asked again (never the cached answer)."""
+        return self._model_status(full=False, cache=False)
+
     def _model_status(self, *, full: bool, cache: bool) -> ModelStatus:
+        status = self._checked_status(full=full, cache=cache)
+        pending = self.state.pending_model
+        if status.state == "missing" and pending and "pull" in self.runner.active_kinds():
+            return ModelStatus(
+                "downloading",
+                f"Downloading {pending}... It is chosen for you when the download finishes.",
+            )
+        return status
+
+    def _checked_status(self, *, full: bool, cache: bool) -> ModelStatus:
         cfg = self.cfg
         try:
             sel = pipeline.resolve_selection(cfg, self.store)

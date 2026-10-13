@@ -53,6 +53,18 @@ footer { text-align: center; color: var(--text-muted); font-size: .9rem; padding
 .btn.danger:hover, button.danger:hover { background: var(--text); border-color: var(--text); }
 .btn:disabled, button:disabled, .btn[aria-disabled="true"] { background: var(--surface-alt); border-color: var(--border-input); color: var(--text); opacity: .75; cursor: not-allowed; }
 .next-action { display: flex; justify-content: flex-end; margin: 1.5rem 0 0; }
+.wiz-nav { margin: 1.5rem 0 0; }
+.wiz-row { display: grid; grid-template-columns: 1fr auto 1fr; grid-template-areas: "back skip primary"; align-items: center; gap: .75rem 1rem; }
+.wiz-back { grid-area: back; justify-self: start; }
+.wiz-skip { grid-area: skip; justify-self: center; }
+.wiz-primary { grid-area: primary; justify-self: end; }
+.wiz-hint { margin: .6rem 0 0; text-align: right; }
+@media (max-width: 36rem) {
+  .wiz-row { grid-template-columns: 1fr; grid-template-areas: "primary" "back" "skip"; }
+  .wiz-back, .wiz-skip, .wiz-primary { justify-self: stretch; text-align: center; }
+  .wiz-primary .btn { width: 100%; }
+  .wiz-hint { text-align: left; }
+}
 
 /* forms */
 input, textarea, select { font: inherit; color: var(--text); background: var(--surface); padding: .45rem .6rem; min-height: 40px; border: 2px solid var(--border-input); border-radius: var(--radius); max-width: 100%; }
@@ -195,7 +207,6 @@ details > summary { cursor: pointer; font-weight: 600; min-height: 32px; }
 .dl-bar.done { border-color: var(--ok); background: var(--ok-bg); }
 .dl-bar.failed { border-color: var(--danger); background: var(--danger-bg); color: var(--danger); }
 .dl-bar button { min-height: 32px; padding: .1rem .7rem; }
-body:has(#job-area .progress, #job-resume .progress) .dl-bar { display: none; }
 
 .model-banner { display: flex; gap: .6rem; align-items: center; flex-wrap: wrap; padding: .45rem .9rem; margin: .6rem 0; border-radius: var(--radius); background: var(--danger-bg); color: var(--danger); border: 2px solid var(--danger); }
 .model-banner a { color: var(--danger); font-weight: 600; }

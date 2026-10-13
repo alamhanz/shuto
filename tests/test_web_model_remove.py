@@ -85,7 +85,7 @@ def test_replace_job_checks_again_before_deleting(web, ollama, monkeypatch, tmp_
     assert hold.started.wait(5)
     r = web.post("/settings/pull", {"tag": tag, "replace": "gemma3:12b", "confirm": "yes"})
     assert r.status_code == 200, r.text
-    job_id = int(re.search(r'id="job-(\d+)"', r.text).group(1))
+    job_id = int(re.search(r'(?:id="job-|data-job=")(\d+)"', r.text).group(1))
     # a describe job starts while the replace job is still queued
     late = web.state.runner.submit("describe", "late-batch", lambda job: None)
     hold.release()
@@ -130,8 +130,10 @@ def test_confirm_page_checks_tag_and_return_page(web, ollama):
     assert "evil.example" not in r.text
     r = web.get("/settings/model/remove?tag=gemma3:12b&return_to=/welcome?step=3")
     assert 'name="return_to" value="/welcome?step=3"' in r.text
-    # in use, not downloaded, or not on the list: sent back with a reason, nothing to confirm
-    for tag in ("gemma3:4b", "llava:7b", "my-own-model:latest"):
+    # the model in use gets a confirm page with a warning
+    assert "uses now" in web.get("/settings/model/remove?tag=gemma3:4b").text
+    # not downloaded, or not on the list: sent back with a reason, nothing to confirm
+    for tag in ("llava:7b", "my-own-model:latest"):
         r = web.get(f"/settings/model/remove?tag={tag}")
         assert r.status_code == 303 and "error=" in r.headers["location"]
     r = web.get("/settings/model/remove?tag=llava:7b&return_to=//evil.example")

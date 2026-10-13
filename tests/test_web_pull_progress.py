@@ -89,7 +89,7 @@ def test_model_step_and_settings_show_running_download(web, cfg, slow):
     tag = start_pull(web, cfg, slow, back="/welcome?step=3")
     for page in ("/welcome?step=3", "/settings"):
         text = web.get(page).text
-        assert 'id="job-resume"' in text and "Downloading the AI model" in text
+        assert 'id="dl-slot"' in text and 'class="progress' not in text  # one slot, no second panel
         assert "Downloading now" in text
         assert f'"tag": "{tag}"' not in text  # no second Download button for it
     slow.release.set()
@@ -108,11 +108,12 @@ def test_bar_status_is_plain_words(web, cfg, slow):
 def test_wizard_download_continue_stays_in_wizard(web, cfg, slow):
     start_pull(web, cfg, slow, back="/welcome?step=3")
     text = web.get("/welcome?step=3").text
-    assert "Cancel" in text and "Progress is shown on this page" in text
+    assert 'id="dl-slot"' in text and "Progress is shown on this page" in text
+    assert "Cancel" in web.get("/downloads/bar").text
     job_id = web.state.runner.active_job("models")
     slow.release.set()
     web.state.runner.wait(job_id)
-    assert 'href="/welcome?step=3"' in web.get(f"/jobs/{job_id}").text
+    assert 'href="/welcome?step=3"' in web.get(f"/downloads/bar?job={job_id}").text
 
 
 def test_bar_for_models_dir_job(web, monkeypatch, tmp_path):

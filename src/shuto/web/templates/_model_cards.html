@@ -26,7 +26,8 @@
         <form method="post" action="{{ use_action }}">
           <input type="hidden" name="csrf_token" value="{{ csrf }}">
           <input type="hidden" name="spec" value="{{ r.tag }}">
-          <button type="submit" class="btn primary"{% if not r.fits_hardware %} disabled{% endif %}>Use this</button>
+          {% if selected == 'ollama:' ~ r.tag %}<button type="button" class="btn primary" disabled>In use</button>
+          {% else %}<button type="submit" class="btn primary"{% if not r.fits_hardware %} disabled{% endif %}>Use this</button>{% endif %}
         </form>
         {% if show_bench %}
         <form hx-post="/settings/benchmark" hx-target="#job-area" hx-swap="innerHTML" hx-confirm="Run {{ r.tag }} twice on a sample photo to measure its speed? This can take a minute.">
@@ -35,13 +36,11 @@
           <button type="submit" class="secondary">Measure speed</button>
         </form>
         {% endif %}
-        {% if selected != 'ollama:' ~ r.tag %}
-        <form method="get" action="/settings/model/remove" hx-post="/settings/model/remove" hx-vals='{"confirm": "yes"}' hx-confirm="Remove {{ r.tag }} from this computer? This frees about {{ '%.1f'|format(r.size_gb) }} GB. You can download it again later.">
+        <form method="get" action="/settings/model/remove" hx-post="/settings/model/remove" hx-vals='{"confirm": "yes"}' hx-confirm="{% if selected == 'ollama:' ~ r.tag %}{{ r.tag }} is the AI model shuto uses now. After removing it, shuto can't write titles and keywords until you choose or download another model. Remove it anyway? {% else %}Remove {{ r.tag }} from this computer? {% endif %}This frees about {{ '%.1f'|format(r.size_gb) }} GB. You can download it again later.">
           <input type="hidden" name="tag" value="{{ r.tag }}">
           <input type="hidden" name="return_to" value="{{ return_to }}">
           <button type="submit" class="danger">Remove from this computer</button>
         </form>
-        {% endif %}
         {% elif pulling == r.tag %}
         <p class="hint">Downloading now. Progress is shown on this page.</p>
         {% else %}

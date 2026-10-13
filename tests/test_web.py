@@ -39,7 +39,7 @@ class Web:
     def run_job(self, path, data=None):
         r = self.post(path, data)
         assert r.status_code == 200, r.text
-        match = re.search(r'id="job-(\d+)"', r.text)
+        match = re.search(r'(?:id="job-|data-job=")(\d+)"', r.text)
         assert match, r.text
         job = self.state.runner.wait(int(match.group(1)), timeout=60)
         return job, self.get(f"/jobs/{job.id}").text
@@ -933,7 +933,9 @@ def test_remove_button_only_for_downloaded_models_not_in_use(web, cfg, ollama):
     html = web.get("/settings").text
     assert "Remove from this computer</button>" in html
     assert "Remove gemma3:12b from this computer?" in html
-    assert "Remove gemma3:4b from this computer" not in html
+    # the model in use can be removed too, but its confirm text carries the warning
+    assert "gemma3:4b is the AI model shuto uses now" in html
+    assert "Remove gemma3:4b from this computer?" not in html
 
 
 def test_remove_model_deletes_through_ollama(web, ollama):
@@ -944,13 +946,16 @@ def test_remove_model_deletes_through_ollama(web, ollama):
     assert ollama.delete_calls == ["gemma3:12b"] and ollama.pulled == ["gemma3:4b"]
 
 
-def test_remove_model_needs_confirm_and_refuses_the_model_in_use(web, ollama):
+def test_remove_model_needs_confirm_and_clears_the_model_in_use(web, ollama):
     ollama.pulled = ["gemma3:4b", "gemma3:12b"]
     web.post("/settings/use", {"spec": "gemma3:4b"})
     r = web.post("/settings/model/remove", {"tag": "gemma3:12b"})
     assert "error=" in r.headers["location"] and ollama.delete_calls == []
+    page = web.get("/settings/model/remove?tag=gemma3:4b").text
+    assert "gemma3:4b is the AI model shuto uses now. After removing it, shuto can't write" in page
     r = web.post("/settings/model/remove", {"tag": "gemma3:4b", "confirm": "yes"})
-    assert "error=" in r.headers["location"] and ollama.delete_calls == []
+    assert "notice=" in r.headers["location"] and ollama.delete_calls == ["gemma3:4b"]
+    ollama.delete_calls.clear()
     r = web.post("/settings/model/remove", {"tag": "llava:7b", "confirm": "yes"})
     assert "error=" in r.headers["location"] and ollama.delete_calls == []
     assert web.post("/settings/model/remove", {"tag": "x"}, token=False).status_code == 403
@@ -1092,7 +1097,7 @@ def test_replace_queued_then_model_chosen_deletes_nothing(web, cfg, ollama, monk
         r = web.post(
             "/settings/pull", {"tag": "qwen3-vl:8b", "replace": "gemma3:12b", "confirm": "yes"}
         )
-        match = re.search(r'id="job-(\d+)"', r.text)
+        match = re.search(r'(?:id="job-|data-job=")(\d+)"', r.text)
         assert match, r.text
         web.post("/settings/use", {"spec": "gemma3:12b"})  # chosen while the job waits
     finally:

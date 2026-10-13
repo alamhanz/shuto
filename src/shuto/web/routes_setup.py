@@ -14,7 +14,7 @@ from starlette.datastructures import FormData
 
 from .. import estimate, hardware, local_models, ollama_store, pipeline, updates
 from .. import secrets as shuto_secrets
-from ..jobs import JobBusy, JobContext
+from ..jobs import JobBusy, JobCancelled, JobContext
 from . import browse, ux
 from .common import IMPORT_JOB_KEY, MODELS_JOB_KEY, PostForm, WebCtx
 
@@ -72,6 +72,13 @@ def _helper_steps(os_name: str) -> list[str]:
 
 UPLOAD_JOB_KINDS = ("deliver", "ftps_test", "upload")
 AI_JOB_KINDS = {"check", "describe"}  # jobs that use the AI model
+BAR_KINDS = ("pull", "models_dir")  # jobs shown as the download bar at the top of every page
+CANCEL_TOO_LATE = "The download finished before it could be stopped. {tag} is ready to use."
+CANCEL_STOPPED = (
+    "Download stopped. {tag} is not ready to use. Partly downloaded files stay, "
+    "so a later download can continue where this one stopped."
+)
+PINNED_TEXT = " Your settings file still names {tag}. Choose another model in Settings."
 WRITING_BUSY = "Wait for shuto to finish writing titles and keywords, then try again."
 
 
@@ -169,9 +176,10 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
         model, so the model must not be removed under it)."""
         return bool(ctx.runner.active_kinds() & AI_JOB_KINDS)
 
-    def removable_models() -> list[dict]:
+    def removable_models(include_in_use: bool = False) -> list[dict]:
         """Downloaded models that may be removed: only models from the model list (they can be
-        downloaded again; a model made by hand cannot), and never the one in use. size_gb is
+        downloaded again; a model made by hand cannot). The one in use is left out unless
+        `include_in_use`. size_gb is
         what Ollama would really free (layers shared with other models stay)."""
         try:
             rows = pipeline.ollama_client(ctx.cfg).tags()
@@ -184,7 +192,12 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
         for m in rows:
             name = str(m.get("name") or m.get("model") or "")
             norm = hardware.normalize_tag(name)
-            if not name or not TAG_RE.match(name) or norm == keep or norm not in listed:
+            if (
+                not name
+                or not TAG_RE.match(name)
+                or (norm == keep and not include_in_use)
+                or norm not in listed
+            ):
                 continue
             freed = ollama_store.freeable_bytes(root, name)
             out.append({"tag": name, "size_gb": (freed or 0) / 1024**3, "known": freed is not None})
@@ -511,18 +524,17 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             return HTMLResponse("")
         return ctx.render(request, "_model_banner.html")
 
-    @app.get("/downloads/bar", response_class=HTMLResponse)
-    def download_bar(request: Request, job: int = 0):
-        """Small progress bar for the running model download, shown on every page (read-only)."""
-        job_id = ctx.runner.active_job(MODELS_JOB_KEY) or job
-        found = ctx.runner.get(job_id) if job_id else None
-        if found is None or found.kind not in ("pull", "models_dir"):
+    def bar_response(request: Request, job_id: int) -> HTMLResponse:
+        found = ctx.runner.get(job_id)
+        if found is None:
             return HTMLResponse("")
         active = found.state in ("queued", "running")
-        if not active and job != found.id:
-            return HTMLResponse("")  # finished earlier: only the page that saw it run says so
         result = ctx.runner.result(found.id)
         info = pull_info(found.id) or {"tag": "", "status": ""}
+        try:
+            in_use = bool(info["tag"]) and hardware.normalize_tag(info["tag"]) == selected_tag()
+        except RuntimeError:
+            in_use = False
         return ctx.render(
             request,
             "_download_bar.html",
@@ -532,13 +544,27 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             tag=info["tag"],
             status=info["status"],
             href=pull_return[0],
+            in_use=in_use,
         )
+
+    @app.get("/downloads/bar", response_class=HTMLResponse)
+    def download_bar(request: Request, job: int = 0):
+        """Small progress bar for the running model download, shown on every page (read-only)."""
+        job_id = ctx.runner.active_job(MODELS_JOB_KEY) or job
+        found = ctx.runner.get(job_id) if job_id else None
+        if found is None or found.kind not in BAR_KINDS:
+            return HTMLResponse("")
+        if found.state not in ("queued", "running") and job != found.id:
+            return HTMLResponse("")  # finished earlier: only the page that saw it run says so
+        return bar_response(request, found.id)
 
     @app.post("/jobs/{job_id}/cancel", response_class=HTMLResponse)
     def job_cancel(request: Request, job_id: int, form: PostForm):
         if ctx.runner.get(job_id) is None:
             raise HTTPException(status_code=404, detail="Unknown job.")
         ctx.runner.cancel(job_id)
+        if ctx.runner.get(job_id).kind in BAR_KINDS:
+            return bar_response(request, job_id)
         return ctx.job_fragment(request, job_id, **job_extras(job_id))
 
     # ------------------------------------------------------------------ folder browser
@@ -769,6 +795,7 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             return ctx.message_fragment(request, advice.message or "Not enough free disk space.")
         back = str(form.get("return_to") or "")
         back = back if back in RETURN_PAGES else "/settings"
+        wizard = back == "/welcome?step=3"
 
         def run(job: JobContext) -> str:
             last: list[object] = [None]
@@ -799,6 +826,7 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             info["status"] = "Getting ready"
 
             def on_progress(ev: dict) -> None:
+                job.raise_if_cancelled()  # leaving the stream makes Ollama stop the download
                 total, done = ev.get("total") or 0, ev.get("completed") or 0
                 pct = int(done * 100 / total) if total else 0
                 mark = (str(ev.get("status")), pct)
@@ -808,18 +836,42 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
                 info["status"] = plain_pull_status(mark[0], total)
                 job.progress(int(done / 1_000_000), int(total / 1_000_000), mark[0])
 
+            removed = f" {replace} was removed." if victim is not None else ""
             try:
-                pipeline.pull_model(cfg, tag, on_progress)
+                try:
+                    job.raise_if_cancelled()
+                    pipeline.pull_model(cfg, tag, on_progress)
+                finally:
+                    state.pending_model = None
+            except JobCancelled:
+                if model_is_downloaded(tag):
+                    job.mark_completed()
+                    return f"{CANCEL_TOO_LATE.format(tag=tag)}{removed}"
+                return f"{CANCEL_STOPPED.format(tag=tag)}{removed}"
             except Exception as exc:
                 if victim is None:
                     raise
                 raise RuntimeError(
                     f"{replace} was removed, but {tag} could not be downloaded: {exc}"
                 ) from None
-            removed = f" {replace} was removed." if victim is not None else ""
+            if job.cancelled():  # cancel came too late: the model is complete, but not chosen
+                job.mark_completed()
+                return f"{CANCEL_TOO_LATE.format(tag=tag)}{removed}"
+            if wizard and ctx.fresh_model_status().state == "missing":
+                _, error = apply_model(tag)  # nothing usable was chosen meanwhile
+                if error is None:
+                    return f"Downloaded {tag}.{removed} It is now the AI model shuto uses."
             return f"Downloaded {tag}.{removed} Go back and press Use this."
 
-        return submit_models_job(request, "pull", run, back, info)
+        return submit_models_job(request, "pull", run, back, info, pending=tag if wizard else None)
+
+    def model_is_downloaded(tag: str) -> bool:
+        try:
+            rows = pipeline.ollama_client(ctx.cfg).tags()
+        except Exception:
+            return False
+        have = {hardware.normalize_tag(str(m.get("name") or m.get("model") or "")) for m in rows}
+        return hardware.normalize_tag(tag) in have
 
     def remove_problem(tag: str) -> str | None:
         """Plain reason this model cannot be removed now, or None when it can."""
@@ -828,14 +880,25 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
         if writing_job_active():
             return WRITING_BUSY
         try:
-            in_use = hardware.normalize_tag(tag) == selected_tag()
+            selected_tag()
         except RuntimeError:
             return "shuto could not tell which model is in use, so it removed nothing."
-        if in_use:
-            return f"{tag} is the model in use. Choose another model first."
-        if not any(m["tag"] == tag for m in removable_models()):
+        if not any(m["tag"] == tag for m in removable_models(include_in_use=True)):
             return f"{tag} cannot be removed here: it is not downloaded, or not on the model list."
         return None
+
+    def config_pins(tag: str) -> bool:
+        """True when the settings file itself names this model, so clearing the saved choice
+        cannot make shuto forget it."""
+        return model_in_use(tag) and hardware.normalize_tag(ctx.cfg.llm.model) == (
+            hardware.normalize_tag(tag)
+        )
+
+    def model_in_use(tag: str) -> bool:
+        try:
+            return hardware.normalize_tag(tag) == selected_tag()
+        except RuntimeError:
+            return False
 
     @app.get("/settings/model/remove", response_class=HTMLResponse)
     def settings_model_remove_confirm(request: Request, tag: str, return_to: str = "/settings"):
@@ -846,7 +909,14 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
         problem = remove_problem(tag)
         if problem:
             return go(back, None, problem)
-        return ctx.render(request, "model_remove.html", tag=tag, return_to=back)
+        return ctx.render(
+            request,
+            "model_remove.html",
+            tag=tag,
+            return_to=back,
+            in_use=model_in_use(tag),
+            pinned=config_pins(tag),
+        )
 
     @app.post("/settings/model/remove")
     def settings_model_remove(request: Request, form: PostForm):
@@ -867,7 +937,16 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             why = _friendly(str(exc))
             msg = f"{tag} could not be removed. {why['what']} {why['todo']}"
             return go(back, None, msg, request)
-        return go(back, f"{tag} was removed from this computer.", None, request)
+        if model_in_use(tag):
+            # nothing is chosen any more: the "No AI model set" note shows until the user picks
+            local_models.clear_choice(pipeline.model_choice_path())
+            ctx.store.set_setting("llm.provider", "")
+            ctx.store.set_setting("llm.model", "")
+            ctx.invalidate_model_status()
+        notice = f"{tag} was removed from this computer."
+        if config_pins(tag):
+            notice += PINNED_TEXT.format(tag=tag)
+        return go(back, notice, None, request)
 
     def plain_pull_status(status: str, total: int) -> str:
         """Ollama's own words ('pulling manifest', 'verifying sha256 digest') in plain ones."""
@@ -879,8 +958,16 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             return "Finishing"
         return "Getting ready"
 
-    def submit_models_job(request: Request, kind: str, run, back: str, info: dict | None = None):
-        """Start a models job; the page to return to is only remembered once it really started."""
+    def submit_models_job(
+        request: Request,
+        kind: str,
+        run,
+        back: str,
+        info: dict | None = None,
+        pending: str | None = None,
+    ):
+        """Start a models job; the page to return to is only remembered once it really started.
+        `pending` is the model to choose when a download ends (set before the job can finish)."""
 
         def run_and_forget(job: JobContext) -> str:
             try:
@@ -888,12 +975,22 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             finally:
                 ctx.invalidate_model_status()  # models or their folder just changed
 
+        before = state.pending_model
+        if pending is not None:
+            state.pending_model = pending  # before submit: a quick job may finish at once
         try:
             job_id = ctx.runner.submit(kind, MODELS_JOB_KEY, run_and_forget)
         except JobBusy as exc:
+            state.pending_model = before  # the job already running keeps its own pending model
             return ctx.message_fragment(request, str(exc))
         pull_return[0] = back
         pull_state[0] = (job_id, info if info is not None else {"tag": "", "status": ""})
+        if kind in BAR_KINDS:
+            # always the one slot at the top of the page, whichever page started the job
+            resp = bar_response(request, job_id)
+            resp.headers["HX-Retarget"] = "#dl-slot"
+            resp.headers["HX-Reswap"] = "innerHTML"
+            return resp
         return ctx.job_fragment(request, job_id, next_href=back)
 
     def change_models_dir(request: Request, form: PostForm, reset: bool):

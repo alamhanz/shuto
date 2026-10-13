@@ -13,10 +13,12 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+from . import filters as filters_mod
 from . import guardrails
 from .categories import SHUTTERSTOCK_CATEGORIES
+from .filters import FilterResult, FilterSpec
 from .llm.base import LLMRequest, LLMResult, VisionLLM, describe_structured
-from .llm.schema import PhotoOutput
+from .llm.schema import PhotoOutput, photo_schema
 from .metadata import MAX_DESCRIPTION_CHARS, PhotoMetadata, normalize
 
 MONTHS = (
@@ -65,6 +67,7 @@ class DescribeResult:
     location: dict
     guardrails: guardrails.GuardrailResult
     llm: LLMResult
+    filters: FilterResult | None = None
 
 
 def _ascii_upper(text: str | None) -> str:
@@ -120,6 +123,7 @@ def build_prompt(
     feedback: Iterable[str] = (),
     notes: str = "",
     captured: datetime | None = None,
+    filter_lines: Iterable[str] = (),
 ) -> tuple[str, str]:
     """Return (system, user). The JSON shape is also spelled out for weaker local models."""
     system = (
@@ -181,6 +185,9 @@ def build_prompt(
     fb = [f for f in feedback if f]
     if fb:
         parts += ["", "Lessons from earlier submissions:"] + [f"- {f}" for f in fb]
+    fl = [line for line in filter_lines if line]
+    if fl:
+        parts += [""] + fl
     ctx = []
     if captured:
         ctx.append(f"Capture date: {captured:%B} {captured.day}, {captured.year}")
@@ -229,6 +236,8 @@ def describe_photo(
     timeout_s: float = 300,
     has_model_release: bool = False,
     has_property_release: bool = False,
+    filters: FilterSpec | None = None,
+    at: str = "",
 ) -> DescribeResult:
     system, user = build_prompt(
         style,
@@ -236,7 +245,12 @@ def describe_photo(
         feedback,
         notes,
         captured,
+        filters_mod.prompt_lines(filters) if filters else (),
     )
+    schema = None
+    if filters and filters.active:
+        schema = photo_schema(*filters_mod.schema_properties(filters))
+        max_tokens += 60 * (len(filters.rules) + int(filters.theme_active))
     req = LLMRequest(
         image_jpeg=image_jpeg,
         system=system,
@@ -245,7 +259,10 @@ def describe_photo(
         temperature=temperature,
         timeout_s=timeout_s,
     )
-    result = describe_structured(llm, req, retries=retries)
+    if schema is None:
+        result = describe_structured(llm, req, retries=retries)
+    else:
+        result = describe_structured(llm, req, retries=retries, schema=schema)
     out = PhotoOutput.model_validate(result.data)
     location = out.location.model_dump()
     detected = out.detected.model_dump()
@@ -289,4 +306,13 @@ def describe_photo(
         ]
         gr = gr2
     meta.warnings.extend(m for m in gr.messages if m not in meta.warnings)
-    return DescribeResult(meta, detected, location, gr, result)
+    checked = None
+    if filters and filters.active:
+        checked = filters_mod.evaluate(
+            filters,
+            out.theme_fit,
+            out.checks,
+            model=f"{llm.name}/{llm.model}",
+            at=at,
+        )
+    return DescribeResult(meta, detected, location, gr, result, checked)

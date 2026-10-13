@@ -617,11 +617,11 @@ def start_update(
     rollback_sha256 = None
     keep = {wheel_name(version)}
     if VERSION_RE.fullmatch(current):
+        keep.add(wheel_name(current))  # the installed tool's receipt may point at this file
         try:  # no verified old wheel means no rollback, never an unverified one
             old = fetch_digest(current)
             download(current, old)
             rollback_sha256 = old
-            keep.add(wheel_name(current))
         except UpdateError:
             rollback_sha256 = None
     prune_wheels(wheels, keep)

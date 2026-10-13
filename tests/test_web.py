@@ -1294,11 +1294,20 @@ def test_database_busy_is_a_friendly_page_not_a_crash(web, monkeypatch):
     def locked(*a, **k):
         raise sqlite3.OperationalError("database is locked")
 
+    page = web.get("/").text
+    # htmx must swap 503 bodies (it ignores 5xx by default) and still skip 204
+    config = re.search(r'name="htmx-config" content=\'([^\']+)\'', page).group(1)
+    handling = json.loads(config)["responseHandling"]
+    assert {"code": "503", "swap": True, "error": True} in handling
+    assert handling.index({"code": "204", "swap": False}) < handling.index(
+        {"code": "503", "swap": True, "error": True}
+    )
     monkeypatch.setattr(pipeline, "batch_report", locked)
     quiet = TestClient(web.app, base_url=BASE, raise_server_exceptions=False)
-    r = quiet.get("/")
-    assert r.status_code == 503 and "busy with another task" in r.text
-    assert not re.findall(JARGON, r.text, flags=re.I)
+    for headers in ({}, {"HX-Request": "true"}):
+        r = quiet.get("/", headers=headers)
+        assert r.status_code == 503 and "busy with another task" in r.text
+        assert not re.findall(JARGON, r.text, flags=re.I)
 
 
 def test_job_failing_on_a_locked_database_gets_a_friendly_message(web):

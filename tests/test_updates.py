@@ -428,6 +428,11 @@ def test_start_update_refuses_without_a_digest(cfg, monkeypatch):
 def test_start_update_without_old_digest_has_no_rollback(cfg, monkeypatch):
     fake_start_env(monkeypatch, "0.2.1")
     spawned = []
+    folder = updates.wheels_dir(cfg)
+    folder.mkdir(parents=True)
+    installed = folder / "shuto-0.2.1-py3-none-any.whl"
+    installed.write_bytes(b"installed")  # the receipt may point here: pruning must keep it
+    (folder / "shuto-0.1.0-py3-none-any.whl").write_bytes(b"old")
 
     def fetch(version):
         if version == "0.2.1":
@@ -444,6 +449,7 @@ def test_start_update_without_old_digest_has_no_rollback(cfg, monkeypatch):
         download=fake_download(cfg),
     )
     assert "--rollback-sha256" not in spawned[0]
+    assert installed.is_file() and not (folder / "shuto-0.1.0-py3-none-any.whl").exists()
     drop_helper_copy(spawned[0])
 
 

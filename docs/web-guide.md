@@ -120,6 +120,10 @@ shuto never submits for you. The **Submit** page lists the steps:
 Later, open a photo and record whether it was **Accepted** or **Rejected** (and why). shuto
 uses the reasons to do better next time.
 
+If you deleted photos on Shutterstock and want to upload them again, open **Deleted photos on
+Shutterstock?** on the Upload or Submit page, tick them and confirm. See "If you deleted photos
+on Shutterstock" in the details guide.
+
 ## Settings and Help
 
 - **Settings:** change the AI model, your Shutterstock login (with **Test login**), your style

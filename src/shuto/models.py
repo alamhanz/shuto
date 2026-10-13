@@ -63,9 +63,10 @@ ALLOWED: dict[Status, frozenset[Status]] = {
     S.APPROVED: frozenset({S.PREPARED}),
     # Editing a prepared photo sends it back to approved (stale copy deleted by the caller).
     S.PREPARED: frozenset({S.UPLOADED, S.APPROVED}),
-    S.UPLOADED: frozenset({S.EXPORTED}),
-    S.EXPORTED: frozenset({S.SUBMITTED}),
-    S.SUBMITTED: frozenset({S.ACCEPTED, S.REJECTED}),
+    # Photos deleted on Shutterstock can be sent again (`reupload_photos`).
+    S.UPLOADED: frozenset({S.EXPORTED, S.PREPARED, S.APPROVED}),
+    S.EXPORTED: frozenset({S.SUBMITTED, S.PREPARED, S.APPROVED}),
+    S.SUBMITTED: frozenset({S.ACCEPTED, S.REJECTED, S.PREPARED, S.APPROVED}),
     S.ACCEPTED: frozenset(),
     S.REJECTED: frozenset(),
 }
@@ -81,6 +82,10 @@ UPLOADED_STATES: tuple[Status, ...] = (
     S.ACCEPTED,
     S.REJECTED,
 )
+
+# Photos the user may send again after deleting them on Shutterstock. Accepted photos are live
+# in the library and rejected ones were refused, so neither is offered.
+REUPLOADABLE: tuple[Status, ...] = (S.UPLOADED, S.EXPORTED, S.SUBMITTED)
 
 REASON_CODES: tuple[str, ...] = (
     "focus",

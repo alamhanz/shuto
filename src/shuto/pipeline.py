@@ -15,7 +15,7 @@ import re
 import sqlite3
 import threading
 import time
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Collection, Iterable, Sequence
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime
@@ -38,7 +38,7 @@ from .llm.base import LLMError, VisionLLM
 from .llm.fake import FakeProvider
 from .llm.ollama import OllamaClient, OllamaProvider
 from .metadata import PhotoMetadata, normalize
-from .models import REASON_CODES, UPLOADED_STATES, LLMCall, Photo, Status
+from .models import REASON_CODES, REUPLOADABLE, UPLOADED_STATES, LLMCall, Photo, Status
 from .prepare import prepare_file, release_check, safe_filename
 from .secrets import get_secret, keyring_available
 from .store import InvalidTransition, Store
@@ -120,6 +120,7 @@ class AlreadyUploaded:
     submit_name: str | None
     exact: bool = False
     rejected: bool = False
+    photo_id: int | None = None  # the remembered photo (exact) or the new look-alike row
 
     def text(self) -> str:
         day = (self.uploaded_at or "")[:10] or "an earlier date"
@@ -236,7 +237,11 @@ def import_folder(
                 seen.add(item.sha256)
                 summary.already_uploaded.append(
                     AlreadyUploaded(
-                        item.path.name, known.uploaded_at, known.submit_name, exact=True
+                        item.path.name,
+                        known.uploaded_at,
+                        known.submit_name,
+                        exact=True,
+                        photo_id=known.id,
                     )
                 )
                 continue
@@ -322,6 +327,7 @@ def import_folder(
                         match.uploaded_at,
                         match.submit_name,
                         rejected=match.status == Status.REJECTED,
+                        photo_id=pid,
                     )
                 )
                 continue
@@ -1481,11 +1487,18 @@ def _ledger_rows(store: Store) -> list[ledger_mod.LedgerRow]:
     ]
 
 
-def export_ledger(store: Store, path: str | Path, *, keep_existing: bool = False) -> int:
+def export_ledger(
+    store: Store,
+    path: str | Path,
+    *,
+    keep_existing: bool = False,
+    drop: Collection[str] = (),
+) -> int:
     """Write the uploaded photos to a ledger CSV; returns the number of rows written.
 
     With `keep_existing`, rows already in the file but not in the database are kept (so a ledger
-    restored from backup is never shrunk by a workspace that is missing those photos).
+    restored from backup is never shrunk by a workspace that is missing those photos), except
+    the sha256 values in `drop` (photos the user deleted on Shutterstock and will send again).
     """
     rows = _ledger_rows(store)
     if keep_existing:
@@ -1495,6 +1508,9 @@ def export_ledger(store: Store, path: str | Path, *, keep_existing: bool = False
             ledger_mod.back_up_corrupt(path)
             old = []
         rows = ledger_mod.merge(old, rows)
+    if drop:
+        keep = {p.sha256 for p in store.list_photos(statuses=UPLOADED_STATES)}
+        rows = [r for r in rows if r.sha256 not in drop or r.sha256 in keep]
     ledger_mod.write_ledger(path, rows)
     return len(rows)
 
@@ -1605,6 +1621,109 @@ def export_batch(
         if photo.status == Status.UPLOADED:
             store.set_status(photo.id, Status.EXPORTED)
     refresh_report(cfg, store, batch_id)
+    return summary
+
+
+@dataclass
+class ReuploadSummary:
+    moved: dict[int, Status] = field(default_factory=dict)  # photo id -> its new status
+    refused: dict[int, str] = field(default_factory=dict)
+    batches: set[str] = field(default_factory=set)
+
+
+def reupload_photos(
+    cfg: Config, store: Store, photo_ids: Iterable[int], *, batch_id: str | None = None
+) -> ReuploadSummary:
+    """The user deleted these photos on Shutterstock: make them ready to be uploaded again.
+
+    Works for uploaded, exported and submitted photos (never accepted or rejected ones). Each
+    goes back to `prepared` when its upload copy still exists, else to `approved` (a new copy is
+    made) or, if it was never described here, to `ready` (it needs Check). `uploaded_at` and the
+    other send dates are cleared, a `reupload_requested` event records the time, and the
+    uploaded.csv ledger and the batch reports are rewritten so they no longer count as sent.
+    With `batch_id`, photos of other batches are refused.
+    """
+    summary = ReuploadSummary()
+    shas: set[str] = set()
+    for pid in dict.fromkeys(photo_ids):
+        photo = store.get_photo(pid)
+        if photo is None or (batch_id is not None and photo.batch_id != batch_id):
+            summary.refused[pid] = "That photo is not in this batch."
+            continue
+        if photo.status not in REUPLOADABLE:
+            answered = photo.status in (Status.ACCEPTED, Status.REJECTED)
+            summary.refused[pid] = (
+                f"{photo.orig_name}: Shutterstock already gave an answer, so it is not sent again."
+                if answered
+                else f"{photo.orig_name} is not marked as sent, so there is nothing to send again."
+            )
+            continue
+        prepared = bool(photo.prepared_path) and Path(str(photo.prepared_path)).is_file()
+        has_original = Path(photo.src_path).is_file()
+        if prepared:
+            target = Status.PREPARED
+        elif has_original and photo.metadata:
+            target = Status.APPROVED
+        elif has_original:
+            target = Status.READY
+        else:
+            summary.refused[pid] = (
+                f"{photo.orig_name}: shuto no longer has a copy or the original to send. "
+                "Add the original photo again from its folder."
+            )
+            continue
+        was = photo.status
+        store.update_photo(
+            pid, uploaded_at=None, exported_at=None, export_file=None, submitted_at=None
+        )
+        # `ready` (never described here) is not a normal way back after upload, so it is forced
+        store.set_status(pid, target, force=target == Status.READY, detail={"reupload": True})
+        store.log_event(
+            "reupload_requested",
+            photo_id=pid,
+            batch_id=photo.batch_id,
+            detail={"at": _now_iso(), "from": was.value, "to": target.value},
+        )
+        summary.moved[pid] = target
+        shas.add(photo.sha256)
+        if photo.batch_id:
+            summary.batches.add(photo.batch_id)
+    if summary.moved:
+        try:
+            export_ledger(store, ledger_path(cfg), keep_existing=True, drop=shas)
+        except (OSError, ValueError, csv.Error) as exc:
+            store.log_event("ledger_failed", detail={"error": str(exc)})
+        _refresh_reports(cfg, store, summary.batches)
+    return summary
+
+
+def add_anyway(cfg: Config, store: Store, photo_ids: Iterable[int]) -> ReuploadSummary:
+    """Import's "Add anyway": photos left out as 'sent before' join their batch after all.
+
+    A look-alike that was set aside as `already_uploaded` becomes a normal imported photo (it
+    still needs Check); an exact copy of a remembered photo is sent again (`reupload_photos`).
+    """
+    summary = ReuploadSummary()
+    exact: list[int] = []
+    for pid in dict.fromkeys(photo_ids):
+        photo = store.get_photo(pid)
+        if photo is None:
+            summary.refused[pid] = "That photo is no longer in shuto."
+        elif photo.status == Status.ALREADY_UPLOADED:
+            store.set_status(pid, Status.IMPORTED, force=True, detail={"forced": True})
+            summary.moved[pid] = Status.IMPORTED
+            if photo.batch_id:
+                summary.batches.add(photo.batch_id)
+        elif photo.status in REUPLOADABLE:
+            exact.append(pid)
+        else:
+            summary.refused[pid] = f"{photo.orig_name} was already added."
+    if exact:
+        again = reupload_photos(cfg, store, exact)
+        summary.moved.update(again.moved)
+        summary.refused.update(again.refused)
+        summary.batches |= again.batches
+    _refresh_reports(cfg, store, summary.batches)
     return summary
 
 

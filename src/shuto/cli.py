@@ -552,7 +552,8 @@ def _print_import(summary: pipeline.ImportSummary) -> None:
     if summary.already_uploaded:
         out(
             f"{len(summary.already_uploaded)} photo(s) were uploaded before and were not "
-            "processed again (use --force to import them anyway):"
+            "processed again (--force imports look-alikes anyway; for photos you deleted on "
+            "Shutterstock use `shuto reupload BATCH --ids ...`):"
         )
         for item in summary.already_uploaded[:20]:
             out(f"  {item.text()}")
@@ -817,6 +818,35 @@ def cmd_upload(ctx: Ctx) -> int:
     return 1 if summary.failed else 0
 
 
+def cmd_reupload(ctx: Ctx) -> int:
+    """Photos deleted on Shutterstock: make them ready to upload again."""
+    a = ctx.args
+    if bool(a.ids) == bool(a.all):
+        out("error: give --ids ID [ID ...] or --all.")
+        return 2
+    if a.ids:
+        ids = list(a.ids)
+    else:
+        kinds = [Status.UPLOADED, Status.EXPORTED] + (
+            [Status.SUBMITTED] if a.include_submitted else []
+        )
+        ids = [p.id for p in ctx.store.list_photos(a.batch, kinds) if p.id is not None]
+    if not ids:
+        out("Nothing to send again: no photo of this batch is marked as sent.")
+        return 0
+    if not a.yes:
+        out(f"{len(ids)} photo(s) of batch {a.batch} would be uploaded again.")
+        out("Only do this for photos that are no longer on Shutterstock. Add --yes to confirm.")
+        return 1
+    summary = pipeline.reupload_photos(ctx.cfg, ctx.store, ids, batch_id=a.batch)
+    out(f"{len(summary.moved)} photo(s) will be uploaded again; {len(summary.refused)} refused.")
+    for why in summary.refused.values():
+        out(f"  {why}")
+    if summary.moved:
+        out(f"Next: shuto prepare {a.batch} (if needed), then shuto upload {a.batch} --yes")
+    return 1 if summary.refused else 0
+
+
 def cmd_export(ctx: Ctx) -> int:
     a = ctx.args
     summary = pipeline.export_batch(ctx.cfg, ctx.store, a.batch, dry_run=a.dry_run)
@@ -1054,6 +1084,7 @@ HANDLERS = {
     "approve": cmd_approve,
     "prepare": cmd_prepare,
     "upload": cmd_upload,
+    "reupload": cmd_reupload,
     "export": cmd_export,
     "submitted": cmd_submitted,
     "status": cmd_status,
@@ -1185,6 +1216,17 @@ def build_parser() -> argparse.ArgumentParser:
     s.add_argument("batch")
     s.add_argument("--ids", type=int, nargs="+")
     s.add_argument("--yes", action="store_true", help="confirm this upload")
+
+    s = add("reupload", "send photos again that you deleted on Shutterstock (needs --yes)")
+    s.add_argument("batch")
+    s.add_argument("--ids", type=int, nargs="+", help="photo ids (see `shuto review`)")
+    s.add_argument("--all", action="store_true", help="every uploaded photo of the batch")
+    s.add_argument(
+        "--include-submitted",
+        action="store_true",
+        help="with --all: also photos noted as submitted",
+    )
+    s.add_argument("--yes", action="store_true", help="confirm they are gone from Shutterstock")
 
     s = add("export", "write the batch's Shutterstock CSV")
     s.add_argument("batch")

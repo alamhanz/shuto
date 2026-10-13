@@ -33,6 +33,14 @@
   {% if active %}
   <p><button type="button" class="secondary" hx-post="/jobs/{{ job.id }}/cancel" hx-target="closest .progress" hx-swap="outerHTML">Cancel</button></p>
   {% elif job.state == 'done' %}
+    {% if job.kind == 'import' and already %}
+    <form method="post" action="/import/add-anyway" class="row">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      {% for pid in already %}<input type="hidden" name="ids" value="{{ pid }}">{% endfor %}
+      <button class="btn secondary" type="submit">Add anyway</button>
+      <span class="hint">Use this if you deleted these photos on Shutterstock or want them in a new batch.</span>
+    </form>
+    {% endif %}
     {% if job.kind == 'import' and batches %}
     <ul class="open-batches">
       {% for name, n in batches %}<li>{{ name }} ({{ n }} photos) <a class="btn primary" href="/batch/{{ name|urlencode }}">Open batch</a></li>{% endfor %}

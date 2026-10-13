@@ -61,6 +61,27 @@ below); importing twice is harmless.
 
 </details>
 
+## If you deleted photos on Shutterstock
+
+shuto cannot see your Shutterstock account (there is no way for it to look), so it does not
+know when you delete photos there. It still counts them as sent and leaves them out of new
+imports. To send them again, tell shuto:
+
+- **Web app:** on the **Upload** or **Submit** page, open **Deleted photos on Shutterstock?**,
+  tick the photos, tick the confirm box and press **These are no longer on Shutterstock: upload
+  them again**. Then press **Upload**; only those photos are sent. Photos you already noted as
+  submitted are listed separately and unticked; photos Shutterstock accepted or rejected are not
+  offered.
+- **When adding a folder:** photos left out as "sent before" come with an **Add anyway**
+  button. Look-alikes join the batch as new photos; exact copies of a sent photo are sent again.
+- **Command line:** `shuto reupload BATCH --ids 12 13 --yes` (or `--all`, optionally with
+  `--include-submitted`). Without `--yes` it only says what it would do.
+
+Each photo goes back to *prepared* (or *approved* if its upload copy is gone, or *ready* if it
+was only remembered and never described here), its send date is cleared, a `reupload_requested`
+event is recorded, and `uploaded.csv` and the batch report are rewritten. Then run the usual
+Upload; the Shutterstock CSV is rewritten for those photos.
+
 ## Commercial vs Editorial
 
 Shutterstock sells photos under two kinds of licence, and each has its own rules.

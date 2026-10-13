@@ -41,6 +41,7 @@
   <p>{{ icon('check') }} {{ finished }} photo{{ '' if finished == 1 else 's' }} marked as submitted. Open a photo from <a href="/batch/{{ batch.id|urlencode }}/review?show=all">Review</a> to note the result.</p>
   {% endif %}
 </section>
+{% include "_resend.html" %}
 {% else %}
 {{ empty('Nothing to submit yet', 'Upload your approved photos first.', '/batch/' ~ (batch.id|urlencode) ~ '/upload', 'Go to Upload') }}
 {% endif %}

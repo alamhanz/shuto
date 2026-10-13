@@ -6,7 +6,7 @@ import re
 import threading
 from importlib import metadata
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import quote, urlparse
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
@@ -128,6 +128,7 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
     state.templates.env.globals["friendly"] = _friendly
     state.templates.env.globals["app_version"] = _version()
     import_results: dict[int, list[tuple[str, int]]] = {}
+    import_known: dict[int, list[int]] = {}  # job id -> photos left out as "sent before"
     pull_return: list[str] = ["/settings"]
     # (job id, {"tag", "status"}) of the latest models job: one tuple, swapped in one step
     pull_state: list[tuple[int, dict] | None] = [None]
@@ -149,6 +150,7 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
         extra: dict = {}
         if job is not None and job.kind == "import":
             extra["batches"] = import_results.get(job_id, [])
+            extra["already"] = import_known.get(job_id, [])
         if job is not None and job.kind in ("pull", "models_dir"):
             extra["next_href"] = pull_return[0]
         return extra
@@ -554,6 +556,9 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
                 batch_name=batch_name or None,
             )
             import_results[job.job_id] = list(s.batches.items())
+            import_known[job.job_id] = [
+                a.photo_id for a in s.already_uploaded if a.photo_id is not None
+            ]
             parts = [
                 pipeline.batches_text(s.batches) + "."
                 if len(s.batches) > 1
@@ -574,11 +579,25 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
                 parts.append(
                     f"{len(s.already_uploaded)} look like photos you sent before and were "
                     f"left out: {shown}" + (f"; and {more} more" if more > 0 else "") + ". "
-                    'To add them anyway, tick "Add even photos I sent before" under Advanced.'
+                    'To add them anyway, press "Add anyway" below.'
                 )
             return " ".join(parts)
 
         return ctx.start_job(request, "import", IMPORT_JOB_KEY, run)
+
+    @app.post("/import/add-anyway")
+    def add_anyway(form: PostForm):
+        """ "Add anyway" on the import result: photos left out as sent before join after all."""
+        ids = ctx.ids_from(form)
+        if not ids:
+            return ctx.back("/add", error="There is nothing to add.")
+        s = pipeline.add_anyway(ctx.cfg, ctx.store, ids)
+        if not s.moved:
+            return ctx.back("/add", error=next(iter(s.refused.values()), "Nothing was added."))
+        n = len(s.moved)
+        text = f"Added {n} photo{'' if n == 1 else 's'} anyway."
+        target = "/batch/" + quote(next(iter(s.batches)), safe="") if len(s.batches) == 1 else "/"
+        return ctx.back(target, notice=text, error=next(iter(s.refused.values()), None))
 
     # ------------------------------------------------------------------ jobs
 

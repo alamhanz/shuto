@@ -55,6 +55,7 @@
   {% include "_files_note.html" %}
 </section>
 {% endif %}
+{% include "_resend.html" %}
 {% endblock %}
 {% block next %}
 {% if sent %}{{ next_action('Go to Submit', submit_href) }}{% elif n %}<p class="hint next-action">When the upload finishes, go on to <a href="{{ submit_href }}">Submit</a>.</p>{% endif %}

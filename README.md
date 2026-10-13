@@ -154,6 +154,7 @@ shuto                      # start the web app
 | `models` | `list`, `pull TAG`, `use SPEC`, `bench [MODEL]` |
 | `import`, `cull`, `describe`, `run` | the early stages, or all three with `run` |
 | `review`, `edit`, `approve` | inspect and change metadata |
+| `reupload` | send photos again that you deleted on Shutterstock (`--ids` or `--all`, needs `--yes`) |
 | `prepare`, `upload`, `export`, `submitted` | delivery (`upload` is off unless `deliver.upload_enabled` or `--yes`) |
 | `status`, `accept`, `reject` | tracking |
 | `ledger export/import` | back up or restore the already-uploaded list (`uploaded.csv`) |

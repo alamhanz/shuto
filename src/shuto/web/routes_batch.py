@@ -428,11 +428,19 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
     def _export_names(photos: list[Photo]) -> list[str]:
         return [Path(f).name for f in sorted({p.export_file for p in photos if p.export_file})]
 
+    def _resend_choices(photos: list[Photo]) -> dict[str, list[Photo]]:
+        """Photos the user may tell shuto were deleted on Shutterstock (accepted ones are not)."""
+        return {
+            "sent": [p for p in photos if p.status in (Status.UPLOADED, Status.EXPORTED)],
+            "submitted": [p for p in photos if p.status == Status.SUBMITTED],
+        }
+
     @app.get("/batch/{batch_id}/upload", response_class=HTMLResponse)
     def upload_page(request: Request, batch_id: str):
         ctx.get_batch_or_404(batch_id)
         summary = pipeline.batch_summary(ctx.store, batch_id)
         counts = summary["counts"]
+        photos = ctx.store.list_photos(batch_id)
         login = pipeline.ftps_login_status(ctx.cfg)
         return page(
             request,
@@ -442,7 +450,9 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
             n=min(counts.get("approved", 0) + counts.get("prepared", 0), pipeline.MAX_BATCH_PHOTOS),
             size=_mb(summary["upload_bytes"]),
             login_ok=bool(login["user_set"] and login["password_set"]),
-            exports=_export_names(ctx.store.list_photos(batch_id)),
+            exports=_export_names(photos),
+            resend=_resend_choices(photos),
+            resend_page="upload",
             sent=counts.get("uploaded", 0) + counts.get("exported", 0),
             back_path=_url(batch_id, "upload"),
             submit_href=_url(batch_id, "submit"),
@@ -528,6 +538,8 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
             batch_id,
             "submit",
             exports=_export_names(photos),
+            resend=_resend_choices(photos),
+            resend_page="submit",
             waiting=counts.get("exported", 0),
             finished=sum(counts.get(k, 0) for k in ("submitted", "accepted", "rejected")),
             report_href=_url(batch_id, "report.csv"),
@@ -559,6 +571,33 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
                 "X-Content-Type-Options": "nosniff",
                 "Cache-Control": "no-store",
             },
+        )
+
+    @app.post("/batch/{batch_id}/resend")
+    def resend_photos(batch_id: str, form: PostForm):
+        """ "These are no longer on Shutterstock": put the ticked photos back in the upload queue.
+
+        shuto cannot see the Shutterstock account, so this is the user's word. The confirm box
+        works without JavaScript."""
+        ctx.get_batch_or_404(batch_id)
+        page_name = str(form.get("page"))
+        here = _url(batch_id, page_name if page_name in ("upload", "submit") else "upload")
+        if form.get("confirm") != "yes":
+            return ctx.back(
+                here, error="Tick the box to confirm these photos are no longer on Shutterstock."
+            )
+        ids = ctx.ids_from(form)
+        if not ids:
+            return ctx.back(here, error="Tick the photos that are no longer on Shutterstock.")
+        s = pipeline.reupload_photos(ctx.cfg, ctx.store, ids, batch_id=batch_id)
+        if not s.moved:
+            return ctx.back(here, error=next(iter(s.refused.values())))
+        n = len(s.moved)
+        return ctx.back(
+            _url(batch_id, "upload"),
+            notice=f"{n} photo{'' if n == 1 else 's'} will be uploaded again. "
+            "Press Upload when you are ready.",
+            error=next(iter(s.refused.values()), None),
         )
 
     @app.post("/batch/{batch_id}/open-folder")

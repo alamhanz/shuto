@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from .ledger import safe_cell
-from .models import Photo
+from .models import UPLOADED_STATES, Photo
 
 FIXED_BEFORE = (
     "file",
@@ -109,6 +109,7 @@ def _row(
         if name and name not in hits:
             hits.append(name)
     status = str(p.status)
+    sent = p.status in UPLOADED_STATES  # a photo sent again has no earlier upload time
     rejected_at, rejected_why = rejection or ("", "")
     keywords = meta.get("keywords") or []
 
@@ -136,8 +137,8 @@ def _row(
         "ai_tries": str(ai_time[1]) if ai_time else "",
         "checked_at": str(flt.get("at") or _described_at(p, times)),
         "approved_at": times.get("approved", ""),
-        "uploaded_at": p.uploaded_at or times.get("uploaded", ""),
-        "submitted_at": p.submitted_at or times.get("submitted", ""),
+        "uploaded_at": p.uploaded_at or (times.get("uploaded", "") if sent else ""),
+        "submitted_at": p.submitted_at or (times.get("submitted", "") if sent else ""),
         "accepted_at": times.get("accepted", ""),
         "rejected_at": rejected_at or times.get("rejected", ""),
         "rejection_reason": rejected_why,

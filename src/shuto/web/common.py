@@ -273,6 +273,7 @@ class WebCtx:
             job=job,
             result=result if isinstance(result, str) else None,
             active=job.state in ("queued", "running"),
+            text=self.runner.text(job_id),
             **extra,
         )
 

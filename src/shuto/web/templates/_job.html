@@ -20,8 +20,8 @@
     {%- if job.state == 'done' %}{{ icon('check') }}{% elif job.state == 'failed' %}{{ icon('alert') }}{% elif job.state == 'cancelled' %}{{ icon('stop') }}{% else %}<span class="spin">{{ icon('spinner') }}</span>{% endif %}
     <span{% if not active %} role="status"{% endif %}>{{ titles.get(job.kind, 'Working') }}{% if job.state == 'done' %}: done{% elif job.state == 'cancelled' %}: stopped{% elif job.state == 'failed' %}: did not finish{% endif %}</span>
   </div>
-  {% if job.total %}<progress max="{{ job.total }}" value="{{ job.done }}" aria-label="{{ titles.get(job.kind, 'Working') }}">{{ job.done }} of {{ job.total }}</progress>
-  <p class="hint">{{ job.done }} of {{ job.total }}</p>
+  {% if job.total %}<progress max="{{ job.total }}" value="{{ job.done }}" aria-label="{{ titles.get(job.kind, 'Working') }}">{% if text and active %}{{ text }}{% else %}{{ job.done }} of {{ job.total }}{% endif %}</progress>
+  <p class="hint">{% if text and active %}{{ text }}{% else %}{{ job.done }} of {{ job.total }}{% endif %}</p>
   {%- elif active %}<progress aria-label="{{ titles.get(job.kind, 'Working') }}"></progress>{% endif %}
   {% if job.state == 'done' and result %}<p>{{ result }}</p>{% endif %}
   {% if job.state == 'failed' %}{% set f = friendly(job.error, job.kind) %}

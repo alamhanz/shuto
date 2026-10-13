@@ -14,6 +14,7 @@ import os
 import re
 import sqlite3
 import threading
+import time
 from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict, dataclass, field, replace
@@ -1674,6 +1675,15 @@ class CheckSummary:
     describe: DescribeSummary | None = None
 
 
+CHECK_SCALE = 1000  # units of the combined Check bar
+
+
+def _time_left(seconds: float) -> str:
+    if seconds < 60:
+        return "less than a minute left"
+    return f"about {round(seconds / 60)} min left"
+
+
 def check_batch(
     cfg: Config,
     store: Store,
@@ -1694,18 +1704,38 @@ def check_batch(
         if problems:
             raise PipelineError(" ".join(problems))
         llm = resolve_llm(cfg, store)
+    # one bar over CHECK_SCALE units: the quality check is the first tenth, the AI the rest. The AI
+    # photo count is only known after culling, so each step reports its own counter.
+    quality_units = CHECK_SCALE // 10
+
+    def cull_progress(done: int, count: int, name: str = "") -> None:
+        text = f"Step 1 of 2 · Quality check {done}/{count}"
+        if name and done < count:
+            text += f" (just finished: {name})"
+        progress(quality_units * done // max(count, 1), CHECK_SCALE, text)
+
+    started = [0.0]
+
+    def describe_progress(done: int, count: int, name: str = "") -> None:
+        text = f"Step 2 of 2 · Writing titles & keywords {done}/{count}"
+        if done and done < count:
+            per_photo = (time.monotonic() - started[0]) / done
+            text += f" · {_time_left((count - done) * per_photo)}"
+        if name and done < count:
+            text += f" (just finished: {name})"
+        units = quality_units + (CHECK_SCALE - quality_units) * done // max(count, 1)
+        progress(units, CHECK_SCALE, text)
+
     to_cull = len(store.list_photos(batch_id, [Status.IMPORTED]))
-    total = to_cull + len(store.list_photos(batch_id, [Status.READY]))
-
-    def cull_progress(done: int, _total: int, _message: str = "") -> None:
-        progress(done, total, "Quality check")
-
-    def describe_progress(done: int, _total: int, _message: str = "") -> None:
-        progress(min(to_cull + done, total), total, "Writing titles & keywords")
-
+    if to_cull:
+        cull_progress(0, to_cull)
     culled = cull_batch(cfg, store, batch_id, progress=cull_progress, cancel=cancel)
     if cancel and cancel():
         return CheckSummary(culled, None)
+    to_describe = len(_describe_targets(store, batch_id, None))
+    started[0] = time.monotonic()
+    if to_describe:
+        describe_progress(0, to_describe)
     described = describe_batch(
         cfg, store, batch_id, llm=llm, progress=describe_progress, cancel=cancel
     )

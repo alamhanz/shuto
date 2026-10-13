@@ -235,7 +235,7 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
 
         def run(job: JobContext) -> str:
             s = pipeline.check_batch(
-                cfg, store, batch_id, progress=job.progress, cancel=job.cancelled
+                cfg, store, batch_id, progress=job.progress_text, cancel=job.cancelled
             )
             text = f"Quality check set aside {s.cull.culled} of {s.cull.total} new photos."
             d = s.describe
@@ -255,7 +255,7 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
                 text += f" {d.failed} could not be written; press Check again to retry them."
             return text
 
-        return ctx.start_job(request, "check", batch_id, run, total=n)
+        return ctx.start_job(request, "check", batch_id, run, total=pipeline.CHECK_SCALE)
 
     # ------------------------------------------------------------------ review
 

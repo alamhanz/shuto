@@ -26,8 +26,15 @@ class JobCancelled(Exception):
 class JobContext:
     """Passed to the job function: report progress and poll for cancellation."""
 
-    def __init__(self, store: Store, job_id: int, cancel_event: threading.Event):
+    def __init__(
+        self,
+        store: Store,
+        job_id: int,
+        cancel_event: threading.Event,
+        texts: dict[int, str] | None = None,
+    ):
         self._store = store
+        self._texts = texts if texts is not None else {}
         self.job_id = job_id
         self._cancel = cancel_event
         self.completed = False
@@ -35,6 +42,11 @@ class JobContext:
     def progress(self, done: int, total: int, message: str = "") -> None:
         """Signature matches pipeline.Progress, so pass `ctx.progress` straight through."""
         self._store.update_job(self.job_id, done=done, total=total)
+
+    def progress_text(self, done: int, total: int, message: str = "") -> None:
+        """Like `progress`, and the message is kept for the job panel to show."""
+        self.progress(done, total, message)
+        self._texts[self.job_id] = message
 
     def cancelled(self) -> bool:
         """Signature matches pipeline.Cancel."""
@@ -62,6 +74,7 @@ class JobRunner:
         self._cancel: dict[int, threading.Event] = {}
         self._active: dict[str, int] = {}
         self._results: dict[int, Any] = {}
+        self._texts: dict[int, str] = {}  # latest progress message of running jobs that set one
         self._lock = threading.Lock()
         self._closed = False
         self._thread: threading.Thread | None = None
@@ -116,6 +129,10 @@ class JobRunner:
         """Return value of a finished job's function (None if unfinished or failed)."""
         return self._results.get(job_id)
 
+    def text(self, job_id: int) -> str:
+        """The latest progress message of a running job ('' when it has none)."""
+        return self._texts.get(job_id, "")
+
     def active_job(self, batch_id: str) -> int | None:
         return self._active.get(batch_id)
 
@@ -158,7 +175,7 @@ class JobRunner:
                 state = "cancelled"
             else:
                 self.store.update_job(job_id, state="running")
-                jctx = JobContext(self.store, job_id, event)
+                jctx = JobContext(self.store, job_id, event, self._texts)
                 try:
                     self._results[job_id] = func(jctx)
                     while len(self._results) > MAX_KEPT_RESULTS:
@@ -169,6 +186,7 @@ class JobRunner:
                     state = "cancelled"
                 except Exception as exc:
                     state, error = "failed", f"{type(exc).__name__}: {exc}"
+            self._texts.pop(job_id, None)
             self.store.update_job(
                 job_id, state=state, error=error, finished_at=datetime.now().isoformat()
             )

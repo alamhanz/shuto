@@ -343,6 +343,7 @@ def test_download_needs_explicit_confirm(web, cfg, ollama):
 
 
 def test_advice_when_model_does_not_fit_disk(web, cfg, monkeypatch):
+    monkeypatch.setattr(ollama_store, "supported", lambda name=None: True)
     from shuto import local_models
 
     tag = pipeline.list_models(cfg)[0].tag
@@ -794,6 +795,7 @@ def test_models_folder_reset_button_and_move_checkbox(web, monkeypatch, tmp_path
     monkeypatch.setattr(ollama_store, "supported", lambda name=None: True)
     monkeypatch.setattr(hardware, "ollama_models_dir", lambda *a, **k: tmp_path / "m")
     monkeypatch.setenv("OLLAMA_MODELS", str(tmp_path / "m"))
+    monkeypatch.setattr(ollama_store, "saved_value", lambda os_name=None: str(tmp_path / "m"))
     ollama_store_files = tmp_path / "m" / "blobs"
     ollama_store_files.mkdir(parents=True)
     (ollama_store_files / "sha256-a").write_bytes(b"x" * 10)

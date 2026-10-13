@@ -72,6 +72,7 @@ def sysfake(monkeypatch, tmp_path):
 
     monkeypatch.setattr(store.time, "monotonic", tick)
     monkeypatch.delenv("OLLAMA_MODELS", raising=False)
+    monkeypatch.setattr(hardware, "_os_name", lambda: "windows")  # same on every CI runner
     # never read the real registry: the "saved" user value is what the test put in the env
     monkeypatch.setattr(
         store, "_win_read", lambda machine: None if machine else os.environ.get("OLLAMA_MODELS")
@@ -232,6 +233,7 @@ class FakeWinreg:
 
 
 def test_windows_set_and_reset_use_user_environment(monkeypatch):
+    monkeypatch.setattr(hardware, "_os_name", lambda: "windows")
     reg = FakeWinreg()
     broadcasts = []
     monkeypatch.setattr(store, "_winreg", lambda: reg)

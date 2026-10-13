@@ -26,6 +26,7 @@ from shuto.models import (
 )
 
 SCHEMA_VERSION = 1
+BUSY_TIMEOUT_S = 30  # writers wait this long for a lock (slow CI disks, antivirus)
 
 _SCHEMA_V1 = """
 CREATE TABLE batches(
@@ -125,9 +126,9 @@ class Store:
     # -- plumbing -----------------------------------------------------------------------
 
     def _connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.path, timeout=5.0, isolation_level=None)
+        conn = sqlite3.connect(self.path, timeout=BUSY_TIMEOUT_S, isolation_level=None)
         conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA busy_timeout=5000")
+        conn.execute(f"PRAGMA busy_timeout={BUSY_TIMEOUT_S * 1000}")
         conn.execute("PRAGMA foreign_keys=ON")
         return conn
 

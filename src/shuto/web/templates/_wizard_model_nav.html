@@ -1,0 +1,9 @@
+{% from "_wizard_nav.html" import wizard_nav %}
+{% set later_href = '/welcome?step=3&later=1#later' %}
+{% if model_status.state == 'missing' %}
+{{ wizard_nav('Continue', disabled=True, back='/welcome?step=2', skip='Set up later', skip_href=later_href, hint='Choose an AI model above first. Continue unlocks when one is ready to use.') }}
+{% elif model_status.state == 'downloading' %}
+{{ wizard_nav('Continue', href='/welcome?step=4', back='/welcome?step=2', skip='Set up later', skip_href=later_href, hint=model_status.message ~ ' You can carry on with the next steps while it downloads.') }}
+{% else %}
+{{ wizard_nav('Continue', href='/welcome?step=4', back='/welcome?step=2', skip='Set up later', skip_href=later_href) }}
+{% endif %}

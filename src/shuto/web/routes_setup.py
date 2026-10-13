@@ -75,6 +75,10 @@ def _helper_steps(os_name: str) -> list[str]:
 
 UPLOAD_JOB_KINDS = ("deliver", "ftps_test", "upload")
 AI_JOB_KINDS = {"check", "describe"}  # jobs that use the AI model
+# Pages that reload by themselves when a model download ends well, so the chosen model shows at
+# once. Pages with text fields (other wizard steps, Settings, Add photos) are left alone: a
+# reload would throw away what the user is typing. They get the final bar message instead.
+REFRESH_ON_DOWNLOAD_DONE = {"/": None, "/welcome": "step=3"}  # path -> required query, if any
 BAR_KINDS = ("pull", "models_dir")  # jobs shown as the download bar at the top of every page
 CANCEL_TOO_LATE = "The download finished before it could be stopped. {tag} is ready to use."
 CANCEL_STOPPED = (
@@ -127,6 +131,7 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
     pull_return: list[str] = ["/settings"]
     # (job id, {"tag", "status"}) of the latest models job: one tuple, swapped in one step
     pull_state: list[tuple[int, dict] | None] = [None]
+    announced_done: set[int] = set()  # finished downloads whose end was already shown once
 
     def pull_info(job_id: int | None) -> dict | None:
         cur = pull_state[0]
@@ -475,6 +480,11 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             **extra,
         )
 
+    @app.get("/welcome/nav", response_class=HTMLResponse)
+    def welcome_nav(request: Request):
+        """The buttons under the model step, from the current model state (read-only)."""
+        return ctx.render(request, "_wizard_model_nav.html", model_status=ctx.fresh_model_status())
+
     @app.post("/welcome/{step}")
     def welcome_post(step: int, form: PostForm):
         if not 1 <= step <= len(WIZARD_STEPS):
@@ -593,7 +603,7 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             in_use = bool(info["tag"]) and hardware.normalize_tag(info["tag"]) == selected_tag()
         except RuntimeError:
             in_use = False
-        return ctx.render(
+        resp = ctx.render(
             request,
             "_download_bar.html",
             job=found,
@@ -604,6 +614,17 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             href=pull_return[0],
             in_use=in_use,
         )
+        # a download started or ended: pages showing its state (the setup buttons) refresh
+        resp.headers["HX-Trigger"] = "shuto:models-changed"
+        if found.state == "done" and found.kind == "pull" and found.id not in announced_done:
+            announced_done.add(found.id)  # once per download: the reloaded page must not loop
+            here = urlparse(request.headers.get("hx-current-url", ""))
+            need = REFRESH_ON_DOWNLOAD_DONE.get(here.path, "")
+            if here.path in REFRESH_ON_DOWNLOAD_DONE and (
+                need is None or need in here.query.split("&")
+            ):
+                resp.headers["HX-Refresh"] = "true"
+        return resp
 
     @app.get("/downloads/bar", response_class=HTMLResponse)
     def download_bar(request: Request, job: int = 0):
@@ -1035,6 +1056,7 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
                 ctx.invalidate_model_status()  # models or their folder just changed
 
         before = state.pending_model
+        ctx.invalidate_model_status()
         if pending is not None:
             state.pending_model = pending  # before submit: a quick job may finish at once
         try:

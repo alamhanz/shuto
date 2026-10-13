@@ -1,7 +1,7 @@
 <#
   shuto uninstaller for Windows. Per-user, no admin rights needed.
 
-  Usage (once the repository is public):
+  Usage:
     irm https://raw.githubusercontent.com/alamhanz/shuto/main/install/uninstall.ps1 | iex
 
   Options (when running the downloaded file):

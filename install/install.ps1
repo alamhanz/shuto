@@ -1,15 +1,16 @@
 <#
   shuto installer for Windows. Per-user, no admin rights needed.
 
-  Usage (once the repository is public):
+  Usage:
     irm https://raw.githubusercontent.com/alamhanz/shuto/main/install/install.ps1 | iex
 
   Options (when running the downloaded file):
-    -From <source>    wheel path, PyPI name or URL to install instead of the default
+    -From <source>    wheel path, PyPI name or URL to install instead of the latest release
                       (when run from a copy of the repository, that copy is installed)
     -NoShortcut       do not create Desktop / Start menu shortcuts
     -NoStart          do not start shuto at the end
   The SHUTO_SOURCE environment variable does the same as -From.
+  With none of these, the latest release on GitHub is installed.
 #>
 param(
     [string]$From = $env:SHUTO_SOURCE,
@@ -19,7 +20,11 @@ param(
 
 & {
     $ErrorActionPreference = 'Stop'
-    $DefaultSource = 'https://github.com/alamhanz/shuto/archive/refs/heads/main.zip'
+    # The "latest release" page redirects to the newest tag (no API, so no rate limit).
+    $LatestReleasePage = 'https://github.com/alamhanz/shuto/releases/latest'
+    $ReleaseDownload = 'https://github.com/alamhanz/shuto/releases/download'
+    # Windows PowerShell 5.1 does not use TLS 1.2 by default, which GitHub and astral.sh require.
+    try { [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12 } catch { }
 
     # Run from a downloaded or cloned copy of the repository (and no source given)? Then build and
     # install that copy. $PSScriptRoot is empty when the script is piped in with "irm | iex".
@@ -31,7 +36,7 @@ param(
             $Checkout = $root
         }
     }
-    if (-not $From -and -not $Checkout) { $From = $DefaultSource }
+    $UseLatest = (-not $From) -and (-not $Checkout)
 
     # uv installer pinned to a known release (0.12.22, current when this was written) so a
     # changed "latest" installer cannot alter what runs here. Raise it on purpose after checking.
@@ -46,6 +51,24 @@ param(
     }
 
     function Say($text) { Write-Host "[shuto] $text" }
+
+    # Find the newest release and return its wheel as @{ Version; Spec }, or $null. The version
+    # comes from where the "latest" page redirects to; the wheel's existence is checked too.
+    function Get-LatestRelease {
+        try {
+            $headers = @{ 'User-Agent' = 'shuto-installer' }
+            $page = Invoke-WebRequest -Uri $LatestReleasePage -Method Head -Headers $headers -UseBasicParsing
+            $final = $null
+            if ($page.BaseResponse.ResponseUri) { $final = $page.BaseResponse.ResponseUri.AbsoluteUri }
+            elseif ($page.BaseResponse.RequestMessage) { $final = $page.BaseResponse.RequestMessage.RequestUri.AbsoluteUri }
+            if (-not $final -or $final -notmatch '/releases/tag/v(?<ver>\d+(\.\d+)*([.-]?(a|b|rc|alpha|beta|dev|post)\.?\d+)?)$') { return $null }
+            $ver = $Matches['ver']
+            $url = "$ReleaseDownload/v$ver/shuto-$ver-py3-none-any.whl"
+            $null = Invoke-WebRequest -Uri $url -Method Head -Headers $headers -UseBasicParsing
+            return @{ Version = $ver; Spec = 'shuto[heic] @ ' + $url }
+        } catch { }
+        return $null
+    }
 
     function Find-Uv {
         $cmd = Get-Command uv -ErrorAction SilentlyContinue
@@ -115,6 +138,14 @@ param(
     }
 
     try {
+        if ($UseLatest) {
+            Say 'Looking for the latest shuto release...'
+            $latest = Get-LatestRelease
+            if (-not $latest) { throw 'Could not find the latest shuto release on GitHub. Check your internet connection and run this line again (on a shared network, try again later), or download it from https://github.com/alamhanz/shuto/releases' }
+            $From = $latest.Spec
+            Say "Installing shuto $($latest.Version)..."
+        }
+
         Say 'Step 1 of 5: checking for the uv installer helper...'
         $uv = Find-Uv
         if (-not $uv) {

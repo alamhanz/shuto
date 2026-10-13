@@ -1,18 +1,21 @@
 #!/bin/sh
 # shuto installer for macOS and Linux. Per-user, no sudo needed.
 #
-# Usage (once the repository is public):
+# Usage:
 #   curl -LsSf https://raw.githubusercontent.com/alamhanz/shuto/main/install/install.sh | sh
 #
 # Options (when running the downloaded file):
-#   --from <source>   wheel path, PyPI name or URL to install instead of the default
+#   --from <source>   wheel path, PyPI name or URL to install instead of the latest release
 #                     (when run from a copy of the repository, that copy is installed)
 #   --no-shortcut     do not create launchers
 #   --no-start        do not start shuto at the end
 # The SHUTO_SOURCE environment variable does the same as --from.
+# With none of these, the latest release on GitHub is installed.
 set -eu
 
-DEFAULT_SOURCE="https://github.com/alamhanz/shuto/archive/refs/heads/main.zip"
+# The "latest release" page redirects to the newest tag (no API, so no rate limit).
+LATEST_RELEASE_PAGE="https://github.com/alamhanz/shuto/releases/latest"
+RELEASE_DOWNLOAD="https://github.com/alamhanz/shuto/releases/download"
 SOURCE="${SHUTO_SOURCE:-}"
 # uv installer pinned to a known release (0.12.22, current when this was written) so a changed
 # "latest" installer cannot alter what runs here. Raise it on purpose after checking.
@@ -50,7 +53,30 @@ fail() {
 }
 
 # --from is parsed above, so decide the final source only now.
-[ -n "$SOURCE" ] || [ -n "$CHECKOUT" ] || SOURCE="$DEFAULT_SOURCE"
+USE_LATEST=0
+[ -n "$SOURCE" ] || [ -n "$CHECKOUT" ] || USE_LATEST=1
+
+# Find the newest release; print "<version> <wheel url>" or nothing. The version comes from where
+# the "latest" page redirects to; the wheel's existence is checked too. No jq needed.
+latest_release() {
+    final="$(curl -fsSL -o /dev/null -w '%{url_effective}' -H 'User-Agent: shuto-installer' "$LATEST_RELEASE_PAGE" 2>/dev/null)" || return 1
+    case "$final" in
+        */releases/tag/v*) ver="${final##*/releases/tag/v}" ;;
+        *) return 1 ;;
+    esac
+    printf '%s\n' "$ver" | grep -Eq '^[0-9]+(\.[0-9]+)*([.-]?(a|b|rc|alpha|beta|dev|post)\.?[0-9]+)?$' || return 1
+    url="$RELEASE_DOWNLOAD/v$ver/shuto-$ver-py3-none-any.whl"
+    curl -fsSLI -o /dev/null -H 'User-Agent: shuto-installer' "$url" 2>/dev/null || return 1
+    printf '%s %s\n' "$ver" "$url"
+}
+
+# Do the lookup before anything is installed, so a failure leaves the computer untouched.
+if [ "$USE_LATEST" = 1 ]; then
+    LATEST="$(latest_release)" || LATEST=""
+    [ -n "$LATEST" ] || fail "Could not find the latest shuto release on GitHub. Check your internet connection and run this line again (on a shared network, try again later), or download it from https://github.com/alamhanz/shuto/releases"
+    say "Installing shuto ${LATEST%% *}..."
+    SOURCE="shuto[heic] @ ${LATEST#* }"
+fi
 
 say "Step 1 of 5: checking for the uv installer helper..."
 if ! command -v uv >/dev/null 2>&1; then
@@ -86,7 +112,7 @@ BUILD_DIR=""
 cleanup() { [ -z "$BUILD_DIR" ] || rm -rf "$BUILD_DIR"; }
 trap cleanup EXIT
 trap 'exit 1' INT TERM
-if [ -z "$SOURCE" ]; then
+if [ -z "$SOURCE" ] && [ "$USE_LATEST" = 0 ]; then
     say "Preparing shuto from this folder..."
     BUILD_DIR="$(mktemp -d)"
     uv build --wheel --python 3.12 --out-dir "$BUILD_DIR" "$CHECKOUT" || fail "could not prepare shuto from this folder. Check your internet connection."

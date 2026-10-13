@@ -1,7 +1,7 @@
 #!/bin/sh
 # shuto uninstaller for macOS and Linux. Per-user, no sudo needed.
 #
-# Usage (once the repository is public):
+# Usage:
 #   curl -LsSf https://raw.githubusercontent.com/alamhanz/shuto/main/install/uninstall.sh | sh
 #
 # Options (when running the downloaded file):

@@ -97,6 +97,14 @@ def test_foreign_origin_is_403(web, batch):
     assert r.status_code == 403
     r = web.post(f"/batch/{batch}/cull", headers={"Origin": BASE})
     assert r.status_code == 200
+    r = web.post(f"/batch/{batch}/cull", headers={"Origin": "null"})
+    assert r.status_code == 403
+
+
+def test_referrer_policy_keeps_origin_on_form_posts(web):
+    # "no-referrer" makes browsers send `Origin: null` on plain form posts, which the
+    # Origin check refuses (issue #7). "same-origin" still sends nothing to other sites.
+    assert web.get("/").headers["referrer-policy"] == "same-origin"
 
 
 def test_security_headers_and_no_cdn(web):

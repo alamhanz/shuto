@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Annotated, Any
 from urllib.parse import quote
@@ -227,7 +228,11 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
 
     def start_live(batch_id: str):
         """Live speed check of a local run (None for online AI), shared with the Speed routes."""
-        live = pipeline.make_live_run(ctx.cfg, ctx.store)
+        try:
+            live = pipeline.make_live_run(ctx.cfg, ctx.store)
+        except Exception:  # the speed check is optional: the job goes on without it
+            logging.getLogger(__name__).exception("speed check unavailable")
+            return None
         if live is not None:
             ctx.state.live[batch_id] = live
         return live

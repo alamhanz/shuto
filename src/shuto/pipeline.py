@@ -2610,7 +2610,11 @@ def apply_style_overrides(cfg: Config, store: Store) -> Config:
             update={"prepare": cfg.prepare.model_copy(update={"include_gps": gps})}
         )
     tries = store.get_setting("ui.max_tries")
-    if isinstance(tries, int) and not isinstance(tries, bool) and 1 <= tries <= 20:
+    if (
+        isinstance(tries, int)
+        and not isinstance(tries, bool)
+        and 1 <= tries <= metadata_rules.MAX_TRIES
+    ):
         cfg = cfg.model_copy(update={"llm": cfg.llm.model_copy(update={"max_tries": tries})})
     lang = store.get_setting("ui.language")
     if isinstance(lang, dict) and isinstance(lang.get("english_only"), bool):

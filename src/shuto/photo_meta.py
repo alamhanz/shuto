@@ -99,8 +99,10 @@ def _clean(value: object, charset: bytes = b"") -> str | None:
 
 
 def _decode(raw: bytes, charset: bytes = b"") -> str | None:
-    """Text from IPTC bytes: as the record declares (1:90), else UTF-8, else Shift-JIS (cp932,
-    strict). Anything else is dropped (None): wrongly decoded text is worse than none."""
+    """Text from IPTC bytes: as the record declares (1:90), else UTF-8, else Shift-JIS when the
+    bytes have C1 bytes (0x80-0x9F, which Western Latin-1 text never has), else Latin-1 when it
+    reads as plain letters. Anything else is dropped (None): wrongly decoded text is worse than
+    none."""
     if charset == _IPTC_LATIN1:
         return raw.decode("latin-1")
     try:
@@ -109,10 +111,16 @@ def _decode(raw: bytes, charset: bytes = b"") -> str | None:
         pass
     if charset == _IPTC_UTF8:
         return None
-    try:
-        return raw.decode("cp932")
-    except UnicodeDecodeError:
-        return None
+    if any(0x80 <= b <= 0x9F for b in raw):
+        try:
+            text = raw.decode("cp932")
+        except UnicodeDecodeError:
+            return None
+        if any(unicodedata.category(c) == "Co" or 0xFF61 <= ord(c) <= 0xFF9F for c in text):
+            return None
+        return text
+    text = raw.decode("latin-1")
+    return text if all(c.isalpha() or c in " .,'-/&()0123456789" for c in text) else None
 
 
 def _cap(text: str | None, limit: int) -> str | None:
@@ -312,7 +320,7 @@ def _xmp_part(im: Image.Image, meta: PhotoMeta, place: dict[str, str]) -> None:
             meta.keywords.append(kw)
     meta.keywords = meta.keywords[:_MAX_KEYWORDS]
     for key, value in data.get("place", {}).items():
-        place.setdefault(key, value)
+        place[key] = value  # XMP is UTF-8 by spec, so it wins over a doubtful IPTC reading
 
 
 def read_photo_meta(path: str | Path | bytes) -> PhotoMeta:

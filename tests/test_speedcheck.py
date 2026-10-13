@@ -402,3 +402,24 @@ def test_web_check_runs_with_a_live_check_and_cleans_up(web, batch, monkeypatch)
     assert job.state == "done", job.error
     assert made and made[0]._described > 0
     assert web.state.live == {}
+
+
+def test_web_check_goes_on_when_the_speed_check_fails(web, batch, monkeypatch):
+    def broken(cfg, store, llm=None):
+        raise RuntimeError("hardware detection failed")
+
+    monkeypatch.setattr(pipeline, "make_live_run", broken)
+    job = web.run_job(f"/batch/{batch}/check")
+    assert job.state == "done", job.error
+    assert web.state.live == {}
+
+
+def test_max_tries_is_one_to_eight_everywhere(web):
+    from pydantic import ValidationError
+
+    from shuto.config import LLMConfig
+
+    with pytest.raises(ValidationError):
+        LLMConfig(max_tries=12)
+    page = web.get("/settings").text
+    assert 'value="8" selected' in page

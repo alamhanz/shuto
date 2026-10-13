@@ -90,6 +90,11 @@ Release notes are also published on the GitHub Releases page. Newest first.
   cut; the short prompt follows it.
 - Upload refuses a prepared copy with non-English text when strict English is on ("edit it in
   Review").
+- Older Latin-1 file text (for example Köln, España) is read correctly or ignored, never
+  shortened; Shift-JIS is only used for text that really is Shift-JIS. Place names in XMP win
+  over a doubtful IPTC reading.
+- `llm.max_tries` in the config is limited to 1-8, like the setting in the app.
+- A failing speed check no longer stops a Check run; it just goes on without it.
 - Latin letters such as Ł, Đ, Þ, ð and ħ are no longer counted as non-English.
 
 ### Check and Add

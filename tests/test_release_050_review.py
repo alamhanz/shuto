@@ -53,7 +53,7 @@ def test_shift_jis_place_gives_no_file_place_and_no_garbage_hint(tmp_path):
 
 
 def test_undecodable_iptc_bytes_are_dropped(tmp_path):
-    seg = _iptc_raw([(2, 90, b"\x8f\xff\x92"), (2, 25, b"\xfd\xfe"), (2, 5, b"Plain title")])
+    seg = _iptc_raw([(2, 90, b"\x8f\xff\x92"), (2, 25, b"\x8f\xff"), (2, 5, b"Plain title")])
     meta = read_photo_meta(make_jpeg(tmp_path / "a.jpg", segments=seg))
     assert meta.place_hint is None and meta.keywords == []
     assert meta.title == "Plain title"
@@ -295,3 +295,37 @@ def test_resolve_llm_sends_a_num_ctx(cfg, store, monkeypatch):
 def test_more_latin_letters_are_not_foreign():
     for word in ("Łódź", "Đà Nẵng", "Þingvellir", "Reykjavík ð", "Ħamrun", "ı"):
         assert not has_foreign_script(word), word
+
+
+# ------------------------------------------------------------------ shuto-138: Latin-1 vs Shift-JIS
+
+
+@pytest.mark.parametrize(
+    "city", ["Köln", "España", "São Paulo", "Kraków", "Zürich", "Málaga", "Genève"]
+)
+def test_latin1_iptc_without_a_marker_is_never_shortened(tmp_path, city):
+    seg = _iptc_raw([(2, 90, city.encode("latin-1"))])
+    meta = read_photo_meta(make_jpeg(tmp_path / "a.jpg", segments=seg))
+    got = (meta.place_hint or {}).get("city")
+    assert got in (None, city)
+
+
+def test_latin1_text_that_is_not_letters_is_dropped(tmp_path):
+    seg = _iptc_raw([(2, 90, b"A\xa4\xa4@")])
+    assert read_photo_meta(make_jpeg(tmp_path / "a.jpg", segments=seg)).place_hint is None
+
+
+def test_cp932_half_width_katakana_or_private_use_is_dropped(tmp_path):
+    seg = _iptc_raw([(2, 90, "ﾄｳｷｮｳ".encode("cp932")), (2, 95, b"\x81\x61\xfd\xfe")])
+    assert read_photo_meta(make_jpeg(tmp_path / "a.jpg", segments=seg)).place_hint is None
+
+
+def test_xmp_place_wins_over_a_dropped_or_doubtful_iptc_place(tmp_path):
+    from .test_photo_meta import xmp_segment
+
+    iptc = _iptc_raw([(2, 90, b"\x8f\xff\x92")])  # undecodable
+    meta = read_photo_meta(make_jpeg(tmp_path / "a.jpg", segments=iptc + xmp_segment()))
+    assert meta.place_hint["city"] == "Kamakura"
+    both = _iptc_raw([(2, 90, "Köln".encode("latin-1"))])
+    meta = read_photo_meta(make_jpeg(tmp_path / "b.jpg", segments=both + xmp_segment()))
+    assert meta.place_hint["city"] == "Kamakura"

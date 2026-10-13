@@ -9,6 +9,7 @@ Routes live in `routes_setup` and `routes_batch`; shared helpers in `common`.
 
 from __future__ import annotations
 
+import sqlite3
 import threading
 from contextlib import asynccontextmanager
 from urllib.parse import urlsplit
@@ -21,6 +22,7 @@ from ..config import Config
 from .common import HERE, LOOPBACK_HOSTS, WebCtx, WebState, hostname
 from .routes_batch import register_batch_routes
 from .routes_setup import register_setup_routes
+from .ux import BUSY_WHAT, friendly_error
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 CSP = (
@@ -62,6 +64,14 @@ def create_app(
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["Cache-Control"] = "no-store"
         return response
+
+    @app.exception_handler(sqlite3.OperationalError)
+    async def database_busy(request: Request, exc: sqlite3.OperationalError):
+        """A lock that outlasted the 30 s wait is a plain message, not a crash page."""
+        found = friendly_error(exc)
+        if found["what"] != BUSY_WHAT:
+            raise exc
+        return PlainTextResponse(f"{found['what']} {found['todo']}", status_code=503)
 
     ctx = WebCtx(state)
     register_setup_routes(app, ctx)

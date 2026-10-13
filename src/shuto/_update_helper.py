@@ -8,6 +8,8 @@ the result to a status file and starts shuto again. It never stops any program b
 from __future__ import annotations
 
 import argparse
+import hashlib
+import hmac
 import json
 import os
 import re
@@ -18,11 +20,8 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-SPEC_RE = re.compile(
-    r"shuto\[heic\] @ https://github\.com/alamhanz/shuto/releases/download/"
-    r"v(?P<v>\d+\.\d+\.\d+)/shuto-(?P=v)-py3-none-any\.whl#sha256=[0-9a-f]{64}"
-)
 VERSION_RE = re.compile(r"\d+\.\d+\.\d+")
+SHA256_RE = re.compile(r"[0-9a-f]{64}")
 LOCK_RE = re.compile(
     r"Access is denied|os error 5|os error 32|being used by another process", re.IGNORECASE
 )
@@ -41,6 +40,10 @@ MSG_STILL_RUNNING = (
 MSG_LAUNCHER_STUCK = (
     "shuto closed, but its start window did not, so the update was not started. "
     "shuto was opened again and nothing was changed."
+)
+MSG_BAD_FILE = (
+    "The update was refused because the downloaded file was missing or had changed. "
+    "Nothing was changed."
 )
 MSG_LOCKED = (
     "A shuto file was in use, so the update could not finish. "
@@ -105,6 +108,29 @@ def wait_for_pid(pid: int, timeout: float = WAIT_PID_S) -> bool:
             pass
         time.sleep(0.25)
     return False
+
+
+def verified_spec(wheels: Path, version: str, sha256: str) -> str | None:
+    """The install spec for a wheel in the wheels folder, or None unless its sha256 matches.
+
+    The path is built here from the validated version (never taken from the command line), and
+    the file is hashed now, so the bytes checked are the bytes handed to uv.
+    """
+    if not VERSION_RE.fullmatch(version) or not SHA256_RE.fullmatch(sha256):
+        return None
+    if tuple(wheels.parts[-2:]) != ("updates", "wheels"):
+        return None
+    wheel = wheels / f"shuto-{version}-py3-none-any.whl"
+    try:
+        digest = hashlib.sha256()
+        with wheel.open("rb") as fh:
+            for chunk in iter(lambda: fh.read(1024 * 1024), b""):
+                digest.update(chunk)
+    except OSError:
+        return None
+    if not hmac.compare_digest(digest.hexdigest(), sha256):
+        return None
+    return f"shuto[heic] @ {wheel.resolve().as_uri()}"
 
 
 def spawn_relaunch(cmd: list[str]) -> None:
@@ -185,8 +211,9 @@ def main(
     p = argparse.ArgumentParser()
     p.add_argument("--pid", type=int, action="append", required=True)
     p.add_argument("--uv", required=True)
-    p.add_argument("--spec", required=True)
-    p.add_argument("--rollback-spec")
+    p.add_argument("--wheels", type=Path, required=True)
+    p.add_argument("--sha256", required=True)
+    p.add_argument("--rollback-sha256")
     p.add_argument("--version", required=True)
     p.add_argument("--from-version", default="")
     p.add_argument("--status", type=Path, required=True)
@@ -198,9 +225,11 @@ def main(
         write_status(a.status, state, message, a.from_version, a.version)
 
     if (
-        not SPEC_RE.fullmatch(a.spec)
-        or (a.rollback_spec and not SPEC_RE.fullmatch(a.rollback_spec))
+        not SHA256_RE.fullmatch(a.sha256)
+        or (a.rollback_sha256 and not SHA256_RE.fullmatch(a.rollback_sha256))
+        or (a.rollback_sha256 and not VERSION_RE.fullmatch(a.from_version))
         or not VERSION_RE.fullmatch(a.version)
+        or tuple(a.wheels.parts[-2:]) != ("updates", "wheels")
     ):
         log(a.log, "Refused: the install source is not a shuto release.")
         status("failed", "The update was refused because its source was not a shuto release.")
@@ -221,16 +250,31 @@ def main(
         else:
             status("failed", MSG_STILL_RUNNING)
         return 3
+    spec = verified_spec(a.wheels, a.version, a.sha256)
+    if spec is None:
+        log(a.log, "Refused: the downloaded file is missing or does not match its hash.")
+        status("failed", MSG_BAD_FILE)
+        if a.relaunch:
+            try:
+                spawn(a.relaunch)
+            except OSError as exc:
+                log(a.log, f"Could not start shuto again: {exc}")
+        return 2
     status("installing", f"Installing shuto {a.version}...")
-    ok, locked = install(run, a.uv, a.spec, a.log, sleep)
+    ok, locked = install(run, a.uv, spec, a.log, sleep)
     if ok:
         status("done", f"shuto was updated to {a.version}.")
     else:
         failure = MSG_LOCKED if locked else f"The update to {a.version} did not finish."
         still_works = works(run, a.relaunch, a.log)
-        if not still_works and a.rollback_spec:
+        rollback = (
+            verified_spec(a.wheels, a.from_version, a.rollback_sha256)
+            if not still_works and a.rollback_sha256
+            else None
+        )
+        if rollback:
             log(a.log, f"shuto does not start; going back to shuto {a.from_version}.")
-            restored, _ = install(run, a.uv, a.rollback_spec, a.log, sleep)
+            restored, _ = install(run, a.uv, rollback, a.log, sleep)
             still_works = restored and works(run, a.relaunch, a.log)
         if still_works:
             status(

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import subprocess
@@ -8,11 +9,6 @@ from pathlib import Path
 import pytest
 
 HELPER = Path(__file__).parent.parent / "src" / "shuto" / "_update_helper.py"
-SPEC = (
-    "shuto[heic] @ https://github.com/alamhanz/shuto/releases/download/v0.3.0/"
-    "shuto-0.3.0-py3-none-any.whl#sha256=" + "ab" * 32
-)
-OLD = SPEC.replace("0.3.0", "0.2.1")
 
 
 @pytest.fixture(scope="module")
@@ -38,23 +34,37 @@ class FakeRun:
 
 class Env:
     def __init__(self, tmp_path):
+        self.wheels = tmp_path / "ws" / "updates" / "wheels"
+        self.wheels.mkdir(parents=True)
+        self.hashes = {}
+        for v in ("0.3.0", "0.2.1"):
+            data = f"wheel {v}".encode()
+            (self.wheels / f"shuto-{v}-py3-none-any.whl").write_bytes(data)
+            self.hashes[v] = hashlib.sha256(data).hexdigest()
+        self.spec = self.spec_for("0.3.0")
+        self.old = self.spec_for("0.2.1")
         self.status = tmp_path / "w s" / "status.json"
         self.log = tmp_path / "w s" / "update.log"
         self.spawned = []
         self.sleeps = []
         self.waited = []
 
-    def argv(self, rollback=True, spec=SPEC):
-        out = ["--pid", "99", "--pid", "98", "--uv", "C:/uv dir/uv.exe", "--spec", spec]
+    def spec_for(self, version):
+        wheel = self.wheels / f"shuto-{version}-py3-none-any.whl"
+        return f"shuto[heic] @ {wheel.resolve().as_uri()}"
+
+    def argv(self, rollback=True, sha=None, wheels=None):
+        out = ["--pid", "99", "--pid", "98", "--uv", "C:/uv dir/uv.exe"]
+        out += ["--wheels", str(wheels or self.wheels), "--sha256", sha or self.hashes["0.3.0"]]
         if rollback:
-            out += ["--rollback-spec", OLD]
+            out += ["--rollback-sha256", self.hashes["0.2.1"]]
         out += ["--version", "0.3.0", "--from-version", "0.2.1"]
         out += ["--status", str(self.status), "--log", str(self.log)]
         return out + ["--relaunch", "shuto", "ui", "--no-browser"]
 
-    def go(self, helper, run, rollback=True, spec=SPEC, alive=()):
+    def go(self, helper, run, rollback=True, alive=(), **argv):
         return helper.main(
-            self.argv(rollback, spec),
+            self.argv(rollback, **argv),
             run=run,
             wait_pid=lambda pid: self.waited.append(pid) or pid not in alive,
             spawn=self.spawned.append,
@@ -75,7 +85,7 @@ def test_success(helper, env):
     assert env.go(helper, run) == 0
     assert env.waited == [99, 98]
     assert run.cmds == [
-        ["C:/uv dir/uv.exe", "tool", "install", "--force", "--python", "3.12", SPEC]
+        ["C:/uv dir/uv.exe", "tool", "install", "--force", "--python", "3.12", env.spec]
     ]
     assert env.state()["state"] == "done" and env.state()["to"] == "0.3.0"
     assert env.spawned == [["shuto", "ui", "--no-browser"]]
@@ -94,7 +104,7 @@ def test_lock_errors_give_up_and_the_old_version_still_works(helper, env):
     run = FakeRun(*([locked] * 5), (0, "shuto 0.2.1"))
     assert env.go(helper, run) == 1
     assert run.cmds[-1][1:] == ["--version"]
-    assert all(OLD not in c for c in run.cmds)  # no rollback reinstall needed
+    assert all(env.old not in c for c in run.cmds)  # no rollback reinstall needed
     state = env.state()
     assert state["state"] == "rolled_back"
     assert "file was in use" in state["message"] and "still on 0.2.1" in state["message"]
@@ -104,7 +114,7 @@ def test_lock_errors_give_up_and_the_old_version_still_works(helper, env):
 def test_broken_install_is_rolled_back(helper, env):
     run = FakeRun((1, "boom"), (1, "not found"), (0, "reinstalled"), (0, "shuto 0.2.1"))
     assert env.go(helper, run) == 1
-    assert run.cmds[2][-1] == OLD
+    assert run.cmds[2][-1] == env.old
     assert env.state()["state"] == "rolled_back"
 
 
@@ -154,24 +164,59 @@ def test_uv_missing_counts_as_failure(helper, env):
     assert env.state()["state"] == "failed"
 
 
-def test_foreign_source_is_refused(helper, env):
+def test_install_spec_is_a_file_uri_of_the_verified_wheel(helper, env):
+    spec = helper.verified_spec(env.wheels, "0.3.0", env.hashes["0.3.0"])
+    assert spec == env.spec
+    assert spec.startswith("shuto[heic] @ file:///")
+
+
+def test_bad_sources_are_refused_before_anything_runs(helper, env, tmp_path):
     run = FakeRun()
-    assert env.go(helper, run, spec="shuto @ https://evil.example/x.whl") == 2
-    assert env.go(helper, run, spec=SPEC + chr(10)) == 2
-    assert env.go(helper, run, spec=SPEC.split("#")[0]) == 2  # no hash
-    assert env.go(helper, run, spec=SPEC[:-1] + "g") == 2  # not hex
-    assert env.go(helper, run, spec=SPEC[:-1]) == 2  # too short
-    assert env.go(helper, run, spec=SPEC.upper().replace("SHUTO", "shuto")) == 2
+    good = env.hashes["0.3.0"]
+    outside = tmp_path / "elsewhere"
+    outside.mkdir()
+    for kw in (
+        {"sha": good + chr(10)},
+        {"sha": good.upper()},
+        {"sha": good[:-1]},
+        {"sha": "g" * 64},
+        {"wheels": outside},  # not an updates/wheels folder
+    ):
+        assert env.go(helper, run, **kw) == 2, kw
     assert run.cmds == [] and env.state()["state"] == "failed"
 
 
-def test_rollback_spec_without_a_hash_is_refused(helper, env):
+def test_bad_rollback_hash_is_refused(helper, env):
     run = FakeRun()
     argv = env.argv(rollback=False)
-    at = argv.index("--version")
-    argv[at:at] = ["--rollback-spec", OLD.split("#")[0]]
+    at = argv.index("--relaunch")
+    argv[at:at] = ["--rollback-sha256", "xyz"]
     assert helper.main(argv, run=run, wait_pid=lambda pid: True) == 2
     assert run.cmds == []
+
+
+def test_a_wheel_changed_after_download_is_refused_just_before_install(helper, env):
+    (env.wheels / "shuto-0.3.0-py3-none-any.whl").write_bytes(b"tampered")
+    run = FakeRun()
+    assert env.go(helper, run) == 2
+    assert run.cmds == []
+    state = env.state()
+    assert state["state"] == "failed" and "changed" in state["message"]
+    assert env.spawned == [["shuto", "ui", "--no-browser"]]  # shuto is started again
+
+
+def test_a_missing_wheel_is_refused(helper, env):
+    (env.wheels / "shuto-0.3.0-py3-none-any.whl").unlink()
+    run = FakeRun()
+    assert env.go(helper, run) == 2 and run.cmds == []
+
+
+def test_a_tampered_rollback_wheel_is_not_installed(helper, env):
+    (env.wheels / "shuto-0.2.1-py3-none-any.whl").write_bytes(b"tampered")
+    run = FakeRun((1, "boom"), (1, "broken"))
+    assert env.go(helper, run) == 1
+    assert len(run.cmds) == 2  # the failed install and the --version check; no rollback install
+    assert env.state()["state"] == "failed"
 
 
 def test_log_is_trimmed(helper, tmp_path):

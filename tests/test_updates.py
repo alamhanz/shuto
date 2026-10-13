@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import sys
 import threading
 import urllib.error
+import urllib.request
 from pathlib import Path
 
 import pytest
@@ -211,8 +213,9 @@ def cmd_kwargs(**over):
         "script": Path("/tmp/my dir/_update_helper.py"),
         "pids": [42, 43],
         "uv": "C:/Program Files/uv/uv.exe",
-        "spec": updates.pip_spec("0.3.0", HASH),
-        "rollback_spec": updates.pip_spec("0.2.1", HASH),
+        "wheels": Path("/data/shuto/updates/wheels"),
+        "sha256": HASH,
+        "rollback_sha256": HASH,
         "version": "0.3.0",
         "from_version": "0.2.1",
         "status": Path("/w s/status.json"),
@@ -230,25 +233,27 @@ def test_build_helper_cmd_is_an_argument_list():
     assert cmd[cmd.index("--uv") + 1] == "C:/Program Files/uv/uv.exe"
     assert cmd[cmd.index("--log") + 1] == str(Path('/w s/up"date.log'))
     assert cmd[cmd.index("--relaunch") + 1 :] == ["/bin dir/shuto", "ui", "--no-browser"]
-    no_rollback = updates.build_helper_cmd(**cmd_kwargs(rollback_spec=None))
-    assert "--rollback-spec" not in no_rollback
+    assert cmd[cmd.index("--sha256") + 1] == HASH
+    assert cmd[cmd.index("--rollback-sha256") + 1] == HASH
+    assert cmd[cmd.index("--wheels") + 1] == str(Path("/data/shuto/updates/wheels"))
+    assert "--spec" not in cmd and not any("#sha256" in c or "http" in c for c in cmd)
+    no_rollback = updates.build_helper_cmd(**cmd_kwargs(rollback_sha256=None))
+    assert "--rollback-sha256" not in no_rollback
 
 
-def test_build_helper_cmd_rejects_foreign_sources():
-    with pytest.raises(ValueError):
-        updates.build_helper_cmd(**cmd_kwargs(spec="shuto[heic] @ https://evil.example/x.whl"))
-    with pytest.raises(ValueError):
-        updates.build_helper_cmd(**cmd_kwargs(rollback_spec="shuto @ file:///x.whl"))
-    good = cmd_kwargs()["spec"]
-    for bad in (good.split("#")[0], good[:-1], good[:-1] + "G", good.replace("sha256", "md5")):
+def test_build_helper_cmd_rejects_unverified_sources():
+    for bad in (HASH[:-1], HASH.upper(), HASH + "\n", "g" * 64, ""):
         with pytest.raises(ValueError):
-            updates.build_helper_cmd(**cmd_kwargs(spec=bad))
+            updates.build_helper_cmd(**cmd_kwargs(sha256=bad))
+        with pytest.raises(ValueError):
+            updates.build_helper_cmd(**cmd_kwargs(rollback_sha256=bad))
+    for bad in ("0.3.0rc1", "../x", "0.3.0\n"):
+        with pytest.raises(ValueError):
+            updates.build_helper_cmd(**cmd_kwargs(version=bad))
     with pytest.raises(ValueError):
-        updates.build_helper_cmd(**cmd_kwargs(rollback_spec=good.split("#")[0]))
+        updates.build_helper_cmd(**cmd_kwargs(wheels=Path("/tmp/elsewhere")))
     with pytest.raises(ValueError):
-        updates.build_helper_cmd(**cmd_kwargs(spec=good + "\n"))
-    with pytest.raises(ValueError):
-        updates.build_helper_cmd(**cmd_kwargs(spec=good.replace("shuto-0.3.0", "shuto-0.3.1")))
+        updates.build_helper_cmd(**cmd_kwargs(from_version="dev"))
 
 
 def test_helper_python(tmp_path, monkeypatch):
@@ -354,6 +359,19 @@ def drop_helper_copy(cmd):
     helper.parent.rmdir()
 
 
+def fake_download(cfg, calls=None):
+    def download(version, sha256):
+        folder = updates.wheels_dir(cfg)
+        folder.mkdir(parents=True, exist_ok=True)
+        path = folder / updates.wheel_name(version)
+        path.write_bytes(b"x")
+        if calls is not None:
+            calls.append((version, sha256))
+        return path
+
+    return download
+
+
 def test_start_update_writes_status_and_spawns_once(cfg, monkeypatch):
     fake_start_env(monkeypatch, "0.2.1")
     spawned = []
@@ -366,14 +384,14 @@ def test_start_update_writes_status_and_spawns_once(cfg, monkeypatch):
         ui_args=["ui", "--port", "9"],
         spawn=spawned.append,
         fetch_digest=lambda v: HASH,
+        download=fake_download(cfg),
     )
     (cmd,) = spawned
-    assert cmd[cmd.index("--spec") + 1] == updates.pip_spec("0.3.0", HASH)
+    assert cmd[cmd.index("--sha256") + 1] == HASH
+    assert cmd[cmd.index("--wheels") + 1] == str(updates.wheels_dir(cfg))
     assert [cmd[i + 1] for i, c in enumerate(cmd) if c == "--pid"] == ["7", "8"]
     assert cmd[cmd.index("--relaunch") + 1 :] == ["shuto", "ui", "--port", "9"]
-    assert cmd[cmd.index("--rollback-spec") + 1].endswith(
-        f"v0.2.1/shuto-0.2.1-py3-none-any.whl#sha256={HASH}"
-    )
+    assert cmd[cmd.index("--rollback-sha256") + 1] == HASH
     assert Path(cmd[2]).name == "_update_helper.py" and Path(cmd[2]).is_file()
     status = updates.read_status(cfg)
     assert status["state"] == "started" and status["to"] == "0.3.0" and status["from"] == "0.2.1"
@@ -386,8 +404,15 @@ def test_start_update_without_a_release_version_has_no_rollback(cfg, monkeypatch
     fake_start_env(monkeypatch, "dev")
     spawned = []
     latest = Latest("0.3.0", updates.wheel_url("0.3.0"), TAG, 0.0)
-    updates.start_update(cfg, latest, uv="uv", spawn=spawned.append, fetch_digest=lambda v: HASH)
-    assert "--rollback-spec" not in spawned[0]
+    updates.start_update(
+        cfg,
+        latest,
+        uv="uv",
+        spawn=spawned.append,
+        fetch_digest=lambda v: HASH,
+        download=fake_download(cfg),
+    )
+    assert "--rollback-sha256" not in spawned[0]
     drop_helper_copy(spawned[0])
 
 
@@ -410,8 +435,15 @@ def test_start_update_without_old_digest_has_no_rollback(cfg, monkeypatch):
         return HASH
 
     latest = Latest("0.3.0", updates.wheel_url("0.3.0"), TAG, 0.0)
-    updates.start_update(cfg, latest, uv="uv", spawn=spawned.append, fetch_digest=fetch)
-    assert "--rollback-spec" not in spawned[0]
+    updates.start_update(
+        cfg,
+        latest,
+        uv="uv",
+        spawn=spawned.append,
+        fetch_digest=fetch,
+        download=fake_download(cfg),
+    )
+    assert "--rollback-sha256" not in spawned[0]
     drop_helper_copy(spawned[0])
 
 
@@ -446,7 +478,6 @@ def test_fetch_wheel_digest_good_and_request_headers():
     assert seen["url"] == API_URL and seen["timeout"] == updates.HTTP_TIMEOUT_S
     assert seen["headers"]["Accept"] == "application/vnd.github+json"
     assert seen["headers"]["User-agent"].startswith("shuto/")
-    assert updates.SPEC_RE.fullmatch(updates.pip_spec("0.3.0", HASH))
 
 
 @pytest.mark.parametrize(
@@ -482,10 +513,172 @@ def test_fetch_wheel_digest_rejects_bad_versions_before_any_request():
     assert opener.calls == []
 
 
-def test_pip_spec_rejects_a_bad_hash():
-    for bad in ("", "AB" * 32, "ab" * 31, "ab" * 32 + "\n", "../x"):
-        with pytest.raises(ValueError):
-            updates.pip_spec("0.3.0", bad)
+def test_fetch_wheel_digest_does_not_follow_redirects(monkeypatch):
+    handler = updates._NoRedirect()
+    assert handler.redirect_request(None, None, 302, "Found", {}, "https://evil.example/") is None
+
+
+# ---- download and verify the wheel
+
+WHEEL = b"pretend wheel bytes"
+WHEEL_HASH = hashlib.sha256(WHEEL).hexdigest()
+GOOD_URL = "https://release-assets.githubusercontent.com/some/path"
+
+
+class WheelResp:
+    def __init__(self, data, url=GOOD_URL):
+        self.data, self.url, self.pos = data, url, 0
+
+    def geturl(self):
+        return self.url
+
+    def read(self, n=-1):
+        chunk = self.data[self.pos : self.pos + n]
+        self.pos += len(chunk)
+        return chunk
+
+    def close(self):
+        pass
+
+
+def wheel_opener(data=WHEEL, url=GOOD_URL):
+    return FakeOpener({updates.wheel_url("0.3.0"): WheelResp(data, url)})
+
+
+def test_download_wheel_keeps_good_bytes(tmp_path):
+    opener = wheel_opener()
+    folder = tmp_path / "updates" / "wheels"
+    path = updates.download_wheel("0.3.0", WHEEL_HASH, folder, opener=opener)
+    assert path == folder / "shuto-0.3.0-py3-none-any.whl" and path.read_bytes() == WHEEL
+    assert opener.calls == [("GET", updates.wheel_url("0.3.0"))]
+    assert not list(folder.glob("*.part"))
+    # already there with the right hash: no second download
+    assert updates.download_wheel("0.3.0", WHEEL_HASH, folder, opener=FakeOpener({})) == path
+
+
+def test_download_wheel_refuses_a_hash_mismatch(tmp_path):
+    folder = tmp_path / "wheels"
+    with pytest.raises(updates.UpdateError, match="did not match"):
+        updates.download_wheel("0.3.0", "00" * 32, folder, opener=wheel_opener())
+    assert list(folder.iterdir()) == []
+
+
+def test_download_wheel_replaces_a_wrong_file_already_stored(tmp_path):
+    folder = tmp_path / "wheels"
+    folder.mkdir()
+    (folder / "shuto-0.3.0-py3-none-any.whl").write_bytes(b"old junk")
+    path = updates.download_wheel("0.3.0", WHEEL_HASH, folder, opener=wheel_opener())
+    assert path.read_bytes() == WHEEL
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://evil.example/x.whl",
+        "http://github.com/x.whl",
+        "https://github.com.evil.example/x.whl",
+        "https://github.com:8443/x.whl",
+    ],
+)
+def test_download_wheel_refuses_a_final_address_off_github(tmp_path, url):
+    with pytest.raises(updates.UpdateError, match="could not download"):
+        updates.download_wheel("0.3.0", WHEEL_HASH, tmp_path, opener=wheel_opener(url=url))
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_download_wheel_refuses_redirects_to_foreign_hosts():
+    handler = updates._GithubOnlyRedirect()
+    for bad in ("https://evil.example/x", "http://github.com/x", "file:///etc/passwd"):
+        with pytest.raises(urllib.error.URLError):
+            handler.redirect_request(None, None, 302, "Found", {}, bad)
+    req = urllib.request.Request(updates.wheel_url("0.3.0"))
+    ok = handler.redirect_request(req, None, 302, "Found", {}, GOOD_URL)
+    assert ok is not None and ok.full_url == GOOD_URL
+
+
+def test_download_wheel_network_errors_and_size_cap(tmp_path, monkeypatch):
+    routes = {updates.wheel_url("0.3.0"): urllib.error.URLError("offline")}
+    with pytest.raises(updates.UpdateError, match="could not download"):
+        updates.download_wheel("0.3.0", WHEEL_HASH, tmp_path, opener=FakeOpener(routes))
+    monkeypatch.setattr(updates, "MAX_WHEEL_BYTES", 5)
+    with pytest.raises(updates.UpdateError, match="could not download"):
+        updates.download_wheel("0.3.0", WHEEL_HASH, tmp_path, opener=wheel_opener())
+    assert list(tmp_path.iterdir()) == []
+    with pytest.raises(updates.UpdateError):
+        updates.download_wheel("0.3.0", "nothex", tmp_path, opener=wheel_opener())
+
+
+def test_prune_wheels_keeps_only_the_named_files(tmp_path):
+    for name in (
+        "shuto-0.1.0-py3-none-any.whl",
+        "shuto-0.2.1-py3-none-any.whl",
+        "shuto-0.3.0-py3-none-any.whl",
+        "shuto-0.3.0-py3-none-any.whl.part",
+    ):
+        (tmp_path / name).write_bytes(b"x")
+    keep = {"shuto-0.2.1-py3-none-any.whl", "shuto-0.3.0-py3-none-any.whl"}
+    updates.prune_wheels(tmp_path, keep)
+    assert {p.name for p in tmp_path.iterdir()} == keep
+    updates.prune_wheels(tmp_path / "missing", keep)  # no folder is fine
+
+
+def test_start_update_downloads_both_wheels_and_prunes_the_rest(cfg, monkeypatch):
+    fake_start_env(monkeypatch, "0.2.1")
+    folder = updates.wheels_dir(cfg)
+    folder.mkdir(parents=True)
+    (folder / "shuto-0.1.0-py3-none-any.whl").write_bytes(b"old")
+    calls, spawned = [], []
+    latest = Latest("0.3.0", updates.wheel_url("0.3.0"), TAG, 0.0)
+    updates.start_update(
+        cfg,
+        latest,
+        uv="uv",
+        spawn=spawned.append,
+        fetch_digest=lambda v: HASH,
+        download=fake_download(cfg, calls),
+    )
+    assert calls == [("0.3.0", HASH), ("0.2.1", HASH)]
+    assert sorted(p.name for p in folder.iterdir()) == [
+        "shuto-0.2.1-py3-none-any.whl",
+        "shuto-0.3.0-py3-none-any.whl",
+    ]
+    drop_helper_copy(spawned[0])
+
+
+def test_start_update_with_a_wrong_download_spawns_nothing(cfg, monkeypatch):
+    fake_start_env(monkeypatch, "0.2.1")
+    spawned = []
+    latest = Latest("0.3.0", updates.wheel_url("0.3.0"), TAG, 0.0)
+    real = updates.download_wheel
+    monkeypatch.setattr(
+        updates,
+        "download_wheel",
+        lambda v, h, folder: real(v, h, folder, opener=wheel_opener(b"tampered")),
+    )
+    with pytest.raises(updates.UpdateError, match="did not match"):
+        updates.start_update(
+            cfg, latest, uv="uv", spawn=spawned.append, fetch_digest=lambda v: WHEEL_HASH
+        )
+    assert spawned == [] and updates.read_status(cfg) is None
+    assert list(updates.wheels_dir(cfg).glob("*.whl")) == []
+
+
+def test_start_update_installs_good_bytes_from_the_stored_file(cfg, monkeypatch):
+    fake_start_env(monkeypatch, "dev")
+    spawned = []
+    latest = Latest("0.3.0", updates.wheel_url("0.3.0"), TAG, 0.0)
+    real = updates.download_wheel
+    monkeypatch.setattr(
+        updates, "download_wheel", lambda v, h, folder: real(v, h, folder, opener=wheel_opener())
+    )
+    updates.start_update(
+        cfg, latest, uv="uv", spawn=spawned.append, fetch_digest=lambda v: WHEEL_HASH
+    )
+    (cmd,) = spawned
+    stored = updates.wheels_dir(cfg) / "shuto-0.3.0-py3-none-any.whl"
+    assert stored.read_bytes() == WHEEL
+    assert cmd[cmd.index("--sha256") + 1] == WHEEL_HASH
+    drop_helper_copy(cmd)
 
 
 def test_wait_for_helper(cfg):

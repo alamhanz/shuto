@@ -20,6 +20,7 @@ from . import ux
 from .common import PostForm, WebCtx, short, split_lines
 
 BATCH_JOBS = ("cull", "describe", "prepare", "upload", "export")  # legacy / power-user routes
+SPEED_CHOICES = ("tries", "model", "keep")
 OPEN_FOLDER_PAGES = ("review", "submit", "upload")
 PREVIEW_SIDE = 2048  # page preview size; originals can be tens of MB
 FILTERS = ("attention", "good", "aside", "all")
@@ -224,6 +225,34 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
             **facts,
         )
 
+    def start_live(batch_id: str):
+        """Live speed check of a local run (None for online AI), shared with the Speed routes."""
+        live = pipeline.make_live_run(ctx.cfg, ctx.store)
+        if live is not None:
+            ctx.state.live[batch_id] = live
+        return live
+
+    @app.post("/batch/{batch_id}/speed/{choice}", response_class=HTMLResponse)
+    def speed_choice(request: Request, batch_id: str, choice: str, form: PostForm):
+        """One click on the 'this is slow' suggestion; applies to the photos not started yet."""
+        job_id = ctx.runner.active_job(batch_id)
+        live = ctx.state.live.get(batch_id)
+        if choice not in SPEED_CHOICES:
+            raise HTTPException(status_code=404, detail="Unknown choice.")
+        if live is not None:
+            if choice == "tries":
+                suggestion = live.suggestion()
+                if suggestion is not None and suggestion.tries is not None:
+                    live.set_max_tries(suggestion.tries)
+            elif choice == "model":
+                if not live.switch_model(str(form.get("model") or "")):
+                    live.notice = "That model cannot be used now. Keeping the current one."
+            else:
+                live.dismiss()
+        if job_id is None:
+            return ctx.message_fragment(request, "The check has finished.")
+        return ctx.job_fragment(request, job_id)
+
     @app.post("/batch/{batch_id}/check", response_class=HTMLResponse)
     def check_start(request: Request, batch_id: str, form: PostForm):
         cfg, store = ctx.cfg, ctx.store
@@ -236,9 +265,18 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
             return ctx.message_fragment(request, block)
 
         def run(job: JobContext) -> str:
-            s = pipeline.check_batch(
-                cfg, store, batch_id, progress=job.progress_text, cancel=job.cancelled
-            )
+            live = start_live(batch_id)
+            try:
+                s = pipeline.check_batch(
+                    cfg,
+                    store,
+                    batch_id,
+                    progress=job.progress_text,
+                    cancel=job.cancelled,
+                    live=live,
+                )
+            finally:
+                ctx.state.live.pop(batch_id, None)
             text = f"Quality check set aside {s.cull.culled} of {s.cull.total} new photos."
             d = s.describe
             if d is None:
@@ -641,9 +679,18 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
                 return ctx.message_fragment(request, block)
 
             def run(job: JobContext) -> str:
-                s = pipeline.describe_batch(
-                    cfg, store, batch_id, only_ids=only, progress=job.progress, cancel=job.cancelled
-                )
+                try:
+                    s = pipeline.describe_batch(
+                        cfg,
+                        store,
+                        batch_id,
+                        only_ids=only,
+                        progress=job.progress,
+                        cancel=job.cancelled,
+                        live=start_live(batch_id),
+                    )
+                finally:
+                    ctx.state.live.pop(batch_id, None)
                 text = (
                     f"Described {s.described + s.needs_review + s.blocked}: {s.described} clean, "
                     f"{s.needs_review} need review, {s.blocked} blocked, {s.failed} failed."

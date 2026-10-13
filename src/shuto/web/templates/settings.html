@@ -83,6 +83,19 @@
 </form>
 </section>
 
+<section id="tries" aria-labelledby="h-tries">
+<h2 id="h-tries">Tries per photo</h2>
+<form method="post" action="/settings/tries" class="stack">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  {% call field('max_tries', 'Max tries per photo', help='If the AI writes something that breaks a rule, shuto asks it to fix the text. This is how many times it may try for each photo. Fewer tries is faster. More tries gives better titles and keywords.') %}
+  <select id="max_tries" name="max_tries" aria-describedby="max_tries-help">
+    {% for n in range(1, 9) %}<option value="{{ n }}"{% if n == max_tries %} selected{% endif %}>{{ n }}{% if n == 8 %} (default){% endif %}</option>{% endfor %}
+  </select>
+  {% endcall %}
+  <p><button type="submit" class="btn primary">Save</button></p>
+</form>
+</section>
+
 <section id="privacy" aria-labelledby="h-privacy">
 <h2 id="h-privacy">Privacy</h2>
 <form method="post" action="/settings/privacy" class="stack">

@@ -37,6 +37,7 @@ from . import (
     imaging,
     local_models,
     metadata_rules,
+    speedcheck,
 )
 from . import filters as filters_mod
 from . import ledger as ledger_mod
@@ -111,7 +112,8 @@ def _noop(done: int, total: int, message: str = "") -> None:
     return None
 
 
-FILE_FACT_KEYS = ("file_meta", "gps_place")  # read from the photo at import, kept across edits
+# read from the photo at import, plus the AI model and max tries that wrote the text; kept on edits
+FILE_FACT_KEYS = ("file_meta", "gps_place", "ai_run")
 
 
 def _file_facts(metadata: dict | None) -> dict[str, Any]:
@@ -1002,6 +1004,73 @@ def use_condensed_prompt(llm: VisionLLM) -> bool:
     return llm.name == "ollama" and local_models.is_small_context(llm.model)
 
 
+def expected_seconds_per_photo(cfg: Config, model: str) -> float | None:
+    """The seconds per photo shown before a local run (estimate_check uses the same figure)."""
+    recs = local_models.recommend(
+        hardware_profile(),
+        local_models.load_catalog(),
+        [],
+        local_models.load_benchmarks(benchmark_cache_path()),
+    )
+    rec = next((r for r in recs if r.model.tag == model), None)
+    return float(rec.est_seconds_per_image) if rec else None
+
+
+def faster_model_options(cfg: Config, model: str) -> tuple[float, list[speedcheck.ModelOption]]:
+    """(expected seconds for `model`, models that fit this machine and are faster than it).
+
+    Installed ones come with `installed=True`; the others must be downloaded in Settings first.
+    """
+    try:
+        pulled = hardware.ollama_status(ollama_client(cfg)).pulled
+    except Exception:
+        pulled = []
+    recs = local_models.recommend(
+        hardware_profile(),
+        local_models.load_catalog(),
+        pulled,
+        local_models.load_benchmarks(benchmark_cache_path()),
+    )
+    here = next((r for r in recs if r.model.tag == model), None)
+    current = float(here.est_seconds_per_image) if here else 0.0
+    faster = [
+        r for r in recs if r.fits and r.model.tag != model and r.est_seconds_per_image < current
+    ]
+    faster.sort(key=lambda r: (not r.pulled, -r.model.quality, r.est_seconds_per_image))
+    options = [
+        speedcheck.ModelOption(r.model.tag, float(r.est_seconds_per_image), r.pulled)
+        for r in faster
+    ]
+    return current, options
+
+
+def make_live_run(
+    cfg: Config, store: Store | None, llm: VisionLLM | None = None
+) -> speedcheck.LiveRun | None:
+    """The live speed check for a local run; None for online AI (no check there) or when no
+    expected time is known for the model."""
+    if llm is not None:
+        provider, model = llm.name, llm.model
+    else:
+        try:
+            sel = resolve_selection(cfg, store)
+        except Exception:
+            return None
+        provider, model = sel.provider, sel.model
+    if provider != "ollama":
+        return None
+    expected = expected_seconds_per_photo(cfg, model)
+    if not expected:
+        return None
+    return speedcheck.LiveRun(
+        model=model,
+        max_tries=cfg.llm.max_tries,
+        expected_s=expected,
+        options=lambda tag: faster_model_options(cfg, tag),
+        llm_factory=lambda tag: resolve_llm(cfg, store, "ollama", tag),
+    )
+
+
 def describe_batch(
     cfg: Config,
     store: Store,
@@ -1011,11 +1080,14 @@ def describe_batch(
     *,
     progress: Progress | None = None,
     cancel: Cancel | None = None,
+    live: speedcheck.LiveRun | None = None,
 ) -> DescribeSummary:
     """Describe `ready` photos (or the given ids, which are sent back to `ready` first).
 
     Culled photos never reach the model. Result per photo: described / needs_review / blocked.
     Stops early when the provider is unreachable or several calls in a row fail.
+    `live` (local models only) holds the max tries and model for the photos not started yet; it
+    is read again before each photo, so changes made while the batch runs apply at once.
     """
     progress = progress or _noop
     llm = llm or resolve_llm(cfg, store)
@@ -1035,7 +1107,6 @@ def describe_batch(
         om = other.metadata or {}
         if other.id not in redo and om.get("description"):
             seen.add(str(om["description"]), om.get("keywords") or [])
-    condensed = use_condensed_prompt(llm)
     side = cfg.llm.image_max_side or llm.default_image_side
     conc = max(1, cfg.llm.concurrency or llm.default_concurrency)
     lock = threading.Lock()
@@ -1057,6 +1128,7 @@ def describe_batch(
             "warnings": [why],
             **_file_facts(photo.metadata),
         }
+        meta.pop("ai_run", None)
         _drop_prepared(store, photo)
         if photo.status != Status.READY:
             store.set_status(pid, Status.READY)
@@ -1071,6 +1143,11 @@ def describe_batch(
             return photo, None, None
         pid = photo.id
         assert pid is not None
+        if live is not None:
+            model_now, tries_now = live.snapshot()
+            use = live.llm_for(model_now, llm)
+        else:
+            use, tries_now = llm, cfg.llm.max_tries
         try:
             try:
                 image = imaging.preview_jpeg(photo.src_path, side)
@@ -1082,7 +1159,7 @@ def describe_batch(
             facts = photo_context(photo)
             has_model, has_property = _release_flags(photo.release_ids)
             res = describe.describe_photo(
-                llm,
+                use,
                 image,
                 photo.orig_name,
                 style=style,
@@ -1100,12 +1177,12 @@ def describe_batch(
                 at=_now_iso(),
                 seen=seen,
                 facts=facts,
-                condensed=condensed,
-                max_tries=cfg.llm.max_tries,
+                condensed=use_condensed_prompt(use),
+                max_tries=tries_now,
             )
         except LLMError as exc:
             store.log_llm_call(
-                LLMCall(llm.name, llm.model, photo_id=pid, ok=False, error=str(exc)[:500])
+                LLMCall(use.name, use.model, photo_id=pid, ok=False, error=str(exc)[:500])
             )
             with lock:
                 consecutive[0] += 1
@@ -1120,8 +1197,8 @@ def describe_batch(
         r = res.llm
         store.log_llm_call(
             LLMCall(
-                llm.name,
-                llm.model,
+                use.name,
+                use.model,
                 photo_id=pid,
                 input_tokens=r.input_tokens,
                 output_tokens=r.output_tokens,
@@ -1134,6 +1211,7 @@ def describe_batch(
         meta["location"] = res.location
         meta["place"] = res.place
         meta.update(_file_facts(photo.metadata))
+        meta["ai_run"] = {"model": f"{use.name}/{use.model}", "max_tries": tries_now}
         if res.issues:
             meta["metadata_issues"] = [i.to_dict() for i in res.issues]
         found = res.filters.to_dict() if res.filters else None
@@ -1143,7 +1221,7 @@ def describe_batch(
         store.update_photo(
             pid,
             metadata=meta,
-            metadata_source=f"llm:{llm.name}/{llm.model}",
+            metadata_source=f"llm:{use.name}/{use.model}",
             detected=res.detected,
             guardrail=res.guardrails.to_dict(),
             filters=found,
@@ -1157,6 +1235,8 @@ def describe_batch(
         with lock:
             summary.input_tokens += r.input_tokens
             summary.output_tokens += r.output_tokens
+        if live is not None:
+            live.record(r.seconds)
         return photo, status, None
 
     done = 0
@@ -2050,6 +2130,7 @@ def check_batch(
     progress: Progress | None = None,
     cancel: Cancel | None = None,
     llm: VisionLLM | None = None,
+    live: speedcheck.LiveRun | None = None,
 ) -> CheckSummary:
     """Quality check, then titles and keywords, with one combined progress.
 
@@ -2101,7 +2182,7 @@ def check_batch(
             "No photos left for the AI after the quality check",
         )
     described = describe_batch(
-        cfg, store, batch_id, llm=llm, progress=describe_progress, cancel=cancel
+        cfg, store, batch_id, llm=llm, progress=describe_progress, cancel=cancel, live=live
     )
     return CheckSummary(culled, described)
 
@@ -2302,6 +2383,7 @@ UI_SETTING_KEYS = (
     "update_check",
     "update_cache",
     "include_gps",
+    "max_tries",
 )
 PROFILE_RE = re.compile(r"^[A-Za-z0-9_.@:+=,-]{1,100}$")
 MAX_STYLE_TEXT = 200
@@ -2401,6 +2483,17 @@ def _clean_update_cache(value: Any) -> dict[str, Any]:
     return {"version": version, "checked_at": float(checked_at), "ok": ok}
 
 
+def _clean_max_tries(value: Any) -> int:
+    message = f"Max tries per photo must be a number from 1 to {metadata_rules.MAX_TRIES}."
+    try:
+        tries = int(value)
+    except (TypeError, ValueError):
+        raise PipelineError(message) from None
+    if isinstance(value, bool) or not 1 <= tries <= metadata_rules.MAX_TRIES:
+        raise PipelineError(message)
+    return tries
+
+
 def set_ui_setting(store: Store, name: str, value: Any) -> Any:
     """Save a UI setting (validated for `style`); returns the stored value."""
     key = _ui_key(name)
@@ -2421,6 +2514,8 @@ def set_ui_setting(store: Store, name: str, value: Any) -> Any:
         value = bool(value)
     elif key == "ui.update_cache":
         value = _clean_update_cache(value)
+    elif key == "ui.max_tries":
+        value = _clean_max_tries(value)
     store.set_setting(key, value)
     return value
 
@@ -2464,6 +2559,9 @@ def apply_style_overrides(cfg: Config, store: Store) -> Config:
         cfg = cfg.model_copy(
             update={"prepare": cfg.prepare.model_copy(update={"include_gps": gps})}
         )
+    tries = store.get_setting("ui.max_tries")
+    if isinstance(tries, int) and not isinstance(tries, bool) and 1 <= tries <= 20:
+        cfg = cfg.model_copy(update={"llm": cfg.llm.model_copy(update={"max_tries": tries})})
     style = store.get_setting("ui.style") or {}
     if not style:
         return cfg

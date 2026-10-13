@@ -148,6 +148,17 @@ For how the check looks in the web app, see [web-guide.md](web-guide.md).
   (`llm.max_tries`, default 8). It stops early when the answer is valid or when the model
   repeats itself. The best answer is kept; if it is still not valid the photo goes to
   "Needs a look" with the reason. Tries, tokens and seconds show in the batch report.
+- Live speed check (local models only; `speedcheck.py`): after every 5 photos described
+  (`CHECK_EVERY`) the average seconds per photo is compared with the expected seconds per photo
+  shown before the run (`estimate.py` / `local_models.py`, your hardware tier or benchmark).
+  At 1.3 times that or more (`SLOW_FACTOR`) the job panel offers: fewer tries (3), a faster
+  model that fits this machine and is already installed, or keep going (asked again only when
+  the next check is slower than the one dismissed). The choices are held in one lock-protected
+  object that the describe loop reads before each photo, so they apply to the photos not
+  started yet at once; they last for that batch only (the default is Settings -> Tries per
+  photo). A faster model that is not installed is only named. Each photo stores the model and
+  max tries it was written with (`ai_run` in its metadata; `ai_model` and `ai_max_tries` in
+  the report). API providers are not checked.
 - Short prompt for small models: a local model whose context window is 4096 tokens or less
   (`context_tokens` in `data/models.yaml`; models not listed get the full prompt) is sent a
   shorter prompt with the same rules and the photo facts, about 40 percent fewer tokens.
@@ -251,7 +262,7 @@ what the answer was.
   unknown; blank when the photo was not checked with that rule), the reasons for your rules,
   what set it aside, whether you approved it by hand, status, title, the place used in the caption, where it came from (gps, file, gps + AI, file + AI, ai, default, partly default,
   unknown) and whether it is the default place (yes or no), number of keywords, the AI
-  model, how many seconds and tries the AI needed, and the dates it was checked, approved, uploaded, submitted, accepted or rejected
+  model, how many seconds and tries the AI needed (and the most it was allowed), and the dates it was checked, approved, uploaded, submitted, accepted or rejected
   (with the rejection reason).
 - **Excel:** the file opens directly in Excel and shows Japanese text correctly. Text that
   could be read as a formula is stored as plain text. If Excel has the file open, shuto cannot

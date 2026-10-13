@@ -35,6 +35,16 @@ Release notes are also published on the GitHub Releases page. Newest first.
   keywords, almost the same as another photo in the batch) the AI is asked again, up to 8 model
   calls in total (`llm.max_tries`). It stops when the answer is valid or the AI repeats itself;
   if it still is not valid the photo goes to "Needs a look" with the reason.
+- **Max tries per photo** is a setting (Settings -> Tries per photo, 1 to 8, default 8): fewer
+  is faster, more gives better titles and keywords.
+- **Live speed check** (local AI only). After every 5 photos the AI has written, shuto compares
+  the average time per photo with the time it told you before the run. If it is 30 percent
+  slower or more, the page offers, right away and for the photos not started yet: fewer tries
+  (up to 3), a faster model that is already on this computer, or "Keep going" (asked again
+  only if it gets slower still). A faster model that is not downloaded yet is named, with a
+  pointer to Settings; nothing is downloaded during a batch. Online AI is not checked.
+- The batch report has an `ai_max_tries` column next to `ai_model`, so a change during a
+  batch can be traced photo by photo.
 - **English only.** Japanese, Chinese, Korean, Cyrillic and other non-Latin text in a title or
   keyword is a failure that gets repaired, and the photo is flagged if it stays. Such a photo
   cannot be approved, prepared or put in the CSV. Accents are turned into plain letters

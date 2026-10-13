@@ -844,6 +844,7 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             style=style_values(),
             rules=rules_values(),
             include_gps=ctx.cfg.prepare.include_gps,
+            max_tries=ctx.cfg.llm.max_tries,
             usage=usage,
             job=ctx.runner.get(active) if active else None,
             job_active=bool(active),
@@ -1267,6 +1268,19 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
     def settings_rules(form: PostForm):
         notice, error = save_rules(form)
         return go("/settings", notice, error)
+
+    @app.post("/settings/tries")
+    def settings_tries(form: PostForm):
+        try:
+            tries = pipeline.set_ui_setting(ctx.store, "max_tries", form.get("max_tries"))
+        except pipeline.PipelineError as exc:
+            return go("/settings", None, str(exc))
+        state.cfg = pipeline.apply_style_overrides(state.base_cfg, ctx.store)
+        return go(
+            "/settings",
+            f"shuto will try up to {tries} {'time' if tries == 1 else 'times'} per photo.",
+            None,
+        )
 
     @app.post("/settings/privacy")
     def settings_privacy(form: PostForm):

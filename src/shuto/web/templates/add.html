@@ -10,8 +10,8 @@
   <input id="path" name="path" required value="{{ last_folder }}" size="50" aria-describedby="path-help" placeholder="C:\Photos\export  or  ~/Pictures/export">
   {% endcall %}
   <p><button type="button" class="secondary" data-open-dialog="browse-dialog" hx-get="/browse" hx-vals='{"path": ""}' hx-target="#browse-pane" hx-swap="outerHTML">{{ icon('folder') }} Choose folder...</button></p>
-  {% call field('batch_name', 'Name for this batch', help='Leave empty to use the folder name.') %}
-  <input id="batch_name" name="batch_name" maxlength="80" size="40" aria-describedby="batch_name-help">
+  {% call field('batch_name', 'Name for this batch', help='Defaults to the folder name. Change it if you like.') %}
+  <input id="batch_name" name="batch_name" maxlength="80" size="40" value="{{ default_name }}" data-auto="1" aria-describedby="batch_name-help">
   {% endcall %}
   <p><label><input type="checkbox" name="recursive" value="yes" checked> Look inside sub-folders too</label></p>
   {% call field('notes', 'Notes (optional)', help='Only for you, for example "Spring trip, day two".') %}

@@ -513,10 +513,12 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
 
     @app.get("/add", response_class=HTMLResponse)
     def add_page(request: Request):
+        last = str(pipeline.get_ui_setting(ctx.store, "last_folder") or "")
         return ctx.render(
             request,
             "add.html",
-            last_folder=pipeline.get_ui_setting(ctx.store, "last_folder") or "",
+            last_folder=last,
+            default_name=Path(last).expanduser().name[:MAX_BATCH_NAME] if last else "",
         )
 
     @app.post("/import", response_class=HTMLResponse)

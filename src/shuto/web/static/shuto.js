@@ -70,6 +70,19 @@
     }
   });
 
+  // Add photos: the batch name follows the folder name until the user types their own
+  document.addEventListener("input", function (ev) {
+    var t = ev.target;
+    var name = document.getElementById("batch_name");
+    if (!name || !t) return;
+    if (t === name) {
+      name.removeAttribute("data-auto");
+    } else if (t.id === "path" && name.hasAttribute("data-auto")) {
+      var parts = t.value.split(/[\\/]+/).filter(function (p) { return p; });
+      name.value = (parts.length ? parts[parts.length - 1] : "").slice(0, 80);
+    }
+  });
+
   document.addEventListener("change", function (ev) {
     if (ev.target.name === "ids") updateCount();
   });

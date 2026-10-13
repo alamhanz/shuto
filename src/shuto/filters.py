@@ -52,9 +52,7 @@ def _new_id() -> str:
 
 def _clean_text(value: Any) -> str:
     text = unicodedata.normalize("NFC", "" if value is None else str(value))
-    if "\n" in text or "\r" in text:
-        raise FilterRuleError("A rule must be one short line. Remove the line break.")
-    if any(unicodedata.category(c) == "Cc" and c != "\t" for c in text):
+    if any(unicodedata.category(c) == "Cc" and c not in "\t\r\n" for c in text):
         raise FilterRuleError("A rule can't contain hidden control characters.")
     return re.sub(r"\s+", " ", text).strip()
 

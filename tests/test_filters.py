@@ -330,8 +330,6 @@ def test_clean_rules_dedupes_and_keeps_ids_unique():
     [
         [{"kind": "avoid", "text": "x"}],
         [{"kind": "avoid", "text": "a" * 81}],
-        [{"kind": "avoid", "text": "line\nbreak"}],
-        [{"kind": "avoid", "text": "carriage\rreturn"}],
         [{"kind": "avoid", "text": "nul\x00byte"}],
         [{"kind": "maybe", "text": "people"}],
         [{"text": "people"}],
@@ -343,6 +341,11 @@ def test_clean_rules_dedupes_and_keeps_ids_unique():
 def test_clean_rules_rejects(bad):
     with pytest.raises(FilterRuleError):
         clean_rules(bad)
+
+
+def test_clean_rules_collapses_newlines_and_tabs():
+    out = clean_rules([{"kind": "avoid", "text": "line\nbreak\r\n\tand  tab"}])
+    assert out[0].text == "line break and tab"
 
 
 def test_clean_rules_length_boundaries_and_cap():

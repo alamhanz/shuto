@@ -17,7 +17,6 @@ CITY_MAX_KM = 50.0  # farther than this: region and country only
 REGION_MAX_KM = 200.0  # farther than this: nothing (open sea, desert, poles)
 _EARTH_KM = 6371.0088
 _CELL = 1.0  # grid cell size in degrees
-_MIN_POP = 1000
 _TOWN_SLACK_KM = 3.0
 
 _lock = threading.Lock()
@@ -59,7 +58,32 @@ class _Index:
     def _cell(lat: float, lon: float) -> tuple[int, int]:
         return math.floor(lat / _CELL), math.floor(lon / _CELL)
 
-    def nearest(self, lat: float, lon: float, max_km: float, min_pop: int = 0):
+    def best_near(self, lat: float, lon: float, nearest):
+        """Most notable place within _TOWN_SLACK_KM of the nearest one (ties: the nearest)."""
+        limit = nearest[0] + _TOWN_SLACK_KM
+        if limit > CITY_MAX_KM:
+            return nearest
+        best, best_key = nearest, None
+        row0, col0 = self._cell(lat, lon)
+        span = int(limit / (_CELL * 111.19 * max(math.cos(math.radians(lat)), 0.05))) + 1
+        col_count = int(360 / _CELL)
+        dlat = limit / 111.19  # cheap bounding box before the exact distance
+        dlon = dlat / max(math.cos(math.radians(lat)), 0.05)
+        for row in range(row0 - span, row0 + span + 1):
+            for col in range(col0 - span, col0 + span + 1):
+                wrapped = (col + col_count // 2) % col_count - col_count // 2
+                for city in self.cells.get((row, wrapped), ()):
+                    if abs(city[0] - lat) > dlat or abs((city[1] - lon + 180) % 360 - 180) > dlon:
+                        continue
+                    d = _haversine(lat, lon, city[0], city[1])
+                    if d > limit:
+                        continue
+                    key = (city[5] / (1 + d) ** 2, -d)
+                    if best_key is None or key > best_key:
+                        best, best_key = (d, city), key
+        return best
+
+    def nearest(self, lat: float, lon: float, max_km: float):
         """Nearest (distance_km, city tuple) within max_km, searching grid rings outwards."""
         row0, col0 = self._cell(lat, lon)
         cols_per_deg_km = max(math.cos(math.radians(lat)), 0.05) * 111.19
@@ -78,7 +102,7 @@ class _Index:
                 for col in range(col0 - ring, col0 + ring + 1, step):
                     wrapped = (col + col_count // 2) % col_count - col_count // 2
                     for city in self.cells.get((row, wrapped), ()):
-                        if city[5] < min_pop:
+                        if best is not None and abs(city[0] - lat) * 111.19 > best[0]:
                             continue
                         d = _haversine(lat, lon, city[0], city[1])
                         if best is None or d < best[0]:
@@ -128,11 +152,9 @@ def reverse_geocode(lat: float, lon: float) -> Place | None:
     hit = idx.nearest(lat, lon, REGION_MAX_KM)
     if hit is None:
         return None
-    # GeoNames lists many zero-population neighbourhoods (Tokyo has dozens). Prefer a real place
-    # (population >= 1000) when it is about as close, so Shibuya wins over a nearby block name.
-    town = idx.nearest(lat, lon, REGION_MAX_KM, min_pop=_MIN_POP)
-    if town is not None and town[0] <= max(hit[0] + _TOWN_SLACK_KM, hit[0] * 2):
-        hit = town
+    # GeoNames lists many tiny neighbourhoods (Tokyo has dozens). Among places about as close as
+    # the nearest one, prefer the notable one: score = population / (1 + distance)^2.
+    hit = idx.best_near(lat, lon, hit)
     dist, (_, _, name, cc, adm, _) = hit
     region = idx.regions.get(f"{cc}.{adm}") if adm else None
     country = idx.countries.get(cc, cc)

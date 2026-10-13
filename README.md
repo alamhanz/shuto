@@ -179,6 +179,9 @@ Note: 0.4.0 upgrades the database, so shuto 0.3.x cannot open it afterwards.
 - [docs/shutterstock-restrictions.md](docs/shutterstock-restrictions.md): the rules shuto checks
 - [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md)
 - The earlier AWS version is kept at the git tag `aws-legacy`.
+- Place names for offline GPS lookup come from [GeoNames](https://www.geonames.org), licensed
+  [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/); see
+  [src/shuto/data/GEONAMES_NOTICE.md](src/shuto/data/GEONAMES_NOTICE.md).
 - The benchmark image `src/shuto/data/sample.jpg` is CC0; see
   [src/shuto/data/SAMPLE_CREDIT.md](src/shuto/data/SAMPLE_CREDIT.md).
 

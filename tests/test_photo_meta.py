@@ -258,6 +258,14 @@ def test_geocode_known_places():
     assert nyc.country == "United States" and nyc.region == "New York"
 
 
+def test_geocode_prefers_notable_places():
+    asakusa = geo.reverse_geocode(35.7148, 139.7967)
+    assert (asakusa.city, asakusa.region) == ("Asakusa", "Tokyo")
+    shinjuku = geo.reverse_geocode(35.6896, 139.7006)
+    assert shinjuku.region == "Tokyo" and shinjuku.distance_km < 3
+    assert geo.reverse_geocode(*SHIBUYA) == geo.reverse_geocode(*SHIBUYA)  # deterministic
+
+
 def test_geocode_far_and_edge_cases():
     assert geo.reverse_geocode(0.0, -30.0) is None  # mid Atlantic
     assert geo.reverse_geocode(95, 10) is None

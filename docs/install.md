@@ -1,7 +1,8 @@
 # Installing shuto
 
 shuto runs on your own computer. Your photos stay on it. These steps need no admin rights and no
-programming knowledge. The install lines below work once the shuto repository is public.
+programming knowledge. The one-line installs below get the latest release of shuto from
+[GitHub Releases](https://github.com/alamhanz/shuto/releases).
 
 ## Windows
 
@@ -92,11 +93,11 @@ the downloaded script, or `shuto uninstall --keep-login`.
 The `uv` helper is left in place because other programs may use it. To remove it too, see
 <https://docs.astral.sh/uv/getting-started/installation/#uninstallation>.
 
-## Try it before the repo is public
+## Install from a downloaded copy
 
-The repository is private for now, so the one-line installs above do not work yet. Install from
-a copy of the repository on your computer instead. No other setup is needed; the installer gets
-what it needs (including iPhone HEIC photo support).
+Use this if the one-line install is blocked on your network, or you want to install from files
+you already have. Install from a copy of the repository on your computer. No other setup is
+needed; the installer gets what it needs (including iPhone HEIC photo support).
 
 1. Get the files: on GitHub choose Code, then Download ZIP, and unzip it. Or clone the repository.
 2. Open the `install` folder and start the installer:
@@ -111,6 +112,14 @@ Advanced: to install a wheel you built yourself (`uv build`), pass it explicitly
 path skips the `heic` extra, so add it like this:
 `install\install.ps1 -From "shuto[heic] @ file:///full/path/to/dist/shuto-0.2.0-py3-none-any.whl"`
 (`--from` on macOS and Linux takes the same text).
+
+Advanced: the one-line install always gets the latest release. To install a specific version
+or the newest unreleased code, download the script and pass the source with `-From` (Windows),
+`--from` (macOS and Linux) or the `SHUTO_SOURCE` environment variable. For example a release
+wheel from the [Releases page](https://github.com/alamhanz/shuto/releases):
+`-From "shuto[heic] @ https://github.com/alamhanz/shuto/releases/download/v0.2.0/shuto-0.2.0-py3-none-any.whl"`,
+or the current `main` code:
+`-From https://github.com/alamhanz/shuto/archive/refs/heads/main.zip`.
 
 ## Troubleshooting
 

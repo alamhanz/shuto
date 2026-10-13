@@ -42,10 +42,9 @@ curl -LsSf https://raw.githubusercontent.com/alamhanz/shuto/main/install/install
 ```
 
 When it finishes, shuto opens in your browser and a **shuto** icon appears on your Desktop.
-(These lines work once the repository is public.)
-
-**Trying it before the public release:** the repository is private for now, so the lines above
-will not work yet. See [Try it before the repo is public](docs/install.md#try-it-before-the-repo-is-public).
+This installs the latest release ([all releases](https://github.com/alamhanz/shuto/releases)).
+Prefer to install from a downloaded copy? See
+[Install from a downloaded copy](docs/install.md#install-from-a-downloaded-copy).
 
 ## Using shuto
 

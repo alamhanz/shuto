@@ -40,7 +40,7 @@ def test_600_photos_make_three_batches(cfg, store, tmp_path):
     assert first[0] == "img0000.jpg" and first[-1] == "img0249.jpg"
     assert store.list_photos("trip (3)")[0].orig_name == "img0500.jpg"
     assert pipeline.batches_text(s.batches) == (
-        "600 photos added in 3 batches: trip (250), trip (2) (250), trip (3) (100)"
+        "600 photos added in 3 batches: trip: 250, trip (2): 250, trip (3): 100"
     )
 
 
@@ -88,7 +88,7 @@ def test_cli_prints_the_split(tmp_path, isolated, capsys, monkeypatch):
     folder = _folder(tmp_path, 5)
     assert main(["--config", str(conf), "import", str(folder)]) == 0
     out = capsys.readouterr().out
-    assert "5 photos added in 3 batches: trip (2), trip (2) (2), trip (3) (1)" in out
+    assert "5 photos added in 3 batches: trip: 2, trip (2): 2, trip (3): 1" in out
 
 
 def test_web_result_message_and_links(cfg, tmp_path, monkeypatch):
@@ -98,7 +98,7 @@ def test_web_result_message_and_links(cfg, tmp_path, monkeypatch):
     try:
         job, text = w.run_job("/import", {"path": str(folder), "batch_name": "trip"})
         assert job.state == "done", job.error
-        assert "5 photos added in 3 batches: trip (2), trip (2) (2), trip (3) (1)" in text
+        assert "5 photos added in 3 batches: trip: 2, trip (2): 2, trip (3): 1" in text
         assert text.count("Open batch") == 3
         assert 'href="/batch/trip%20%282%29"' in text
         page = w.get("/batch/trip%20%282%29")  # sends you to the right step of that batch

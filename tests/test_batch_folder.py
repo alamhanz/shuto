@@ -59,7 +59,7 @@ def test_path_like_batch_ids_cannot_escape(cfg):
         assert folder.parent == cfg.workspace_path("batches")
         assert folder.name not in ("", ".", "..")
         assert not set(folder.name) & set("/\\:")
-    assert pipeline.batch_dir(cfg, "2025-W10").name == "2025-W10"
+    assert pipeline.batch_dir(cfg, "2025-w10").name == "2025-w10"
     assert pipeline.batch_dir(cfg, "a b").name != pipeline.batch_dir(cfg, "a_b").name
 
 
@@ -99,3 +99,51 @@ def test_cli_prints_the_batch_folder(tmp_path, isolated, photos_dir, capsys):
     out = capsys.readouterr().out
     assert "report.csv" in out and "Batch folder: " in out
     assert str(Path(tmp_path / "ws" / "batches")) in out
+
+
+def test_folder_names_are_readable_and_safe():
+    from shuto.report import folder_name
+
+    assert folder_name("trip (2)") == "trip (2)"
+    assert folder_name("2025-w10") == "2025-w10"
+    assert folder_name("a  b").startswith("a b-")  # repeated spaces collapse (name changed)
+    assert folder_name("  .x. ").startswith("x-")
+
+
+def test_folder_names_differing_only_by_case_do_not_collide():
+    from shuto.report import folder_name
+
+    a, b = folder_name("Kyoto"), folder_name("kyoto")
+    assert a != b and a.lower() != b.lower() and a.startswith("Kyoto-") and b == "kyoto"
+    assert folder_name("Kyoto") == a  # stable
+
+
+@pytest.mark.parametrize("bad", ["nul", "NUL", "con.txt", "COM1", "lpt9", "Aux", "prn.tar.gz"])
+def test_windows_reserved_names_are_prefixed(bad):
+    from shuto.report import folder_name
+
+    name = folder_name(bad)
+    assert name.startswith("_") and name.split(".")[0].split("-")[0].upper() not in {
+        "CON",
+        "PRN",
+        "AUX",
+        "NUL",
+        "COM1",
+        "LPT9",
+    }
+    assert folder_name("nullable") == "nullable" and folder_name("com10") == "com10"
+
+
+def test_folder_names_unicode_dots_empty_and_long():
+    from shuto.report import folder_name
+
+    uni = folder_name("京都 trip")
+    assert uni.isascii() and uni.startswith("__ trip-")
+    assert folder_name("京都") != folder_name("大阪")  # the hash keeps them apart
+    for odd in ("..", "...", "", " ", "/", "a/b"):
+        n = folder_name(odd)
+        assert n and n not in (".", "..") and not set(n) & set("/\\:")
+    assert folder_name("").startswith("batch-") and folder_name("..").startswith("batch-")
+    long = folder_name("x" * 200)
+    assert long.startswith("x" * 80 + "-") and len(long) == 80 + 9
+    assert folder_name("y" * 79 + " " + "z" * 20).startswith("y" * 79 + "-")

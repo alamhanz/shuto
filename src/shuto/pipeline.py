@@ -149,9 +149,9 @@ def _split_base(batch: str) -> str:
 
 
 def batches_text(batches: dict[str, int]) -> str:
-    """'600 photos added in 3 batches: trip (250), trip (2) (250), trip (3) (100)'."""
+    """'600 photos added in 3 batches: trip: 250, trip (2): 250, trip (3): 100'."""
     total = sum(batches.values())
-    listing = ", ".join(f"{name} ({n})" for name, n in batches.items())
+    listing = ", ".join(f"{name}: {n}" for name, n in batches.items())
     return f"{total} photos added in {len(batches)} batches: {listing}"
 
 
@@ -1686,12 +1686,13 @@ def batch_report(store: Store, batch_id: str | None = None) -> list[dict[str, An
 def batch_dir(cfg: Config, batch_id: str) -> Path:
     """The one folder that holds a batch's own files: <workspace>/batches/<safe name>/.
 
-    The name keeps only letters, digits, dot, underscore and hyphen (a short hash is added when
-    the batch id had other characters), so it can never point outside the workspace.
+    The name is readable ("trip (2)") and uses only letters, digits, space, ( ) - _ and dot (a
+    short hash is added when the id had to be changed or has upper-case letters; see
+    `report.folder_name`), so it can never point outside the workspace.
     Older versions kept these files in <workspace>/reports, exports and prepared; those files
     are left where they are and still work (each photo remembers its own file paths).
     """
-    return cfg.workspace_path("batches", report_mod.report_filename(batch_id)[: -len(".csv")])
+    return cfg.workspace_path("batches", report_mod.folder_name(batch_id))
 
 
 def report_path(cfg: Config, batch_id: str) -> Path:

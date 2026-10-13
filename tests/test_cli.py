@@ -6,6 +6,7 @@ import yaml
 from shuto import cli, deliver, local_models, pipeline
 from shuto.cli import build_parser, main
 from shuto.config import load_config
+from shuto.report import folder_name
 
 from .conftest import FakeOllama
 
@@ -131,7 +132,7 @@ def test_end_to_end_cli(config_file, photos_dir, tmp_path, capsys, monkeypatch):
     assert run(config_file, "export", batch, "--dry-run") == 0
     assert run(config_file, "export", batch) == 0
     out = capsys.readouterr().out
-    csvs = sorted((tmp_path / "ws" / "batches" / batch).glob("shutterstock-*.csv"))
+    csvs = sorted((tmp_path / "ws" / "batches" / folder_name(batch)).glob("shutterstock-*.csv"))
     assert csvs and "manual" in out
     text = csvs[0].read_text(encoding="utf-8")
     assert all(name in text for name in uploaded)
@@ -408,7 +409,7 @@ def test_report_command(config_file, photos_dir, tmp_path, capsys):
     assert "set aside 0" in capsys.readouterr().out
     assert run(config_file, "report", "2025-W10") == 0
     out = capsys.readouterr().out
-    path = tmp_path / "ws" / "batches" / "2025-W10" / "report.csv"
+    path = tmp_path / "ws" / "batches" / folder_name("2025-W10") / "report.csv"
     assert str(path) in out and path.read_bytes().startswith(b"\xef\xbb\xbf")
     target = tmp_path / "elsewhere" / "r.csv"
     assert run(config_file, "report", "2025-W10", "--out", str(target)) == 0

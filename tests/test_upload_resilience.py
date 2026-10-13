@@ -265,3 +265,46 @@ def test_upload_clamps_to_250(cfg, store, tmp_path, creds):
     s = pipeline.upload_batch(cfg, store, batch, confirm=True, connect=lambda *a, **k: Ftp())
     assert len(s.uploaded) == pipeline.MAX_BATCH_PHOTOS and s.over_limit == 3
     assert len(store.list_photos(batch, [Status.PREPARED])) == 3
+
+
+def test_drop_during_store_then_retry_marks_uploaded_once(cfg, store, tmp_path, creds):
+    batch = _prepared_batch(cfg, store, tmp_path, 2)
+    first, second = Ftp(drop={"p1.jpg"}), Ftp()
+    conns = iter([first, second])
+    s = pipeline.upload_batch(
+        cfg, store, batch, confirm=True, connect=lambda *a, **k: next(conns), sleep=lambda _: None
+    )
+    assert first.stored == ["p0.jpg"] and second.stored == ["p1.jpg"]
+    assert sorted(s.uploaded) == ["p0.jpg", "p1.jpg"] and not s.failed
+    photos = store.list_photos(batch)
+    assert {p.status for p in photos} == {Status.UPLOADED}
+    for p in photos:
+        moves = [
+            e
+            for e in store.batch_events(batch, ["status"])
+            if e["photo_id"] == p.id and e["detail"]["to"] == "uploaded"
+        ]
+        assert len(moves) == 1
+
+
+def test_connection_is_closed_even_if_on_result_raises(tmp_path):
+    ftps_made = []
+
+    class Closing(Ftp):
+        closed = False
+
+        def quit(self):
+            self.closed = True
+
+    def connect(*a, **k):
+        ftps_made.append(Closing(drop={"p0.jpg"} if not ftps_made else ()))
+        return ftps_made[-1]
+
+    def boom(name, err):
+        raise RuntimeError("boom")
+
+    with pytest.raises(RuntimeError):
+        deliver.upload_files(
+            CREDS, _files(tmp_path, 1), boom, connect=connect, sleep=lambda _: None
+        )
+    assert len(ftps_made) == 2 and all(f.closed for f in ftps_made)

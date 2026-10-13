@@ -439,7 +439,7 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
             "batch_upload.html",
             batch_id,
             "upload",
-            n=counts.get("approved", 0) + counts.get("prepared", 0),
+            n=min(counts.get("approved", 0) + counts.get("prepared", 0), pipeline.MAX_BATCH_PHOTOS),
             size=_mb(summary["upload_bytes"]),
             login_ok=bool(login["user_set"] and login["password_set"]),
             exports=_export_names(ctx.store.list_photos(batch_id)),

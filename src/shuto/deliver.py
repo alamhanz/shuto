@@ -53,14 +53,18 @@ def upload_files(
     if not items:
         return
 
+    live: list[object] = []  # the newest connection, so it is closed even if on_result raises
+
     def reconnect():
-        return connect(creds.host, creds.username, creds.password)
+        conn = connect(creds.host, creds.username, creds.password)
+        live.append(conn)
+        return conn
 
     ftp = reconnect()
     try:
-        ftp = ftps.upload_many(ftp, items, on_result, reconnect=reconnect, **options)
+        ftps.upload_many(ftp, items, on_result, reconnect=reconnect, **options)
     finally:
-        ftps.close(ftp)
+        ftps.close(live[-1])
 
 
 def write_csvs(batch_id: str, rows: Sequence[dict], out_dir: Path, ts: datetime) -> list[Path]:

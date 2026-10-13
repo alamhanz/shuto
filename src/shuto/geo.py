@@ -25,11 +25,13 @@ _index: _Index | None = None
 
 @dataclass(frozen=True)
 class Place:
-    city: str | None
-    region: str | None
+    city: str | None  # main name for captions: ward/city, else a notable nearby place
+    region: str | None  # prefecture / state (admin1)
     country: str | None
     distance_km: float
     confidence: str  # "high" (<= 10 km), "medium" (<= 50 km), "low" (region/country only)
+    neighborhood: str | None = None  # the nearest GeoNames point, e.g. Sakuragaokacho
+    ward: str | None = None  # ward / city / district (admin2), e.g. Shibuya
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -39,7 +41,8 @@ class _Index:
     def __init__(self, text: str) -> None:
         self.countries: dict[str, str] = {}
         self.regions: dict[str, str] = {}
-        self.cells: dict[tuple[int, int], list[tuple[float, float, str, str, str, int]]] = {}
+        self.districts: dict[str, str] = {}
+        self.cells: dict[tuple[int, int], list[tuple[float, float, str, str, str, int, str]]] = {}
         for line in text.splitlines():
             parts = line.split("\t")
             kind = parts[0]
@@ -47,10 +50,13 @@ class _Index:
                 name, cc, adm = parts[1], parts[2], parts[3]
                 lat, lon = float(parts[4]), float(parts[5])
                 pop = int(parts[6] or 0)
+                adm2 = parts[7] if len(parts) > 7 else ""
                 cell = self.cells.setdefault(self._cell(lat, lon), [])
-                cell.append((lat, lon, name, cc, adm, pop))
+                cell.append((lat, lon, name, cc, adm, pop, adm2))
             elif kind == "C" and len(parts) >= 3:
                 self.countries[parts[1]] = parts[2]
+            elif kind == "A2" and len(parts) >= 3:
+                self.districts[parts[1]] = parts[2]
             elif kind == "A" and len(parts) >= 3:
                 self.regions[parts[1]] = parts[2]
 
@@ -90,7 +96,7 @@ class _Index:
         cell_km = min(_CELL * 111.19, _CELL * cols_per_deg_km)  # safe lower bound per ring
         max_ring = int(max_km / cell_km) + 1
         col_count = int(360 / _CELL)
-        best: tuple[float, tuple[float, float, str, str, str, int]] | None = None
+        best: tuple[float, tuple[float, float, str, str, str, int, str]] | None = None
         for ring in range(max_ring + 1):
             if best is not None and best[0] <= (ring - 1) * cell_km:
                 break
@@ -136,8 +142,9 @@ def _load() -> _Index:
 def reverse_geocode(lat: float, lon: float) -> Place | None:
     """Nearest place for a coordinate, or None when invalid or nothing is within 200 km.
 
-    Within 50 km: city, region and country. Between 50 and 200 km: region and country of the
-    nearest city, with low confidence. Never raises on bad input.
+    Within 50 km: neighborhood (the nearest point), ward (admin2), main name (`city`), region
+    (admin1) and country. Between 50 and 200 km: region and country of the nearest city, with
+    low confidence. Never raises on bad input.
     """
     try:
         lat, lon = float(lat), float(lon)
@@ -152,12 +159,23 @@ def reverse_geocode(lat: float, lon: float) -> Place | None:
     hit = idx.nearest(lat, lon, REGION_MAX_KM)
     if hit is None:
         return None
-    # GeoNames lists many tiny neighbourhoods (Tokyo has dozens). Among places about as close as
-    # the nearest one, prefer the notable one: score = population / (1 + distance)^2.
-    hit = idx.best_near(lat, lon, hit)
-    dist, (_, _, name, cc, adm, _) = hit
+    near = hit
+    dist, (_, _, n_name, cc, adm, _, adm2) = near
     region = idx.regions.get(f"{cc}.{adm}") if adm else None
     country = idx.countries.get(cc, cc)
-    if dist <= CITY_MAX_KM:
-        return Place(name, region, country, round(dist, 1), "high" if dist <= 10 else "medium")
-    return Place(None, region, country, round(dist, 1), "low")
+    if dist > CITY_MAX_KM:
+        return Place(None, region, country, round(dist, 1), "low")
+    ward = idx.districts.get(f"{cc}.{adm}.{adm2}") if adm and adm2 else None
+    # main name: the ward/city (admin2); else among places about as close as the nearest one the
+    # notable one (population / (1 + distance)^2), since GeoNames has many tiny neighbourhoods
+    main = ward or idx.best_near(lat, lon, near)[1][2]
+    neighborhood = None if n_name.lower() == (ward or "").lower() else n_name
+    return Place(
+        main,
+        region,
+        country,
+        round(dist, 1),
+        "high" if dist <= 10 else "medium",
+        neighborhood,
+        ward,
+    )

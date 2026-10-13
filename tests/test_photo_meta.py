@@ -251,6 +251,7 @@ def test_to_dict_roundtrip():
 def test_geocode_known_places():
     p = geo.reverse_geocode(*SHIBUYA)
     assert (p.city, p.region, p.country) == ("Shibuya", "Tokyo", "Japan")
+    assert (p.neighborhood, p.ward) == ("Sakuragaokacho", "Shibuya")
     assert p.confidence == "high" and p.distance_km < 5
     k = geo.reverse_geocode(35.0116, 135.7681)
     assert (k.city, k.country) == ("Kyoto", "Japan") and k.region == "Kyoto"
@@ -260,10 +261,32 @@ def test_geocode_known_places():
 
 def test_geocode_prefers_notable_places():
     asakusa = geo.reverse_geocode(35.7148, 139.7967)
-    assert (asakusa.city, asakusa.region) == ("Asakusa", "Tokyo")
+    assert (asakusa.neighborhood, asakusa.ward, asakusa.region) == ("Asakusa", "Taito", "Tokyo")
+    assert asakusa.city == "Taito"
     shinjuku = geo.reverse_geocode(35.6896, 139.7006)
     assert shinjuku.region == "Tokyo" and shinjuku.distance_km < 3
     assert geo.reverse_geocode(*SHIBUYA) == geo.reverse_geocode(*SHIBUYA)  # deterministic
+
+
+def test_geocode_levels_kyoto_and_no_ward():
+    k = geo.reverse_geocode(35.0116, 135.7681)
+    assert k.region == "Kyoto" and k.country == "Japan" and k.city
+    # no admin2 on record: main name falls back to the notable nearby place, no ward
+    rows = ["C\tZZ\tZedland", "A\tZZ.01\tNorth", "P\tVillage\tZZ\t01\t10.0\t20.0\t500\t"]
+    geo._index = geo._Index("\n".join(rows) + "\n")
+    try:
+        p = geo.reverse_geocode(10.0, 20.0)
+    finally:
+        geo._index = None
+    assert (p.city, p.ward, p.region, p.country) == ("Village", None, "North", "Zedland")
+
+
+def test_hints_without_ward_and_outside_japan():
+    place = {"city": "Village", "region": "North", "country": "Zedland", "neighborhood": "Village"}
+    ctx = build_context(PhotoMeta(), place)
+    assert ctx["hints"] == (
+        "Place from GPS: Village (city), North (region), Zedland. Use the city for the caption."
+    )
 
 
 def test_geocode_far_and_edge_cases():
@@ -313,7 +336,13 @@ def test_compute_file_facts_and_photo_context(tmp_path):
     assert ctx["place"]["city"] == "Shibuya"
     assert ctx["captured"].startswith("2026-07-31")
     hints = ctx["hints"]
-    assert hints.startswith("Taken 2026-07-31 in Shibuya, Tokyo, Japan (from GPS).")
+    assert hints.startswith(
+        "Taken 2026-07-31. Place from GPS: Sakuragaokacho (neighborhood), Shibuya (ward), "
+        "Tokyo (prefecture), Japan. Use the ward for the caption; "
+        "neighborhood may be a keyword."
+    )
+    assert ctx["place"]["neighborhood"] == "Sakuragaokacho" and ctx["place"]["ward"] == "Shibuya"
+    assert ctx["place"]["prefecture"] == "Tokyo"
     assert "Photographer keywords: night, neon." in hints
     assert len(hints) <= MAX_HINTS_CHARS
     assert "35.65" not in hints and "139.70" not in hints  # never coordinates

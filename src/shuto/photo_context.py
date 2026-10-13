@@ -56,6 +56,9 @@ def _place_from_gps(gp: dict | None) -> dict[str, Any] | None:
         "region": gp.get("region"),
         "country": gp.get("country"),
         "sublocation": None,
+        "neighborhood": gp.get("neighborhood"),
+        "ward": gp.get("ward"),
+        "prefecture": gp.get("region"),
         "source": "gps",
         "confidence": gp.get("confidence") or "low",
     }
@@ -110,13 +113,50 @@ def build_context(
     return ctx
 
 
+def _gps_place_sentence(place: dict[str, Any]) -> str:
+    """E.g. "Place from GPS: Sakuragaokacho (neighborhood), Shibuya (ward), Tokyo (prefecture),
+    Japan. Use the ward for the caption; neighborhood may be a keyword." """
+    hood = _clean_text(place.get("neighborhood"), 60)
+    ward = _clean_text(place.get("ward"), 60)
+    city = _clean_text(place.get("city"), 60)
+    main_label = "ward" if ward else "city"
+    main = ward or city
+    if hood and hood.lower() == main.lower():
+        hood = ""
+    levels: list[tuple[str, str]] = [
+        (hood, "neighborhood"),
+        (main, main_label),
+        (_clean_text(place.get("prefecture"), 60), _region_label(place)),
+        (_clean_text(place.get("country"), 60), ""),
+    ]
+    shown = [(n, label) for n, label in levels if n]
+    if not shown:
+        return ""
+    text = ", ".join(f"{n} ({label})" if label else n for n, label in shown)
+    advice = []
+    if main:
+        advice.append(f"Use the {main_label} for the caption")
+    if hood:
+        advice.append("neighborhood may be a keyword")
+    tail = "; ".join(advice)
+    return f"Place from GPS: {text}." + (f" {tail}." if tail else "")
+
+
+def _region_label(place: dict[str, Any]) -> str:
+    return "prefecture" if place.get("country") == "Japan" else "region"
+
+
 def _hints(ctx: dict[str, Any]) -> str:
     sentences: list[str] = []
     where = place_text(ctx["place"])
     when = ctx["captured"][:10] if ctx["captured"] else ""
-    if ctx["place"] and where:
-        src = "from GPS" if ctx["place"]["source"] == "gps" else "from the photo file"
-        sentences.append(f"Taken {when + ' ' if when else ''}in {where} ({src}).")
+    place = ctx["place"]
+    if place and where and place["source"] == "gps":
+        if when:
+            sentences.append(f"Taken {when}.")
+        sentences.append(_gps_place_sentence(place) or f"Place from GPS: {where}.")
+    elif place and where:
+        sentences.append(f"Taken {when + ' ' if when else ''}in {where} (from the photo file).")
     elif when:
         sentences.append(f"Taken {when}.")
     if ctx["title"]:

@@ -57,6 +57,63 @@ param(
         return $null
     }
 
+    # A running shuto (its window, python.exe or uvicorn.exe from the uv tool folder) locks files
+    # that uv must replace or delete. Find those processes and offer to close them.
+    function Stop-RunningShuto([string]$Uv) {
+        $toolDir = ((Native { & $Uv tool dir 2>$null }) | Out-String).Trim()
+        if (-not $toolDir) { return }
+        $prefix = (Join-Path $toolDir 'shuto') + '\'
+        # The tool's python.exe / shuto.exe are launchers; the real interpreter runs as a child
+        # from elsewhere, so also collect every descendant of a matched process.
+        function Get-ShutoProcesses {
+            $all = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue)
+            $byId = @{}
+            foreach ($p in $all) { $byId[[int]$p.ProcessId] = $p }
+            # Never touch this script's own process or its ancestors (PowerShell, cmd, terminal).
+            $protected = @{}
+            $cur = [int]$PID
+            while ($cur -and $byId.ContainsKey($cur) -and -not $protected.ContainsKey($cur)) {
+                $protected[$cur] = $true
+                $cur = [int]$byId[$cur].ParentProcessId
+            }
+            $ids = @{}
+            foreach ($p in $all) {
+                if ($p.ExecutablePath -and $p.ExecutablePath.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase) -and -not $protected.ContainsKey([int]$p.ProcessId)) { $ids[[int]$p.ProcessId] = $true }
+            }
+            do {
+                $added = $false
+                foreach ($p in $all) {
+                    $pid2 = [int]$p.ProcessId
+                    if ($ids.ContainsKey($pid2) -or $protected.ContainsKey($pid2)) { continue }
+                    if (-not $ids.ContainsKey([int]$p.ParentProcessId)) { continue }
+                    # Ollama is started by shuto but is not part of it: leave it and its runners alone.
+                    if ($p.Name -like 'ollama*') { continue }
+                    # A reused parent id must not pull in an older, unrelated process.
+                    $parent = $byId[[int]$p.ParentProcessId]
+                    if ($p.CreationDate -and $parent.CreationDate -and $p.CreationDate -lt $parent.CreationDate) { continue }
+                    $ids[$pid2] = $true
+                    $added = $true
+                }
+            } while ($added)
+            $ids.Keys
+        }
+        $found = @(Get-ShutoProcesses)
+        if ($found.Count -eq 0) { return }
+        Say 'shuto is still open on this computer, and it has to be closed first.'
+        $answer = 'n'
+        try { $answer = Read-Host '[shuto] Close it now? [Y/n]' } catch { $answer = 'n' }
+        if ($answer -match '^\s*n') {
+            throw 'shuto is still open. Close the shuto window (or press Ctrl+C in it) and run this line again.'
+        }
+        for ($i = 0; $i -lt 10; $i++) {
+            foreach ($id in $found) { Stop-Process -Id $id -Force -ErrorAction SilentlyContinue }
+            Start-Sleep -Seconds 1
+            $found = @(Get-ShutoProcesses)
+            if ($found.Count -eq 0) { return }
+        }
+        throw 'shuto is still open. Close the shuto window (or press Ctrl+C in it) and run this line again.'
+    }
+
     try {
         Say 'Step 1 of 5: checking for the uv installer helper...'
         $uv = Find-Uv
@@ -81,12 +138,18 @@ param(
             }
 
             Say 'Step 2 of 5: installing shuto (this can take a few minutes the first time)...'
-            Native { & $uv tool install --force --python 3.12 $From }
+            Stop-RunningShuto $uv
+            $installOutput = Native { & $uv tool install --force --python 3.12 $From 2>&1 | ForEach-Object { Write-Host "$_"; "$_" } }
             $installCode = $LASTEXITCODE
         } finally {
             if ($buildDir -and (Test-Path $buildDir)) { Remove-Item -Recurse -Force $buildDir -ErrorAction SilentlyContinue }
         }
-        if ($installCode -ne 0) { throw 'The shuto install did not finish. Check your internet connection and run this line again.' }
+        if ($installCode -ne 0) {
+            if (($installOutput | Out-String) -match 'Access is denied|os error 5|os error 32|being used by another process') {
+                throw 'A shuto file is in use - usually shuto is still open, or antivirus is scanning it. Close shuto, wait a few seconds and run this line again.'
+            }
+            throw 'The shuto install did not finish. This can be a dropped internet connection or a blocked download. Check your connection and run this line again.'
+        }
 
         Say 'Step 3 of 5: making the shuto command available...'
         Native { & $uv tool update-shell *> $null }

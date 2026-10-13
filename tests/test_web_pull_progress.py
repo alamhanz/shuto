@@ -64,12 +64,14 @@ def test_bar_shows_running_download_then_done(web, cfg, slow):
     tag = start_pull(web, cfg, slow)
     text = web.get("/downloads/bar").text
     assert f"Downloading {tag}" in text and "40%" in text and "40 of 100 MB" in text
-    assert 'hx-trigger="every 2s"' in text and "pulling" in text
+    assert 'hx-trigger="every 2s"' in text and "pulling" not in text  # no raw Ollama words
     job_id = web.state.runner.active_job("models")
     slow.release.set()
     web.state.runner.wait(job_id)
     done = web.get(f"/downloads/bar?job={job_id}").text
     assert f"Downloaded {tag}" in done and "every 2s" not in done and "Dismiss" in done
+    assert web.get(f"/downloads/bar?job={job_id}").text == done  # same, from another tab
+    assert web.get("/downloads/bar").text.strip() == ""  # Dismiss
     assert web.get("/downloads/bar").text.strip() == ""  # a later page does not nag
 
 
@@ -93,3 +95,44 @@ def test_model_step_and_settings_show_running_download(web, cfg, slow):
     slow.release.set()
     web.state.runner.wait(web.state.runner.active_job("models"))
     assert "Downloading now" not in web.get("/welcome?step=3").text
+
+
+def test_bar_status_is_plain_words(web, cfg, slow):
+    start_pull(web, cfg, slow)
+    slow.release.set()
+    web.state.runner.wait(web.state.runner.active_job("models"))
+    for raw in ("pulling manifest", "verifying sha256 digest", "writing manifest"):
+        assert raw not in web.get("/downloads/bar?job=1").text
+
+
+def test_wizard_download_continue_stays_in_wizard(web, cfg, slow):
+    start_pull(web, cfg, slow, back="/welcome?step=3")
+    text = web.get("/welcome?step=3").text
+    assert "Cancel" in text and "Progress is shown on this page" in text
+    job_id = web.state.runner.active_job("models")
+    slow.release.set()
+    web.state.runner.wait(job_id)
+    assert 'href="/welcome?step=3"' in web.get(f"/jobs/{job_id}").text
+
+
+def test_bar_for_models_dir_job(web, monkeypatch, tmp_path):
+    from shuto import ollama_store
+
+    monkeypatch.setattr(ollama_store, "supported", lambda name=None: True)
+    monkeypatch.setenv("OLLAMA_MODELS", str(tmp_path / "old"))
+    release = threading.Event()
+
+    def fake_change(target, *, move, client, progress, cancelled, os_name=None):
+        progress(1, 2, "Copying models")
+        assert release.wait(30)
+        return "Ollama now keeps its models in X."
+
+    monkeypatch.setattr(ollama_store, "change_models_dir", fake_change)
+    web.post("/settings/models-dir", {"path": str(tmp_path / "new"), "move": "yes"})
+    job_id = web.state.runner.active_job("models")
+    text = web.get("/downloads/bar").text
+    assert "Moving AI models" in text and "every 2s" in text
+    release.set()
+    web.state.runner.wait(job_id)
+    done = web.get(f"/downloads/bar?job={job_id}").text
+    assert "keeps its models in X" in done and "Choose it" not in done

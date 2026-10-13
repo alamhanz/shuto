@@ -45,7 +45,7 @@
         </form>
         {% endif %}
         {% elif pulling == r.tag %}
-        <p class="hint">Downloading now. You can follow it in the bar on this page.</p>
+        <p class="hint">Downloading now. Progress is shown on this page.</p>
         {% else %}
         <button type="button" class="btn primary" hx-get="/settings/advice" hx-vals='{"tag": "{{ r.tag }}", "return_to": "{{ return_to }}"}' hx-target="#advice-{{ r.rank }}" hx-swap="innerHTML"{% if not r.fits_hardware %} disabled{% endif %}>Download ({{ "%.0f"|format(r.size_gb) }} GB)...</button>
         {% endif %}

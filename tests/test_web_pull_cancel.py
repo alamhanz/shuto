@@ -202,3 +202,22 @@ def test_describe_still_refuses_while_the_model_downloads(cfg, monkeypatch):
     finally:
         gate.set()
         web.state.runner.shutdown()
+
+
+def test_a_refused_second_download_keeps_the_first_ones_pending_model(cfg, monkeypatch):
+    gate = threading.Event()
+    web, fake, tag = setup(cfg, monkeypatch, [PROGRESS, gate, SUCCESS], pulled=())
+    try:
+        job_id = start(web, tag, back="/welcome?step=3")
+        assert fake.stream.reached_gate.wait(30)
+        other = next(r.tag for r in pipeline.list_models(cfg) if r.tag != tag and r.fits_hardware)
+        web.post("/settings/pull", {"tag": other, "confirm": "yes", "return_to": "/welcome?step=3"})
+        assert web.state.pending_model == tag
+        assert 'href="/welcome?step=4"' in page(web, "/welcome?step=3")
+        fake.pulled.append(tag)
+        gate.set()
+        assert web.state.runner.wait(job_id).state == "done"
+        assert web.state.store.get_setting("llm.model") == tag
+    finally:
+        gate.set()
+        web.state.runner.shutdown()

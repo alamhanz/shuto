@@ -102,6 +102,8 @@ class OllamaClient:
         Partly downloaded files stay on disk, so a later pull continues where this one stopped.
         Raises LLMError if the stream breaks, stalls or ends without Ollama's `success`."""
         resp = self._open("/api/pull", {"model": tag, "stream": True}, timeout=self.timeout)
+        # A cancel is noticed at the next progress event (on_progress raises). During a silent
+        # stretch, such as verifying a big file, it waits for the next event or the timeout.
         finished = False
         try:
             try:

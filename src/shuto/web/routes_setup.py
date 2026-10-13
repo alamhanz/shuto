@@ -78,6 +78,7 @@ CANCEL_STOPPED = (
     "Download stopped. {tag} is not ready to use. Partly downloaded files stay, "
     "so a later download can continue where this one stopped."
 )
+PINNED_TEXT = " Your settings file still names {tag}. Choose another model in Settings."
 WRITING_BUSY = "Wait for shuto to finish writing titles and keywords, then try again."
 
 
@@ -886,6 +887,13 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             return f"{tag} cannot be removed here: it is not downloaded, or not on the model list."
         return None
 
+    def config_pins(tag: str) -> bool:
+        """True when the settings file itself names this model, so clearing the saved choice
+        cannot make shuto forget it."""
+        return model_in_use(tag) and hardware.normalize_tag(ctx.cfg.llm.model) == (
+            hardware.normalize_tag(tag)
+        )
+
     def model_in_use(tag: str) -> bool:
         try:
             return hardware.normalize_tag(tag) == selected_tag()
@@ -907,6 +915,7 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             tag=tag,
             return_to=back,
             in_use=model_in_use(tag),
+            pinned=config_pins(tag),
         )
 
     @app.post("/settings/model/remove")
@@ -934,7 +943,10 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             ctx.store.set_setting("llm.provider", "")
             ctx.store.set_setting("llm.model", "")
             ctx.invalidate_model_status()
-        return go(back, f"{tag} was removed from this computer.", None, request)
+        notice = f"{tag} was removed from this computer."
+        if config_pins(tag):
+            notice += PINNED_TEXT.format(tag=tag)
+        return go(back, notice, None, request)
 
     def plain_pull_status(status: str, total: int) -> str:
         """Ollama's own words ('pulling manifest', 'verifying sha256 digest') in plain ones."""
@@ -963,11 +975,13 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             finally:
                 ctx.invalidate_model_status()  # models or their folder just changed
 
-        state.pending_model = pending
+        before = state.pending_model
+        if pending is not None:
+            state.pending_model = pending  # before submit: a quick job may finish at once
         try:
             job_id = ctx.runner.submit(kind, MODELS_JOB_KEY, run_and_forget)
         except JobBusy as exc:
-            state.pending_model = None
+            state.pending_model = before  # the job already running keeps its own pending model
             return ctx.message_fragment(request, str(exc))
         pull_return[0] = back
         pull_state[0] = (job_id, info if info is not None else {"tag": "", "status": ""})

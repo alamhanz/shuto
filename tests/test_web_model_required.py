@@ -259,3 +259,19 @@ def test_removing_the_model_in_use_clears_the_choice(cfg, monkeypatch):
         assert "No AI model set" in page(w, "/model/banner")
     finally:
         w.state.runner.shutdown()
+
+
+def test_removing_a_model_the_settings_file_names_says_so(cfg, monkeypatch):
+    pinned = cfg.model_copy(update={"llm": cfg.llm.model_copy(update={"model": "gemma3:4b"})})
+    fake = FakeOllama(pulled=["gemma3:4b"])
+    w = make_web(pinned, monkeypatch, fake)
+    try:
+        text = page(w, "/settings/model/remove?tag=gemma3:4b")
+        assert "Your settings file still names gemma3:4b" in text
+        r = w.post("/settings/model/remove", {"tag": "gemma3:4b", "confirm": "yes"})
+        assert "settings%20file%20still%20names" in r.headers["location"]
+        assert fake.delete_calls == ["gemma3:4b"]
+        for path in ("/settings", "/welcome?step=3", "/model/banner", "/"):
+            assert w.get(path).status_code == 200
+    finally:
+        w.state.runner.shutdown()

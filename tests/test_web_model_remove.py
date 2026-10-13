@@ -153,3 +153,20 @@ def test_settings_page_survives_an_unreadable_model_choice(web, cfg, monkeypatch
 
 def test_settings_page_has_no_hint_when_the_model_choice_is_fine(web):
     assert "can't tell which AI model" not in web.get("/settings").text
+
+
+def test_remove_accepts_the_csrf_header_alone(web, ollama):
+    _two_models(web, ollama)
+    r = web.post(
+        "/settings/model/remove",
+        {"tag": "gemma3:12b", "confirm": "yes"},
+        token=False,
+        headers={"X-CSRF-Token": web.state.csrf},
+    )
+    assert r.status_code == 303 and ollama.delete_calls == ["gemma3:12b"]
+
+
+def test_remove_without_a_token_is_refused(web, ollama):
+    _two_models(web, ollama)
+    r = web.post("/settings/model/remove", {"tag": "gemma3:12b", "confirm": "yes"}, token=False)
+    assert r.status_code == 403 and ollama.delete_calls == []

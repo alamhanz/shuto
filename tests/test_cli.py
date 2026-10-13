@@ -254,3 +254,22 @@ def test_ui_without_web_package(config_file, capsys, monkeypatch):
     monkeypatch.setitem(sys.modules, "shuto.web", None)
     assert run(config_file, "ui") == 1
     assert "not available" in capsys.readouterr().out
+
+
+def test_doctor_says_when_the_model_choice_cannot_be_read(config_file, capsys, monkeypatch):
+    config_file.write_text(
+        yaml.safe_dump(
+            {"workspace": str(config_file.parent / "ws"), "llm": {"provider": "ollama"}}
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(pipeline, "ollama_client", lambda cfg: FakeOllama(["moondream:latest"]))
+
+    def boom(*a, **k):
+        raise pipeline.PipelineError("bad choice")
+
+    monkeypatch.setattr(pipeline, "resolve_selection", boom)
+    assert run(config_file, "doctor") == 0
+    out = capsys.readouterr().out
+    assert "could not be read" in out
+    assert "(not chosen)" not in out and "shuto models use" not in out

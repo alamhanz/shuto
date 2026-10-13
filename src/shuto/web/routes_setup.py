@@ -860,6 +860,8 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
             return go(back, None, problem, request)
         client = pipeline.ollama_client(ctx.cfg)
         try:
+            # a job could start between the check above and this delete; worst case that job
+            # fails and can be run again, nothing is lost
             client.delete(tag)
         except Exception as exc:
             why = _friendly(str(exc))

@@ -12,6 +12,7 @@ import importlib
 import importlib.util
 import os
 import re
+import sqlite3
 import threading
 from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -532,7 +533,7 @@ def doctor(
         provider = selection.provider
     except local_models.ModelChoiceRequired:
         selected, provider = None, cfg.llm.provider
-    except Exception:
+    except (PipelineError, sqlite3.Error):  # what resolve_selection raises; bugs still surface
         selected, provider, unreadable = None, cfg.llm.provider, True
     return DoctorReport(
         profile.to_dict(),

@@ -1,4 +1,5 @@
-{% from "_ui.html" import chip, icon %}
+{% from "_ui.html" import chip %}
+{% from "_wizard_nav.html" import wizard_nav %}
 <h1>You are all set</h1>
 <ul class="stack">
   <li>AI helper: {% if ollama.running %}{{ chip('ok', 'running') }}{% else %}{{ chip('neutral', 'not running') }}{% endif %}</li>
@@ -6,9 +7,7 @@
   <li>Shutterstock login: {% if login.user_set and login.password_set %}{{ chip('ok', 'saved') }}{% else %}{{ chip('neutral', 'not saved') }}{% endif %}</li>
 </ul>
 <p>Anything skipped can be done later in Settings.</p>
-<form method="post" action="/welcome/6" class="row">
+<form method="post" action="/welcome/6" id="wizard-form">
   <input type="hidden" name="csrf_token" value="{{ csrf }}">
-  <button type="submit" name="then" value="add" class="btn primary">Add your first photos {{ icon('arrow') }}</button>
-  <button type="submit" name="then" value="home" class="secondary">Go to my batches</button>
 </form>
-<p><a href="/welcome?step=5">Back</a></p>
+{{ wizard_nav('Add your first photos', form='wizard-form', primary_value='add', back='/welcome?step=5', skip='Go to my batches', skip_value='home') }}

@@ -10,7 +10,7 @@
 
 <section id="model" aria-labelledby="h-model">
 <h2 id="h-model">AI model</h2>
-<p>Now using: <strong>{{ selected or "nothing chosen yet" }}</strong>
+<p>Now using: <strong>{% if selected and selected.startswith('ollama:') %}{{ selected[7:] }} (on this computer){% else %}{{ selected or "nothing chosen yet" }}{% endif %}</strong>
 {% if not selected %}<span class="hint"> Pick one below. shuto never picks a model for you.</span>{% endif %}</p>
 {% if report.selection_unreadable %}<p class="flash warn" role="note">{{ icon('alert') }}<span>shuto can't tell which AI model is set. Choose one below.</span></p>{% endif %}
 {% if model_status.state == 'unknown' %}<p class="flash warn" role="note">{{ icon('alert') }}<span>{{ model_status.message }}</span></p>{% endif %}
@@ -18,7 +18,7 @@
 {% with use_action="/settings/use", return_to="/settings", show_bench=true, open_online=false %}
 {% include "_model_cards.html" %}
 {% endwith %}
-<div id="job-resume">{% if job %}{% with active=job_active, result=None %}{% include "_job.html" %}{% endwith %}{% endif %}</div>
+<div id="job-resume">{% if job and job.kind not in ('pull', 'models_dir') %}{% with active=job_active, result=None %}{% include "_job.html" %}{% endwith %}{% endif %}</div>
 </section>
 
 <section id="storage" aria-labelledby="h-storage">
@@ -61,7 +61,7 @@
   {% call field('theme', 'Theme of your portfolio', help='For example: Street food, Mountain trails.') %}
   <input id="theme" name="theme" value="{{ style.theme }}" maxlength="200" aria-describedby="theme-help">
   {% endcall %}
-  {% call field('always_include', 'Words to always add', help='Separate with commas.') %}
+  {% call field('always_include', 'Words to always add', help='Tags (keywords) added to every photo, not to the title or description. Separate with commas. Only use words that are true for all your photos, for example: japan.') %}
   <input id="always_include" name="always_include" value="{{ style.always_include }}" aria-describedby="always_include-help">
   {% endcall %}
   {% call field('tone', 'Tone') %}

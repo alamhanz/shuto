@@ -1,4 +1,4 @@
-{% from "_ui.html" import icon %}
+{% from "_wizard_nav.html" import wizard_nav %}
 <h1>Welcome to shuto</h1>
 <p>shuto helps you get your photos ready for a stock photo site. It checks each photo, writes a title, description and keywords, and prepares everything to send.</p>
 <ul>
@@ -7,5 +7,4 @@
   <li>You always press the final Submit button yourself.</li>
 </ul>
 <p>Setup takes a few minutes. You can skip any step and come back later in Settings.</p>
-<p class="next-action"><a class="btn primary" href="/welcome?step=2">Get started {{ icon('arrow') }}</a></p>
-<p><a href="/welcome?step=6">Skip setup</a></p>
+{{ wizard_nav('Get started', href='/welcome?step=2', skip='Skip setup', skip_href='/welcome?step=6') }}

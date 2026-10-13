@@ -1,12 +1,13 @@
 {% from "_ui.html" import field %}
+{% from "_wizard_nav.html" import wizard_nav %}
 <h1>Your style (optional)</h1>
 <p>These guide the AI when it writes about your photos. You can change them later in Settings.</p>
-<form method="post" action="/welcome/5" class="stack">
+<form method="post" action="/welcome/5" class="stack" id="wizard-form">
   <input type="hidden" name="csrf_token" value="{{ csrf }}">
   {% call field('theme', 'Theme of your portfolio', help='For example: Street food, Mountain trails, City life.') %}
   <input id="theme" name="theme" value="{{ style.theme }}" maxlength="200" aria-describedby="theme-help">
   {% endcall %}
-  {% call field('always_include', 'Words to always add', help='Separate with commas. Added to every photo that fits.') %}
+  {% call field('always_include', 'Words to always add', help='Tags (keywords) added to every photo, not to the title or description. Separate with commas. Only use words that are true for all your photos, for example: japan.') %}
   <input id="always_include" name="always_include" value="{{ style.always_include }}" aria-describedby="always_include-help">
   {% endcall %}
   {% call field('tone', 'Tone', help='How the text should sound.') %}
@@ -18,6 +19,5 @@
     <option value="japan"{% if style.region_focus == 'japan' %} selected{% endif %}>Japan</option>
   </select>
   {% endcall %}
-  <p class="next-action"><button type="submit" class="btn primary">Save and continue</button></p>
 </form>
-<p><a href="/welcome?step=4">Back</a> &middot; <a href="/welcome?step=6">Skip this step</a></p>
+{{ wizard_nav('Save and continue', form='wizard-form', back='/welcome?step=4', skip='Skip this step', skip_href='/welcome?step=6') }}

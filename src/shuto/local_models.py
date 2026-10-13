@@ -405,6 +405,14 @@ def save_choice(path: Path, tag: str) -> None:
     )
 
 
+def clear_choice(path: Path) -> None:
+    """Forget the explicit model choice (its model was removed)."""
+    try:
+        Path(path).unlink()
+    except FileNotFoundError:
+        pass
+
+
 def resolve_model(configured: str, choice_path: Path) -> str:
     """An explicit model tag is used as-is; `auto` only works after an explicit choice."""
     if configured and configured != "auto":

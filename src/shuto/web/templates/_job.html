@@ -29,7 +29,7 @@
   <p>{{ f.todo }}</p>
   <p><a class="btn secondary" href="{{ again }}">Try again</a></p>
   {% endif %}
-  {% if job.state == 'cancelled' %}<p>You stopped this. Nothing was lost.</p>{% endif %}
+  {% if job.state == 'cancelled' %}<p>{{ result or 'You stopped this. Nothing was lost.' }}</p>{% endif %}
   {% if active %}
   <p><button type="button" class="secondary" hx-post="/jobs/{{ job.id }}/cancel" hx-target="closest .progress" hx-swap="outerHTML">Cancel</button></p>
   {% elif job.state == 'done' %}

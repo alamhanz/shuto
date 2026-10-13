@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import http.client
 import json
 import urllib.error
 import urllib.request
@@ -96,20 +97,39 @@ class OllamaClient:
         return list(self._json("/api/ps", timeout=10).get("models", []))
 
     def pull(self, tag: str, on_progress: Callable[[dict], None] | None = None) -> None:
-        resp = self._open("/api/pull", {"model": tag, "stream": True}, timeout=3600)
+        """Download a model. Anything raised by `on_progress` (a cancel) stops the stream: the
+        response is closed at once, so Ollama sees the client leave and aborts the download.
+        Partly downloaded files stay on disk, so a later pull continues where this one stopped.
+        Raises LLMError if the stream breaks, stalls or ends without Ollama's `success`."""
+        resp = self._open("/api/pull", {"model": tag, "stream": True}, timeout=self.timeout)
+        finished = False
         try:
-            for line in resp:
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    ev = json.loads(line.decode("utf-8"))
-                except ValueError:
-                    continue
-                if ev.get("error"):
-                    raise LLMError(f"Ollama pull failed: {ev['error']}", retryable=False)
-                if on_progress:
-                    on_progress(ev)
+            try:
+                for line in resp:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        ev = json.loads(line.decode("utf-8"))
+                    except ValueError:
+                        continue
+                    if ev.get("error"):
+                        raise LLMError(f"Ollama pull failed: {ev['error']}", retryable=False)
+                    if ev.get("status") == "success":
+                        finished = True
+                    if on_progress:
+                        on_progress(ev)
+            except TimeoutError as e:
+                raise LLMError(
+                    f"The download stalled: no data from Ollama for {self.timeout:.0f} s",
+                    retryable=True,
+                ) from e
+            except (OSError, http.client.HTTPException) as e:
+                raise LLMError(
+                    f"The download connection was lost ({type(e).__name__})", retryable=True
+                ) from e
+            if not finished:
+                raise LLMError("The download connection was lost: it ended early", retryable=True)
         finally:
             _close(resp)
 

@@ -245,3 +245,17 @@ def test_unreadable_choice_is_unknown_not_missing(nomodel, monkeypatch):
 def test_banner_only_skips_the_wizard_page_itself(nomodel):
     url = "http://x/settings?next=/welcome"
     assert "No AI model set" in page(nomodel, "/model/banner", headers={"hx-current-url": url})
+
+
+def test_removing_the_model_in_use_clears_the_choice(cfg, monkeypatch):
+    fake = FakeOllama(pulled=["gemma3:4b"])
+    w = make_web(cfg, monkeypatch, fake, choose=True)
+    try:
+        assert page(w, "/model/banner").strip() == ""
+        text = page(w, "/settings/model/remove?tag=gemma3:4b")
+        assert "gemma3:4b is the AI model shuto uses now. After removing it, shuto can't" in text
+        r = w.post("/settings/model/remove", {"tag": "gemma3:4b", "confirm": "yes"})
+        assert "notice=" in r.headers["location"] and fake.delete_calls == ["gemma3:4b"]
+        assert "No AI model set" in page(w, "/model/banner")
+    finally:
+        w.state.runner.shutdown()

@@ -19,6 +19,10 @@ class JobBusy(Exception):
     """A job is already queued or running for this batch."""
 
 
+class JobCancelled(Exception):
+    """Raised inside a job function to stop at once; the job ends as cancelled."""
+
+
 class JobContext:
     """Passed to the job function: report progress and poll for cancellation."""
 
@@ -26,6 +30,7 @@ class JobContext:
         self._store = store
         self.job_id = job_id
         self._cancel = cancel_event
+        self.completed = False
 
     def progress(self, done: int, total: int, message: str = "") -> None:
         """Signature matches pipeline.Progress, so pass `ctx.progress` straight through."""
@@ -34,6 +39,14 @@ class JobContext:
     def cancelled(self) -> bool:
         """Signature matches pipeline.Cancel."""
         return self._cancel.is_set()
+
+    def raise_if_cancelled(self) -> None:
+        if self._cancel.is_set():
+            raise JobCancelled
+
+    def mark_completed(self) -> None:
+        """The work finished although a cancel was asked for: end as done, not cancelled."""
+        self.completed = True
 
 
 class JobRunner:
@@ -145,12 +158,15 @@ class JobRunner:
                 state = "cancelled"
             else:
                 self.store.update_job(job_id, state="running")
+                jctx = JobContext(self.store, job_id, event)
                 try:
-                    self._results[job_id] = func(JobContext(self.store, job_id, event))
+                    self._results[job_id] = func(jctx)
                     while len(self._results) > MAX_KEPT_RESULTS:
                         self._results.pop(next(iter(self._results)))
-                    if event.is_set():
+                    if event.is_set() and not jctx.completed:
                         state = "cancelled"
+                except JobCancelled:
+                    state = "cancelled"
                 except Exception as exc:
                     state, error = "failed", f"{type(exc).__name__}: {exc}"
             self.store.update_job(

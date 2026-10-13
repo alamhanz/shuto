@@ -157,7 +157,7 @@ def test_ollama_chat_and_provider(monkeypatch):
     assert seen[0].full_url == "http://127.0.0.1:11434/api/chat"
     assert body["model"] == "qwen3-vl:8b" and body["stream"] is False
     assert body["format"] == PHOTO_OUTPUT_SCHEMA
-    assert body["options"] == {"temperature": 0.2, "num_predict": 1500}
+    assert body["options"] == {"temperature": 0.2, "num_predict": 1500, "num_ctx": 8192}
     assert body["keep_alive"] == "10m"
     assert body["messages"][0]["role"] == "system"
     assert len(body["messages"][1]["images"]) == 1

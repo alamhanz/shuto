@@ -71,6 +71,27 @@ Release notes are also published on the GitHub Releases page. Newest first.
 - Place source says "gps + AI" (or "file + AI") when the photo only gave the country and the AI
   supplied the city.
 
+### Fixes after review
+- File text (IPTC/XMP): Shift-JIS text is read correctly (UTF-8 first, then Shift-JIS, or as the
+  record declares); unreadable text is ignored instead of becoming garbage, control characters
+  are removed, and long titles, captions and keywords are capped. A place from the file must be
+  plain English letters to be used.
+- No empty "Photographer title: ." lines when the title or keywords are only Japanese.
+- A Japanese city in the file no longer replaces a GPS place (the GPS prefecture and country are
+  kept).
+- Captions: when only the prefecture is known (for example Tokyo) and the AI gives no city,
+  the caption uses the prefecture ("TOKYO, JAPAN") instead of your default city. The default
+  place is never used against a known prefecture or country.
+- With "Include GPS location" off, the neighborhood is not given to the AI, so it cannot appear
+  in keywords or captions.
+- `shuto prepare`, `upload`, `reupload` and `export` now follow the Privacy setting from
+  Settings, like the web app.
+- Ollama gets an explicit context size (`num_ctx`, 8192 or less) so long prompts are no longer
+  cut; the short prompt follows it.
+- Upload refuses a prepared copy with non-English text when strict English is on ("edit it in
+  Review").
+- Latin letters such as Ł, Đ, Þ, ð and ħ are no longer counted as non-English.
+
 ### Check and Add
 - Wizard Continue works as soon as a model download starts; the download bar stays visible
   while scrolling and the page reloads when the download finishes.

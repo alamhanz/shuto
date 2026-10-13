@@ -1356,11 +1356,13 @@ def register_setup_routes(app: FastAPI, ctx: WebCtx) -> None:
         pipeline.set_ui_setting(ctx.store, "include_gps", on)
         state.cfg = pipeline.apply_style_overrides(state.base_cfg, ctx.store)
         note = (
-            "Photos you upload will include the GPS location."
+            "Photos you upload will include the GPS location. Photos already prepared keep "
+            "what they had; prepare them again to add it."
             if on
-            else "The GPS location is removed from photos you upload."
+            else "The GPS location is removed from photos you upload, also from photos "
+            "already prepared."
         )
-        return go("/settings", note + " Photos already prepared keep what they had.", None)
+        return go("/settings", note, None)
 
     # ------------------------------------------------------------------ help
 

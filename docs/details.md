@@ -163,6 +163,24 @@ For how the check looks in the web app, see [web-guide.md](web-guide.md).
   (`context_tokens` in `data/models.yaml`; models not listed get the full prompt) is sent a
   shorter prompt with the same rules and the photo facts, about 40 percent fewer tokens.
   Settings shows a plain warning and names a bigger model when such a model is chosen.
+- Context size sent to Ollama: shuto always sends `num_ctx` (8192 tokens, or the model's own
+  window when that is smaller; 4096 when the model leaves under 1 GB of memory to spare on this
+  computer). Ollama's own default (2048 or 4096) cut the start of the prompt. The short prompt
+  is chosen from the `num_ctx` actually sent.
+- File text is decoded as UTF-8, else Shift-JIS (or as the IPTC record declares); text that
+  decodes as neither is ignored, control characters are removed, and a place name from the file
+  is used only when it is plain English letters. A non-Latin city from the file never replaces a
+  GPS place; it only fills a missing city when it is in English letters.
+- Place for the caption, per part: place from the photo, then the AI, then (city only) the
+  photo's prefecture or region ("TOKYO, JAPAN"), then your default place. The default place is
+  never used against a prefecture or country the photo knows.
+- With Settings -> Privacy "Include GPS location" off, only the ward or city of the GPS place is
+  given to the AI (no neighborhood), so it cannot reach the keywords or caption. The command
+  line (`shuto prepare`, `upload`, `reupload`, `export`) uses the same effective settings as the
+  web app, including this one.
+- At upload, with strict English on, a prepared copy whose title, description or keywords hold
+  non-Latin text (for example one made by 0.4.0) is not sent; it is listed as failed with
+  "edit it in Review".
 - English only: text sent to Shutterstock must be English. Accented Latin letters are folded to
   ASCII (assumption: Shutterstock text is plain English letters). Any other script (Japanese,
   Chinese, Korean, Cyrillic, Arabic and so on) in the AI's answer counts as a hard failure and is

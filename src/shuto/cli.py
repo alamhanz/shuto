@@ -787,7 +787,7 @@ def cmd_approve(ctx: Ctx) -> int:
 def cmd_prepare(ctx: Ctx) -> int:
     a = ctx.args
     summary = pipeline.prepare_batch(
-        ctx.cfg, ctx.store, a.batch, only_ids=a.ids, progress=_progress_printer("prepare")
+        ctx.run_cfg, ctx.store, a.batch, only_ids=a.ids, progress=_progress_printer("prepare")
     )
     out(
         f"Prepared {len(summary.prepared)} file(s) in "
@@ -802,7 +802,7 @@ def cmd_upload(ctx: Ctx) -> int:
     a = ctx.args
     try:
         summary = pipeline.upload_batch(
-            ctx.cfg,
+            ctx.run_cfg,
             ctx.store,
             a.batch,
             confirm=a.yes,
@@ -839,7 +839,7 @@ def cmd_reupload(ctx: Ctx) -> int:
         out(f"{len(ids)} photo(s) of batch {a.batch} would be uploaded again.")
         out("Only do this for photos that are no longer on Shutterstock. Add --yes to confirm.")
         return 1
-    summary = pipeline.reupload_photos(ctx.cfg, ctx.store, ids, batch_id=a.batch)
+    summary = pipeline.reupload_photos(ctx.run_cfg, ctx.store, ids, batch_id=a.batch)
     out(f"{len(summary.moved)} photo(s) will be uploaded again; {len(summary.refused)} refused.")
     for why in summary.refused.values():
         out(f"  {why}")
@@ -850,7 +850,7 @@ def cmd_reupload(ctx: Ctx) -> int:
 
 def cmd_export(ctx: Ctx) -> int:
     a = ctx.args
-    summary = pipeline.export_batch(ctx.cfg, ctx.store, a.batch, dry_run=a.dry_run)
+    summary = pipeline.export_batch(ctx.run_cfg, ctx.store, a.batch, dry_run=a.dry_run)
     if a.dry_run:
         out(f"Dry run: {len(summary.rows)} row(s) would be exported.")
         for row in summary.rows:

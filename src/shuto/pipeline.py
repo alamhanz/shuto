@@ -488,6 +488,15 @@ def ollama_client(cfg: Config) -> OllamaClient:
     return OllamaClient(cfg.llm.ollama.url, cfg.llm.timeout_s)
 
 
+def _num_ctx_for(model: str) -> int:
+    """The Ollama context size for `model` on this machine (see local_models)."""
+    try:
+        profile = hardware_profile()
+    except Exception:
+        profile = None
+    return local_models.effective_num_ctx(model, profile)
+
+
 def resolve_llm(
     cfg: Config, store: Store | None, provider: str | None = None, model: str | None = None
 ) -> VisionLLM:
@@ -502,6 +511,7 @@ def resolve_llm(
             url=cfg.llm.ollama.url,
             keep_alive=cfg.llm.ollama.keep_alive,
             timeout_s=cfg.llm.timeout_s,
+            num_ctx=_num_ctx_for(sel.model),
         )
     if sel.provider == "bedrock":
         return get_provider(
@@ -679,6 +689,7 @@ def bench_model(
         keep_alive=cfg.llm.ollama.keep_alive,
         timeout_s=cfg.llm.timeout_s,
         client=_client_or_default(cfg, client),
+        num_ctx=local_models.effective_num_ctx(tag, profile),
     )
     return local_models.benchmark(
         provider, local_models.sample_jpeg_bytes(), benchmark_cache_path(), profile.fingerprint
@@ -1004,8 +1015,14 @@ def _drop_prepared(store: Store, photo: Photo) -> None:
 
 
 def use_condensed_prompt(llm: VisionLLM) -> bool:
-    """The short prompt is for local models whose context window is small (see local_models)."""
-    return llm.name == "ollama" and local_models.is_small_context(llm.model)
+    """The short prompt is for local models whose context window (the num_ctx actually sent to
+    Ollama) is small (see local_models)."""
+    if llm.name != "ollama":
+        return False
+    num_ctx = getattr(llm, "num_ctx", None)
+    if isinstance(num_ctx, int) and num_ctx > 0:
+        return num_ctx <= local_models.SMALL_CONTEXT_TOKENS
+    return local_models.is_small_context(llm.model)
 
 
 def expected_seconds_per_photo(cfg: Config, model: str) -> float | None:
@@ -1160,7 +1177,7 @@ def describe_batch(
                 if why is None:
                     raise
                 return _flag_unreadable(photo, why)
-            facts = photo_context(photo, style.english_only)
+            facts = photo_context(photo, style.english_only, cfg.prepare.include_gps)
             has_model, has_property = _release_flags(photo.release_ids)
             res = describe.describe_photo(
                 use,
@@ -1594,6 +1611,11 @@ def upload_batch(
     for photo in photos:
         if (photo.guardrail or {}).get("action") == "block" or not photo.prepared_path:
             summary.skipped_blocked.append(photo.orig_name)
+            continue
+        if not_english(photo.metadata or {}, cfg.style.english_only):  # e.g. a 0.4.0 copy
+            summary.failed[Path(photo.prepared_path).name] = (
+                NOT_ENGLISH_TEXT + ": edit it in Review"
+            )
             continue
         if not cfg.prepare.include_gps:  # copies prepared before 0.5 may still hold a location
             try:

@@ -535,4 +535,7 @@ def test_city_from_ai_when_gps_only_knows_the_country():
     assert resolve_place({"city": "Osaka"}, known=file_)["source"] == "file + AI"
     full = {"city": "Shibuya", "country": "Japan", "source": "gps"}
     assert resolve_place({"city": "Osaka", "country": "Japan"}, known=full)["source"] == "gps"
-    assert resolve_place({}, "Kyoto", "Japan", gps)["source"] == "partly default"
+    # Q64: a known prefecture is the city, the default city is not used against it
+    got = resolve_place({}, "Kyoto", "Japan", gps)
+    assert (got["city"], got["country"], got["source"]) == ("TOKYO", "JAPAN", "gps")
+    assert got["default"] is False

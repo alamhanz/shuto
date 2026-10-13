@@ -132,7 +132,9 @@ def resolve_place(
     """The city and country for an editorial caption and where each came from.
 
     Order of trust per part: the place found in the photo file (``known``, from GPS or the
-    file's own location fields), then the AI's answer, then the default place. ``source`` is
+    file's own location fields), then the AI's answer, then (city only) the known region or
+    prefecture, then the default place, which is never used against a known region or country.
+    ``source`` is
     "gps" or "file" (everything came from the photo itself), "gps + AI" or "file + AI" (a part
     from the photo, e.g. the country, and the rest from the AI, e.g. the city), "ai" (nothing
     from the file, nothing defaulted), "default" (all from the default), "partly default"
@@ -144,12 +146,30 @@ def resolve_place(
         city, country = getattr(location, "city", None), getattr(location, "country", None)
     known = known or {}
     known_source = known.get("source") if known.get("source") in ("gps", "file") else "file"
+    known_region = known.get("region") or known.get("prefecture")
+    known_country = _ascii_upper(known.get("country"))
+    # The default city never contradicts a place the photo itself names: it is skipped when the
+    # photo knows a region (used as the city instead) or a different country.
+    default_fits = not known_region and (
+        not known_country or known_country == _ascii_upper(default_country)
+    )
     parts: dict[str, tuple[str, str]] = {}  # part -> (text, where it came from)
-    for part, from_file, from_ai, fallback in (
-        ("city", known.get("city"), city, default_city),
-        ("country", known.get("country"), country, default_country),
+    for part, candidates in (
+        (
+            "city",
+            (
+                (known.get("city"), known_source),
+                (city, "ai"),
+                (known_region, known_source),
+                (default_city if default_fits else "", "default"),
+            ),
+        ),
+        (
+            "country",
+            ((known.get("country"), known_source), (country, "ai"), (default_country, "default")),
+        ),
     ):
-        for text, where in ((from_file, known_source), (from_ai, "ai"), (fallback, "default")):
+        for text, where in candidates:
             if value := _ascii_upper(text):
                 parts[part] = (value, where)
                 break

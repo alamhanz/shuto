@@ -7,6 +7,8 @@ Originals are only read. GPS stays local: it is never sent to a model or an onli
 from __future__ import annotations
 
 import math
+import re
+import unicodedata
 import xml.etree.ElementTree as ET
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
@@ -30,6 +32,11 @@ _NS = {
 }
 _MAX_XMP_BYTES = 2_000_000
 _MAX_KEYWORDS = 100
+_MAX_CAPTION_CHARS = 2000
+_MAX_TITLE_CHARS = 200
+_MAX_KEYWORD_CHARS = 64
+_IPTC_UTF8 = b"\x1b%G"  # IPTC 1:90 CodedCharacterSet for UTF-8
+_IPTC_LATIN1 = b"\x1b-A"  # ISO 8859-1
 
 
 @dataclass
@@ -78,20 +85,38 @@ class PhotoMeta:
         )
 
 
-def _clean(value: object) -> str | None:
+def _clean(value: object, charset: bytes = b"") -> str | None:
+    """One tidy line: undecodable text is dropped, control characters (C0/C1, bidi marks)
+    are removed and line breaks become spaces."""
     if isinstance(value, bytes):
-        value = _decode(value)
+        value = _decode(value, charset)
     if not isinstance(value, str):
         return None
-    text = value.replace("\x00", "").strip()
+    text = re.sub(r"[\t\r\n]+", " ", value.replace("\x00", ""))
+    text = "".join(c for c in text if unicodedata.category(c) not in ("Cc", "Cf", "Cs", "Co", "Cn"))
+    text = text.strip()
     return text or None
 
 
-def _decode(raw: bytes) -> str:
+def _decode(raw: bytes, charset: bytes = b"") -> str | None:
+    """Text from IPTC bytes: as the record declares (1:90), else UTF-8, else Shift-JIS (cp932,
+    strict). Anything else is dropped (None): wrongly decoded text is worse than none."""
+    if charset == _IPTC_LATIN1:
+        return raw.decode("latin-1")
     try:
         return raw.decode("utf-8")
     except UnicodeDecodeError:
-        return raw.decode("latin-1", errors="replace")
+        pass
+    if charset == _IPTC_UTF8:
+        return None
+    try:
+        return raw.decode("cp932")
+    except UnicodeDecodeError:
+        return None
+
+
+def _cap(text: str | None, limit: int) -> str | None:
+    return text[:limit].rstrip() if text else text
 
 
 def _num(value: object) -> float | None:
@@ -177,14 +202,20 @@ def _iptc_part(im: Image.Image, meta: PhotoMeta, place: dict[str, str]) -> None:
     if not info:
         return
 
+    declared = info.get((1, 90))
+    declared = declared[0] if isinstance(declared, list) and declared else declared
+    charset = declared.strip() if isinstance(declared, bytes) else b""
+
     def texts(key: tuple[int, int]) -> list[str]:
         raw = info.get(key)
         items = raw if isinstance(raw, list) else [raw]
-        return [t for t in (_clean(i) for i in items) if t]
+        return [t for t in (_clean(i, charset) for i in items) if t]
 
-    meta.title = (texts((2, 5)) or [None])[0]
-    meta.caption = (texts((2, 120)) or [None])[0]
-    meta.keywords = texts((2, 25))[:_MAX_KEYWORDS]
+    meta.title = _cap((texts((2, 5)) or [None])[0], _MAX_TITLE_CHARS)
+    meta.caption = _cap((texts((2, 120)) or [None])[0], _MAX_CAPTION_CHARS)
+    meta.keywords = [k for k in (_cap(t, _MAX_KEYWORD_CHARS) for t in texts((2, 25))) if k][
+        :_MAX_KEYWORDS
+    ]
     for key, name in (((2, 90), "city"), ((2, 95), "region"), ((2, 101), "country")):
         if texts(key):
             place[name] = texts(key)[0]
@@ -252,13 +283,15 @@ def parse_xmp(packet: bytes | str | None) -> dict[str, Any]:
             if not value:
                 continue
             if key in ("title", "caption"):
-                out.setdefault(key, value)
+                out.setdefault(
+                    key, _cap(value, _MAX_CAPTION_CHARS if key == "caption" else _MAX_TITLE_CHARS)
+                )
             else:
                 out["place"].setdefault(key, value)
         subject = desc.find("dc:subject", _NS)
         if subject is not None:
             for li in subject.findall(".//rdf:li", _NS):
-                text = _clean(li.text)
+                text = _cap(_clean(li.text), _MAX_KEYWORD_CHARS)
                 if text and text not in out["keywords"]:
                     out["keywords"].append(text)
     out["keywords"] = out["keywords"][:_MAX_KEYWORDS]

@@ -124,7 +124,7 @@
 <form method="post" action="/settings/privacy" class="stack">
   <input type="hidden" name="csrf_token" value="{{ csrf }}">
   <label class="inline"><input type="checkbox" name="include_gps" value="yes"{% if include_gps %} checked{% endif %}> Include GPS location in uploaded photos</label>
-  <p class="hint">Off by default: the exact place where a photo was taken is removed from the copy shuto sends. Your original photos are never changed. Photos you already prepared keep what they had; prepare them again after changing this.</p>
+  <p class="hint">Off by default: the exact place where a photo was taken is removed from the copy shuto sends. Your original photos are never changed. When you turn it off, the location is also removed from photos you already prepared. When you turn it on, prepare them again to add it.</p>
   <p><button type="submit" class="btn primary">Save</button></p>
 </form>
 </section>

@@ -367,7 +367,8 @@ def test_file_location_used_without_gps_and_when_gps_has_no_city(tmp_path):
     assert ctx["hints"].startswith("Taken in Komachi-dori, Kamakura, Japan (from the photo file).")
     meta = read_photo_meta(p)
     low = {"city": None, "region": "Tokyo", "country": "Japan", "confidence": "low"}
-    assert build_context(meta, low)["place"]["source"] == "file"
+    merged = build_context(meta, low)["place"]
+    assert (merged["city"], merged["region"], merged["country"]) == ("Kamakura", "Tokyo", "Japan")
     high = {"city": "Shibuya", "region": "Tokyo", "country": "Japan", "confidence": "high"}
     assert build_context(meta, high)["place"]["source"] == "gps"
 

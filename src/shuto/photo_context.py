@@ -4,8 +4,9 @@ Order of trust for the place of a photo (highest first):
   1. GPS in the file, reverse-geocoded offline (source "gps")
   2. IPTC/XMP location fields written by the photographer or an app (source "file")
   3. the AI's own guess, 4. the default place from settings (set by other code).
-A GPS fix that only resolves to region/country (no city nearby) loses to a file location that
-names a city. Coordinates are never put in the context or the hints: only place names.
+A GPS fix that only resolves to region/country (no city nearby) keeps those and takes the
+city from a usable file location. Coordinates are never put in the context or the hints: only
+place names.
 """
 
 from __future__ import annotations
@@ -69,14 +70,29 @@ def _place_from_gps(gp: dict | None) -> dict[str, Any] | None:
     }
 
 
+_PLACE_PART_OK = re.compile(r"[A-Za-z][A-Za-z .'-]*")
+_MAX_PLACE_PART = 60
+
+
+def _usable_place_part(value: object) -> str | None:
+    """A place name from the photo file as plain English letters, else None.
+
+    Words in other scripts are dropped; what is left must look like a name (letters, spaces,
+    . ' -, at least two letters) or the part is not trusted at all."""
+    text = english_only(re.sub(r"\s+", " ", str(value or "")).strip())
+    if not text or len(text) > _MAX_PLACE_PART or not _PLACE_PART_OK.fullmatch(text):
+        return None
+    return text if sum(c.isalpha() for c in text) >= 2 else None
+
+
 def _place_from_file(hint: dict | None) -> dict[str, Any] | None:
-    if not hint or not any(hint.get(k) for k in _PLACE_KEYS):
+    if not hint:
+        return None
+    parts = {k: _usable_place_part(hint.get(k)) for k in _PLACE_KEYS}
+    if not any(parts.values()):
         return None
     return {
-        "city": hint.get("city"),
-        "region": hint.get("region"),
-        "country": hint.get("country"),
-        "sublocation": hint.get("sublocation"),
+        **parts,
         "source": "file",
         "confidence": "medium",
     }
@@ -99,13 +115,21 @@ def build_context(
     gps_place: dict | None = None,
     captured_fallback: Any = None,
     english: bool = True,
+    neighborhood: bool = True,
 ) -> dict[str, Any]:
-    """Known facts plus a short hints string (at most 300 characters)."""
+    """Known facts plus a short hints string (at most 300 characters).
+
+    ``neighborhood=False`` (the GPS location is not kept in the upload) leaves the GPS
+    neighbourhood out, so only the ward or city can reach the prompt, caption and keywords."""
     captured = meta.captured or captured_fallback
     place = _place_from_gps(gps_place)
     file_place = _place_from_file(meta.place_hint)
-    if file_place and (place is None or (not place["city"] and file_place["city"])):
+    if place is None:
         place = file_place
+    elif file_place and not place["city"] and file_place["city"]:
+        place["city"] = file_place["city"]  # keep the GPS region and country, add the city
+    if place is not None and not neighborhood:
+        place = {**place, "neighborhood": None}
     ctx: dict[str, Any] = {
         "captured": captured.isoformat() if captured else None,
         "place": place,
@@ -167,13 +191,16 @@ def _hints(ctx: dict[str, Any], english: bool = True) -> str:
         sentences.append(f"Taken {when + ' ' if when else ''}in {where} (from the photo file).")
     elif when:
         sentences.append(f"Taken {when}.")
-    if ctx["title"]:
-        sentences.append(f"Photographer title: {_clean_text(ctx['title'], 60, english)}.")
-    if ctx["keywords"]:
-        kws = [_clean_text(k, 30, english) for k in ctx["keywords"][:_MAX_KEYWORDS_IN_HINTS]]
-        sentences.append("Photographer keywords: " + ", ".join(k for k in kws if k) + ".")
-    if ctx["caption"]:
-        sentences.append(f"Photographer caption: {_clean_text(ctx['caption'], 80, english)}.")
+    title = _clean_text(ctx["title"], 60, english)
+    if title:
+        sentences.append(f"Photographer title: {title}.")
+    kws = [_clean_text(k, 30, english) for k in ctx["keywords"]]
+    kws = [k for k in kws if k][:_MAX_KEYWORDS_IN_HINTS]
+    if kws:
+        sentences.append("Photographer keywords: " + ", ".join(kws) + ".")
+    caption = _clean_text(ctx["caption"], 80, english)
+    if caption:
+        sentences.append(f"Photographer caption: {caption}.")
     if ctx["lens"] or ctx["focal_35mm"]:
         gear = _clean_text(ctx["lens"], 40, english) if ctx["lens"] else f"{ctx['focal_35mm']:g} mm"
         sentences.append(f"Lens: {gear}.")
@@ -185,7 +212,7 @@ def _hints(ctx: dict[str, Any], english: bool = True) -> str:
     return text
 
 
-def photo_context(photo: Any, english: bool = True) -> dict[str, Any]:
+def photo_context(photo: Any, english: bool = True, include_gps: bool = True) -> dict[str, Any]:
     """Facts for one stored photo; uses values saved at import, else reads the file now."""
     stored = photo.metadata or {}
     file_meta = stored.get("file_meta")
@@ -199,4 +226,6 @@ def photo_context(photo: Any, english: bool = True) -> dict[str, Any]:
             captured = datetime.fromisoformat(photo.captured_at)
         except ValueError:
             captured = None
-    return build_context(PhotoMeta.from_dict(file_meta), gps_place, captured, english)
+    return build_context(
+        PhotoMeta.from_dict(file_meta), gps_place, captured, english, neighborhood=include_gps
+    )

@@ -212,6 +212,34 @@ def test_cmd_ui_passes_config_path(monkeypatch, tmp_path):
     )
     assert cli.cmd_ui(ctx) == 0
     assert got["config_path"] == str(cfg_file)
+    assert got["launch_args"] == [
+        "ui",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "1",
+        "--config",
+        str(cfg_file),
+    ]
+
+
+def test_cmd_ui_remembers_verbosity_for_the_update_relaunch(monkeypatch):
+    got = {}
+    monkeypatch.setattr("shuto.web.serve", lambda cfg, **kw: got.update(kw))
+    web_cfg = types.SimpleNamespace(host="127.0.0.1", port=1, open_browser=False)
+    ctx = types.SimpleNamespace(
+        cfg=types.SimpleNamespace(web=web_cfg),
+        args=types.SimpleNamespace(verbose=2, port=9000),
+        config_path=None,
+    )
+    assert cli.cmd_ui(ctx) == 0
+    assert got["launch_args"] == ["ui", "--host", "127.0.0.1", "--port", "9000", "-v", "-v"]
+
+
+def test_version_flag(capsys):
+    with pytest.raises(SystemExit) as exc:
+        cli.main(["--version"])
+    assert exc.value.code == 0 and capsys.readouterr().out.startswith("shuto ")
 
 
 # ---- G5: bounded job results, throttled pull progress

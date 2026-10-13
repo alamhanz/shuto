@@ -24,6 +24,7 @@
   </nav>
 </header>
 <main id="main" tabindex="-1">
+<div hx-get="/updates/banner" hx-trigger="load" hx-swap="outerHTML"></div>
 <div id="flash-area">
 {% if notice %}<p class="flash ok" role="status">{{ icon('check') }}<span>{{ notice }}</span></p>{% endif %}
 {% if error %}<p class="flash bad" role="alert">{{ icon('alert') }}<span>{{ error }}</span></p>{% endif %}
@@ -33,6 +34,6 @@
 <div id="job-area"></div>
 {% block next %}{% endblock %}
 </main>
-<footer>Everything runs on this computer. The final Submit on Shutterstock is always done by you.</footer>
+<footer>shuto {{ app_version|default("") }}. Everything runs on this computer. The final Submit on Shutterstock is always done by you.</footer>
 </body>
 </html>

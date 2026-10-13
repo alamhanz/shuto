@@ -27,6 +27,14 @@ def _no_real_registry(monkeypatch):
     )
 
 
+@pytest.fixture(autouse=True)
+def _no_real_update_check(monkeypatch):
+    """Tests never ask GitHub for the latest release."""
+    from shuto import updates
+
+    monkeypatch.setattr(updates, "fetch_latest", lambda *a, **k: None)
+
+
 class FakeOllama:
     url = "http://127.0.0.1:11434"
 

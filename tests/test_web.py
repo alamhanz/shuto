@@ -3,13 +3,16 @@ from __future__ import annotations
 import json
 import os
 import re
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
-from shuto import hardware, local_models, ollama_store, pipeline
+from shuto import hardware, local_models, ollama_store, pipeline, updates
+from shuto.jobs import JobBusy
 from shuto.models import Status
 from shuto.web import create_app
+from shuto.web.app import request_shutdown
 
 from .conftest import FakeOllama
 
@@ -1135,3 +1138,150 @@ def test_reset_is_refused_when_a_machine_wide_value_exists_too(web, monkeypatch,
     assert "Use the standard folder" not in html and "administrator" in html
     r = web.post("/settings/models-dir/reset", {})
     assert "administrator" in r.text and 'id="job-' not in r.text
+
+
+# ------------------------------------------------------------------ updates
+
+
+NEWER = updates.Latest(
+    "9.9.9",
+    updates.wheel_url("9.9.9"),
+    "https://github.com/alamhanz/shuto/releases/tag/v9.9.9",
+    0.0,
+)
+
+
+@pytest.fixture
+def upd(web, monkeypatch):
+    """Web app that can see a newer release; nothing is fetched, spawned or installed."""
+    monkeypatch.setattr(updates, "fetch_latest", lambda *a, **k: NEWER)
+    monkeypatch.setattr(updates, "current_version", lambda: "0.2.1")
+    monkeypatch.setattr(updates, "install_kind", lambda: "uv-tool")
+    monkeypatch.setattr(updates, "find_uv", lambda: "uv")
+    monkeypatch.setattr(
+        updates, "relaunch_cmd", lambda os_name, uv=None, ui_args=None: ["shuto", "ui"]
+    )
+    monkeypatch.setattr(updates, "helper_python", lambda uv: ["py", "-I"])
+    spawned = []
+    monkeypatch.setattr(updates, "spawn_detached", spawned.append)
+    web.spawned = spawned
+    web.local = TestClient(
+        web.app, base_url=BASE, client=("127.0.0.1", 5000), follow_redirects=False
+    )
+    return web
+
+
+def post_local(w, path, data=None):
+    return w.local.post(path, data={**(data or {}), "csrf_token": w.state.csrf})
+
+
+def test_updates_panel_with_check_off_never_fetches(web, monkeypatch):
+    def boom(*a, **k):
+        raise AssertionError("no network")
+
+    monkeypatch.setattr(updates, "fetch_latest", boom)
+    pipeline.set_ui_setting(web.state.store, "update_check", False)
+    r = web.get("/updates/panel")
+    assert r.status_code == 200 and "Automatic checks are off" in r.text
+    assert web.get("/updates/banner").text == ""
+    assert 'id="updates"' in web.get("/settings").text
+
+
+def test_updates_banner_empty_when_up_to_date_and_link_when_newer(upd, monkeypatch):
+    monkeypatch.setattr(updates, "current_version", lambda: "9.9.9")
+    assert upd.get("/updates/banner").text == ""
+    monkeypatch.setattr(updates, "current_version", lambda: "0.2.1")
+    pipeline.set_ui_setting(
+        upd.state.store, "update_cache", {"version": "", "checked_at": 0.0, "ok": False}
+    )
+    banner = upd.get("/updates/banner").text
+    assert "A new version of shuto is ready" in banner and "/settings#updates" in banner
+
+
+def test_updates_offline_does_not_break_pages(web):
+    r = web.get("/updates/panel")
+    assert r.status_code == 200 and "could not check" in r.text
+    assert web.get("/updates/banner").text == ""
+    assert web.post("/updates/check").status_code == 200
+
+
+def test_updates_panel_offers_the_button_only_to_this_computer(upd):
+    assert "Update to 9.9.9" not in upd.get("/updates/panel").text  # client "testclient"
+    assert "this computer" in upd.get("/updates/panel").text
+    assert "Update to 9.9.9" in upd.local.get("/updates/panel").text
+
+
+def test_updates_settings_toggle(web):
+    r = web.post("/updates/settings", {})
+    assert r.status_code == 303 and "updates" in r.headers["location"]
+    assert pipeline.get_ui_setting(web.state.store, "update_check", True) is False
+    web.post("/updates/settings", {"update_check": "on"})
+    assert pipeline.get_ui_setting(web.state.store, "update_check", False) is True
+
+
+def test_updates_start_needs_post_and_csrf(upd):
+    assert upd.get("/updates/start").status_code == 405
+    assert upd.local.post("/updates/start", data={"version": "9.9.9"}).status_code == 403
+
+
+def test_updates_start_refused_cases(upd, monkeypatch):
+    ok = {"version": "9.9.9"}
+    assert "this computer" in upd.post("/updates/start", ok).text  # not loopback
+    assert "no longer the newest" in post_local(upd, "/updates/start", {"version": "1.0.0"}).text
+    monkeypatch.setattr(upd.state.runner, "busy", lambda: True)
+    assert "current task" in post_local(upd, "/updates/start", ok).text
+    monkeypatch.setattr(upd.state.runner, "busy", lambda: False)
+    monkeypatch.setattr(updates, "install_kind", lambda: "other")
+    assert "not installed with the installer" in post_local(upd, "/updates/start", ok).text
+    assert upd.spawned == []
+
+
+def test_updates_start_accepted(upd, monkeypatch):
+    monkeypatch.setattr(updates, "wait_for_helper", lambda cfg, **k: True)
+    r = post_local(upd, "/updates/start", {"version": "9.9.9"})
+    assert r.status_code == 200 and 'data-update-wait="9.9.9"' in r.text
+    (cmd,) = upd.spawned
+    assert isinstance(cmd, list) and cmd[cmd.index("--version") + 1] == "9.9.9"
+    assert updates.read_status(upd.state.cfg)["state"] == "started"
+    request_shutdown(upd.app)  # no server in tests: does nothing
+    with pytest.raises(JobBusy):  # once an update has started no new job may begin
+        upd.state.runner.submit("x", "b1", lambda ctx: None)
+    Path(cmd[2]).unlink()
+    Path(cmd[2]).parent.rmdir()
+
+
+def test_updates_start_keeps_running_when_the_updater_never_reports(upd, monkeypatch):
+    monkeypatch.setattr(updates, "wait_for_helper", lambda cfg, **k: False)
+    r = post_local(upd, "/updates/start", {"version": "9.9.9"})
+    assert "updater did not start" in r.text and "data-update-wait" not in r.text
+    assert upd.state.runner.busy() is False  # jobs are allowed again
+    for cmd in upd.spawned:
+        Path(cmd[2]).unlink()
+        Path(cmd[2]).parent.rmdir()
+
+
+def cleanup_helper_copies(w):
+    for cmd in w.spawned:
+        Path(cmd[2]).unlink(missing_ok=True)
+        Path(cmd[2]).parent.rmdir()
+
+
+def test_updates_start_unexpected_error_is_a_message_not_a_500(upd, monkeypatch):
+    def boom(*a, **k):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(updates, "start_update", boom)
+    r = post_local(upd, "/updates/start", {"version": "9.9.9"})
+    assert r.status_code == 200 and "could not start the update" in r.text
+    assert upd.state.runner.busy() is False
+
+
+def test_updates_start_shows_the_helpers_refusal_and_keeps_running(upd, monkeypatch):
+    def refuse(cfg, **k):
+        raise updates.UpdateError("The update was refused because its source was bad.")
+
+    monkeypatch.setattr(updates, "wait_for_helper", refuse)
+    r = post_local(upd, "/updates/start", {"version": "9.9.9"})
+    assert "was refused" in r.text and "data-update-wait" not in r.text
+    assert upd.state.runner.busy() is False
+    cleanup_helper_copies(upd)

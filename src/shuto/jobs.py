@@ -50,10 +50,13 @@ class JobRunner:
         self._active: dict[str, int] = {}
         self._results: dict[int, Any] = {}
         self._lock = threading.Lock()
+        self._closed = False
         self._thread: threading.Thread | None = None
 
     def submit(self, kind: str, batch_id: str, func: JobFunc, total: int = 0) -> int:
         with self._lock:
+            if self._closed:
+                raise JobBusy("shuto is about to update. Wait for it to restart.")
             if batch_id in self._active:
                 raise JobBusy(f"Batch {batch_id} already has job {self._active[batch_id]} running.")
             job_id = self.store.create_job(kind, batch_id, total)
@@ -64,6 +67,23 @@ class JobRunner:
                 self._thread.start()
         self._queue.put((job_id, func))
         return job_id
+
+    def busy(self) -> bool:
+        """True while any job is queued or running."""
+        with self._lock:
+            return bool(self._active) or self._closed
+
+    def close(self) -> bool:
+        """Refuse new jobs (an update is starting). False if a job is already active."""
+        with self._lock:
+            if self._active or self._closed:
+                return False
+            self._closed = True
+            return True
+
+    def reopen(self) -> None:
+        with self._lock:
+            self._closed = False
 
     def get(self, job_id: int) -> Job | None:
         return self.store.get_job(job_id)

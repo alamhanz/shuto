@@ -4,7 +4,7 @@
 {% block content %}
 <h1>Settings</h1>
 <nav aria-label="Settings sections"><p class="chips">
-  <a class="chip" href="#model">AI model</a><a class="chip" href="#storage">AI storage</a><a class="chip" href="#shutterstock">Shutterstock login</a><a class="chip" href="#style">Style</a><a class="chip" href="#computer">This computer</a><a class="chip" href="#advanced">Advanced</a>
+  <a class="chip" href="#model">AI model</a><a class="chip" href="#storage">AI storage</a><a class="chip" href="#shutterstock">Shutterstock login</a><a class="chip" href="#style">Style</a><a class="chip" href="#computer">This computer</a><a class="chip" href="#updates">Updates</a><a class="chip" href="#advanced">Advanced</a>
 </p></nav>
 <p><a href="/welcome">Run setup again</a></p>
 
@@ -91,6 +91,11 @@
 <ol>{% for s in helper_steps %}<li>{{ s }}</li>{% endfor %}</ol>
 <p><a href="{{ ollama_url }}" target="_blank" rel="noopener">Open the Ollama website</a></p>
 {% endif %}
+</section>
+
+<section id="updates" aria-labelledby="h-updates">
+<h2 id="h-updates">Updates</h2>
+<div id="updates-panel" hx-get="/updates/panel" hx-trigger="load" hx-swap="innerHTML"><p class="hint">Looking for updates...</p></div>
 </section>
 
 <section id="advanced" aria-labelledby="h-advanced">

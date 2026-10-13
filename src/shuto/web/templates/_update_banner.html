@@ -1,0 +1,16 @@
+{% from "_ui.html" import icon %}
+{% if status %}
+<div class="update-banner {% if status.state == 'done' %}ok{% else %}bad{% endif %}" role="status">
+  {{ icon('check' if status.state == 'done' else 'alert') }}
+  <span>{{ status.message }}</span>
+  <a href="/settings#updates">Details</a>
+  <button type="button" class="quiet" data-dismiss-update="{{ status.state }}" aria-label="Close this message">Close</button>
+</div>
+{% else %}
+<div class="update-banner" role="status" data-update-version="{{ latest.version }}">
+  {{ icon('download') }}
+  <span>A new version of shuto is ready.</span>
+  <a href="/settings#updates">Update</a>
+  <button type="button" class="quiet" data-dismiss-update="{{ latest.version }}" aria-label="Hide this message">Not now</button>
+</div>
+{% endif %}

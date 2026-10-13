@@ -106,6 +106,10 @@ uses the reasons to do better next time.
   Windows and Mac only), and see details of
   this computer. Access keys for online AI (Anthropic, Gemini) and the AWS profile for Bedrock
   go in the **Access key** field; they are saved securely, and **Forget** removes them. **Run setup again** repeats the first-time setup.
+- **Updates (in Settings):** shows your version and the newest one. When a newer version is
+  ready, press **Update now**; shuto closes, updates and opens again by itself, and this page
+  reloads. **Check now** looks right away; the tick box turns the daily check off. It cannot
+  start while a task is running.
 - **Help:** plain explanations of the words used, what happens to your photos, and fixes for
   common problems.
 

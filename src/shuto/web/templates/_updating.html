@@ -1,0 +1,6 @@
+{% from "_ui.html" import icon %}
+<div class="job" data-update-wait="{{ version }}" role="status">
+  <p class="label"><span class="spin">{{ icon('spinner') }}</span> Updating to {{ version }}...</p>
+  <p>Please keep this page open. It will reload by itself.</p>
+  <p class="hint" data-update-slow hidden>This is taking longer than usual. If nothing happens, close this page and open shuto again from its icon. If shuto does not start, run the install line again (see Help).</p>
+</div>

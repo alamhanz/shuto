@@ -123,6 +123,10 @@ path skips the `heic` extra, so add it like this:
 - **PowerShell blocks the script**: use this form instead:
   `powershell -ExecutionPolicy ByPass -c "irm https://raw.githubusercontent.com/alamhanz/shuto/main/install/install.ps1 | iex"`
 - **The page does not open**: go to <http://127.0.0.1:8765> in your browser.
+- **"Access is denied" or "file is in use" when reinstalling (Windows)**: shuto is still open.
+  Close the shuto window (or press Ctrl+C in it) and run the line again. The installer also
+  offers to close it for you. If it still fails, wait a few seconds (antivirus may be scanning
+  the files) and try again.
 - **The install stops with a network error**: check your internet connection and run the line
   again. It is safe to repeat.
 

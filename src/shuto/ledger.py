@@ -23,6 +23,10 @@ def _safe(value: str) -> str:
     return "'" + value if value.startswith(_FORMULA_START) else value
 
 
+# Public alias, reused by report.py.
+safe_cell = _safe
+
+
 def _unsafe(value: str) -> str:
     return value[1:] if value.startswith("'") and value[1:].startswith(_FORMULA_START) else value
 

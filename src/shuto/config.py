@@ -94,6 +94,29 @@ class StyleConfig(_Section):
     extra_instructions: str = ""
 
 
+class FilterRuleConfig(_Section):
+    kind: Literal["include", "avoid"]
+    text: str
+    mode: Literal["set_aside", "flag"] = "set_aside"
+    id: str | None = None
+
+    @field_validator("text")
+    @classmethod
+    def _check_text(cls, v: str) -> str:
+        v = " ".join(v.split())
+        if any(ord(ch) < 32 or ord(ch) == 127 for ch in v):
+            raise ValueError("a rule must be plain text on one line")
+        if not 2 <= len(v) <= 80:
+            raise ValueError("a rule must be 2 to 80 characters long")
+        return v
+
+
+class FiltersConfig(_Section):
+    theme_check: bool = True
+    theme_partly: Literal["pass", "flag"] = "pass"
+    rules: list[FilterRuleConfig] = Field(default_factory=list, max_length=10)
+
+
 class RestrictionsConfig(_Section):
     builtin: bool = True
     extra_files: list[Path] = []
@@ -137,6 +160,7 @@ class Config(_Section):
     cull: CullConfig = Field(default_factory=CullConfig)
     llm: LLMConfig = Field(default_factory=LLMConfig)
     style: StyleConfig = Field(default_factory=StyleConfig)
+    filters: FiltersConfig = Field(default_factory=FiltersConfig)
     restrictions: RestrictionsConfig = Field(default_factory=RestrictionsConfig)
     review: ReviewConfig = Field(default_factory=ReviewConfig)
     prepare: PrepareConfig = Field(default_factory=PrepareConfig)

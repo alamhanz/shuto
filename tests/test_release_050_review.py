@@ -190,7 +190,7 @@ def test_cli_honours_the_web_privacy_setting(cfg, store, monkeypatch, command):
 
     def fake(c, *a, **k):
         seen.append(c.prepare.include_gps)
-        return SimpleNamespace(prepared=[], problems={}, uploaded=[], failed={})
+        return SimpleNamespace(prepared=[], problems={}, warnings={}, uploaded=[], failed={})
 
     monkeypatch.setattr(pipeline, f"{command}_batch", fake)
     args = [command, "b"] + (["--yes"] if command == "upload" else [])

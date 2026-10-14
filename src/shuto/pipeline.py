@@ -1467,6 +1467,29 @@ def override_status(
 class PrepareSummary:
     prepared: list[str] = field(default_factory=list)
     problems: dict[int, list[str]] = field(default_factory=dict)
+    # prepared anyway (the owner approved them) although Shutterstock would reject the text
+    warnings: dict[int, list[str]] = field(default_factory=dict)
+
+    def warning_text(self) -> str:
+        """One plain sentence naming those photos (empty when there are none)."""
+        if not self.warnings:
+            return ""
+        first = next(iter(self.warnings.values()))[0]
+        return (
+            f"Warning: {len(self.warnings)} prepared photo(s) still have a problem Shutterstock "
+            f"will reject, e.g. {first}. Fix them in Review before you send them."
+        )
+
+
+def _text_problems(meta: dict[str, Any]) -> list[str]:
+    """Hard problems in the stored text that Shutterstock itself would reject."""
+    found = []
+    keywords = [k for k in meta.get("keywords") or [] if str(k).strip()]
+    if len(keywords) < metadata_rules.KEYWORD_FLOOR:
+        found.append(metadata_rules.reason("few_keywords", count=len(keywords)))
+    if len(metadata_rules.words_of(str(meta.get("description") or ""))) < metadata_rules.MIN_WORDS:
+        found.append(metadata_rules.reason("too_few_words"))
+    return found
 
 
 def prepare_batch(
@@ -1532,6 +1555,8 @@ def prepare_batch(
         store.update_photo(pid, prepared_path=str(dest), submit_name=name)
         store.set_status(pid, Status.PREPARED)
         summary.prepared.append(name)
+        if unfixed := _text_problems(meta):
+            summary.warnings[pid] = unfixed
     if summary.prepared:
         refresh_report(cfg, store, batch_id)
     return summary

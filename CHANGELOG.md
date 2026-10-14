@@ -2,6 +2,22 @@
 
 Release notes are also published on the GitHub Releases page. Newest first.
 
+## 0.5.1
+
+### Fixed
+- **Thinking models work** (for example qwen3.5): shuto turns the hidden "thinking" off for
+  models that have it, so the answer is no longer cut off with nothing written. If a model still
+  returns only thinking, the error now says so and the photo is tried again.
+- **Too few keywords are topped up.** When a small model gives fewer keywords than Shutterstock
+  needs, shuto shows it the keywords it has and asks for more specific new ones (same model, your
+  language setting), then merges them.
+- **More tries before "Needs a look".** Every retry is a little warmer (up to a limit), so a model
+  that repeats itself gets a real chance. Tries stop early only when two retries in a row bring
+  the same answer; the best answer is kept and the reasons are listed otherwise.
+- **Warning when you prepare a photo with a problem.** If you approved a photo that still breaks a
+  Shutterstock text rule (for example too few keywords), preparing it now says so in the web app
+  and in `shuto prepare`. It is still prepared, because you approved it.
+
 ## 0.5.0
 
 ### Privacy

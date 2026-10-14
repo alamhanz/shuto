@@ -154,7 +154,10 @@ def test_ollama_chat_and_provider(monkeypatch):
     assert r.data["description"] == "A street" and not r.repaired
     assert (r.input_tokens, r.output_tokens) == (321, 45)
     body = json.loads(seen[0].data)
-    assert seen[0].full_url == "http://127.0.0.1:11434/api/chat"
+    assert seen[0].full_url == "http://127.0.0.1:11434/api/show"
+    body = json.loads(seen[1].data)
+    assert seen[1].full_url == "http://127.0.0.1:11434/api/chat"
+    assert "think" not in body
     assert body["model"] == "qwen3-vl:8b" and body["stream"] is False
     assert body["format"] == PHOTO_OUTPUT_SCHEMA
     assert body["options"] == {"temperature": 0.2, "num_predict": 1500, "num_ctx": 8192}

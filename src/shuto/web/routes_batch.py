@@ -546,6 +546,7 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
                 raise PipelineError(
                     f"{len(s.upload.failed)} photo(s) did not upload. {fe['what']} {fe['todo']}"
                 )
+            warn = " " + s.prepare.warning_text() if s.prepare.warnings else ""
             fixes = len(s.prepare.problems) + len(s.upload.failed) - len(lost)
             if fixes or lost:
                 # Partial success: keep what was sent and still write its CSV.
@@ -556,16 +557,20 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
                     text = f"Uploaded {sent}; {fixes} need a fix in Review."
                 if lost:
                     text += " " + lost[0]
-                return f"{text} Wrote the Shutterstock info file."
+                return f"{text} Wrote the Shutterstock info file.{warn}"
             if s.upload.over_limit:
                 return (
                     f"Uploaded {sent} photo(s). {s.upload.over_limit} more are ready: "
-                    "press Upload again to send them."
+                    f"press Upload again to send them.{warn}"
                 )
             if s.export is None:
-                return f"Uploaded {len(s.upload.uploaded)} photo(s). Stopped before the info file."
+                return (
+                    f"Uploaded {len(s.upload.uploaded)} photo(s). Stopped before the info file."
+                    f"{warn}"
+                )
             return (
                 f"Uploaded {len(s.upload.uploaded)} photo(s) and wrote the Shutterstock info file."
+                f"{warn}"
             )
 
         return ctx.start_job(request, "deliver", batch_id, run, total=2 * n + 1)
@@ -716,6 +721,8 @@ def register_batch_routes(app: FastAPI, ctx: WebCtx) -> None:
                 if s.problems:
                     first = next(iter(s.problems.values()))[0]
                     text += f" {len(s.problems)} photo(s) have problems, e.g. {first}"
+                if s.warnings:
+                    text += " " + s.warning_text()
                 return text
 
         elif action == "upload":

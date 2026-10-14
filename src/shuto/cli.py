@@ -795,6 +795,11 @@ def cmd_prepare(ctx: Ctx) -> int:
     )
     for pid, problems in summary.problems.items():
         out(f"  photo {pid} skipped: " + " ".join(problems))
+    for pid, problems in summary.warnings.items():
+        out(
+            f"  WARNING photo {pid} prepared with a problem Shutterstock will reject: "
+            + "; ".join(problems)
+        )
     return 0
 
 

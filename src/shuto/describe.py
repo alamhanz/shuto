@@ -441,6 +441,34 @@ def repair_prompt(
     return "\n".join(lines)
 
 
+def topup_prompt(
+    prompt: str,
+    description: str,
+    keywords: list[str],
+    missing: int,
+    style: Style,
+    short: bool = False,
+) -> str:
+    """The original prompt plus a request for ``missing`` more keywords (one top-up call)."""
+    lines = [
+        prompt,
+        "",
+        f"Your previous answer had only {len(keywords)} keywords, too few. "
+        f'Description: "{description[:300]}"',
+        "Current keywords: " + ", ".join(keywords[:60]),
+        f'Answer again with the same JSON, but in "keywords" list ONLY {missing} NEW '
+        "keywords, all different from the current ones: specific things you can see (objects, "
+        "setting, place, colors, mood, composition, season or time of day), no repeats and no "
+        "singular/plural twins." + ("" if short else " Follow the keyword rules above."),
+        language_rule(style, short),
+    ]
+    return "\n".join(lines)
+
+
+# Retry temperature: +step per model call so far, never above the cap (or the owner's own value).
+TEMPERATURE_STEP = 0.15
+TEMPERATURE_CAP = 0.9
+
 # Problems that normalize() already reports in the metadata warnings.
 _WARNED_ELSEWHERE = {"too_long", "few_keywords"}
 
@@ -470,8 +498,9 @@ def describe_photo(
     max_tries: int = rules.MAX_TRIES,
 ) -> DescribeResult:
     """Describe one photo. At most ``max_tries`` model calls: the first answer, then repairs
-    while a hard problem remains; it stops early when valid or when a repair brings the same
-    answer again. What is still wrong afterwards becomes a warning (Needs a look)."""
+    while a hard problem remains, each one a little warmer; it stops early when valid or when
+    two repairs in a row bring the same answer again. What is still wrong afterwards becomes a
+    warning (Needs a look)."""
     system, user = build_prompt(
         style,
         guardrails.prompt_summary(restrictions, style.region_focus or None, short=condensed),
@@ -536,19 +565,24 @@ def describe_photo(
     desc_text, cap_text, kws, issues = assess(out)
     calls = result.retries + 1  # model calls so far (the first answer may have been re-asked)
     previous = (desc_text, cap_text, tuple(kws))
+    same_in_a_row = 0
     while repair and calls < max_tries:
         hard = [i for i in issues if i.hard]
         if not hard:
             break
         active = cap_text if out.editorial else desc_text
-        dup = any(i.code.startswith("dup_") for i in hard)
-        asked = replace(
-            req,
-            prompt=repair_prompt(user, active, kws, hard, rules.similar_to(seen, active, kws)),
-            temperature=min(0.9, max(temperature, 0.5) + 0.05 * (calls - 1))
-            if dup
-            else temperature,
-        )
+        # every retry is a little warmer, so a small model does not repeat itself
+        warmer = min(max(temperature, TEMPERATURE_CAP), temperature + TEMPERATURE_STEP * calls)
+        if any(i.code.startswith("dup_") for i in hard):
+            warmer = max(warmer, 0.5)
+        topup = all(i.code == "few_keywords" for i in hard)
+        if topup:
+            missing = max(limits.kw_min, rules.KEYWORD_FLOOR) - len(kws)
+            retry_prompt = topup_prompt(user, active, kws, max(1, missing), style, condensed)
+        else:
+            others = rules.similar_to(seen, active, kws)
+            retry_prompt = repair_prompt(user, active, kws, hard, others)
+        asked = replace(req, prompt=retry_prompt, temperature=warmer)
         result.retries += 1  # every repair call counts as one more try
         calls += 1
         try:
@@ -563,19 +597,22 @@ def describe_photo(
         out2 = PhotoOutput.model_validate(again.data)
         fixed = out.model_copy(
             update={
-                "description": out2.description,
-                "caption_sentence": out2.caption_sentence,
-                "keywords": out2.keywords,
+                "description": desc_text if topup else out2.description,
+                "caption_sentence": cap_text if topup else out2.caption_sentence,
+                "keywords": [*kws, *out2.keywords] if topup else out2.keywords,
             }
         )
         desc2, cap2, kws2, issues2 = assess(fixed)
-        if (desc2, cap2, tuple(kws2)) == previous:
-            break  # the same answer again: asking more will not help
-        previous = (desc2, cap2, tuple(kws2))
-        if len([i for i in issues2 if i.hard]) < len(hard):  # keep the best answer
+        answer = (desc2, cap2, tuple(kws2))
+        same_in_a_row = same_in_a_row + 1 if answer == previous else 0
+        previous = answer
+        hard2 = len([i for i in issues2 if i.hard])
+        if hard2 < len(hard) or (topup and hard2 <= len(hard)):  # keep the best answer
             out, desc_text, cap_text, kws, issues = fixed, desc2, cap2, kws2, issues2
-        if not any(i.hard for i in issues2):
+        if not hard2:
             break
+        if same_in_a_row >= 2:
+            break  # the same answer twice in a row, even when asked warmer: give up
 
     description = desc_text
     if out.editorial:

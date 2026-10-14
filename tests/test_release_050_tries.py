@@ -69,10 +69,25 @@ def test_stops_as_soon_as_an_answer_is_valid():
 
 
 def test_same_answer_again_stops_and_flags():
-    llm = FakeProvider(response=[_bad(1), _bad(2), _bad(2), _bad(3)])
+    llm = FakeProvider(response=[_bad(1), _bad(2), _bad(2), _bad(2), _bad(3)])
     res = _describe(llm)
-    assert len(llm.calls) == 3  # the third answer repeats the second: no progress
-    assert any("Could not be fixed after 3 tries" in w for w in res.metadata.warnings)
+    assert len(llm.calls) == 4  # two repairs in a row repeat the answer: no progress
+    assert any("Could not be fixed after 4 tries" in w for w in res.metadata.warnings)
+
+
+def test_one_repeated_answer_does_not_stop_the_tries():
+    llm = FakeProvider(response=[_bad(1), _bad(1), _bad(2), _resp()])
+    res = _describe(llm)
+    assert len(llm.calls) == 4 and not [i for i in res.issues if i.hard]
+
+
+def test_every_retry_is_a_little_warmer_up_to_a_cap():
+    llm = FakeProvider(response=[_bad(i) for i in range(20)])
+    _describe(llm, temperature=0.2)
+    temps = [c.temperature for c in llm.calls]
+    assert temps[0] == 0.2
+    assert temps[1:4] == pytest.approx([0.35, 0.5, 0.65])
+    assert max(temps) <= 0.9 and temps == sorted(temps)
 
 
 def test_max_tries_is_a_setting():

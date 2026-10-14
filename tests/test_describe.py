@@ -173,10 +173,10 @@ def test_repair_call_fixes_a_bad_answer():
     assert not any("fewer than" in w for w in res.metadata.warnings)
 
 
-def test_repair_still_invalid_makes_no_third_call_and_warns():
+def test_repair_still_invalid_stops_after_two_identical_repairs_and_warns():
     llm = FakeProvider(response=[_resp(**BAD), _resp(**BAD)])
     res = _describe(llm)
-    assert len(llm.calls) == 2
+    assert len(llm.calls) == 3
     assert any(i.code == "too_few_words" for i in res.issues)
     assert any("at least 5 words" in w for w in res.metadata.warnings)
 
@@ -226,7 +226,7 @@ def test_near_duplicate_description_triggers_repair_and_warns_if_unchanged():
     same_text = _resp(keywords=OTHER_KEYWORDS)
     llm = FakeProvider(response=[same_text, same_text])
     res = _describe(llm, seen=seen)
-    assert len(llm.calls) == 2
+    assert len(llm.calls) == 3
     assert any(i.code == "dup_description" for i in res.issues)
     assert any("almost the same" in w for w in res.metadata.warnings)
 
@@ -235,5 +235,5 @@ def test_editorial_prefix_counts_against_the_limit():
     sentence = ("A" + " word" * 40)[:170]  # fine alone, too long once the prefix is added
     llm = FakeProvider(response=_resp(editorial=True, caption_sentence=sentence))
     res = _describe(llm)
-    assert len(llm.calls) == 2
+    assert len(llm.calls) == 3
     assert any(i.code == "too_long" for i in res.issues)

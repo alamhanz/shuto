@@ -26,6 +26,7 @@ class OllamaClient:
     def __init__(self, url: str = DEFAULT_URL, timeout: float = 300):
         self.url = url.rstrip("/")
         self.timeout = timeout
+        self._thinking: dict[str, bool] = {}
 
     def _not_running(self) -> LLMError:
         return LLMError(
@@ -136,6 +137,17 @@ class OllamaClient:
         finally:
             _close(resp)
 
+    def supports_thinking(self, model: str) -> bool:
+        """Whether Ollama lists the `thinking` capability for this model (asked once per model;
+        a failed lookup counts as no and is asked again next time)."""
+        if model not in self._thinking:
+            try:
+                caps = self._json("/api/show", {"model": model}, timeout=min(10, self.timeout))
+            except LLMError:
+                return False
+            self._thinking[model] = "thinking" in (caps.get("capabilities") or [])
+        return self._thinking[model]
+
     def chat(
         self,
         model: str,
@@ -146,6 +158,8 @@ class OllamaClient:
         timeout: float | None = None,
     ) -> dict:
         body: dict[str, Any] = {"model": model, "messages": messages, "stream": False}
+        if self.supports_thinking(model):
+            body["think"] = False  # else the hidden thinking eats the whole token budget
         if format is not None:
             body["format"] = format
         if options:
@@ -198,7 +212,14 @@ class OllamaProvider:
             keep_alive=self.keep_alive,
             timeout=req.timeout_s,
         )
-        text = (resp.get("message") or {}).get("content", "") or ""
+        message = resp.get("message") or {}
+        text = message.get("content", "") or ""
+        if not text.strip() and message.get("thinking"):
+            raise LLMError(
+                f"{self.model} used all its tokens on thinking and wrote no answer "
+                f"(stopped: {resp.get('done_reason') or 'unknown'})",
+                retryable=True,
+            )
         return (
             text,
             None,

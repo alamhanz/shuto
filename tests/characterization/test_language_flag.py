@@ -7,16 +7,20 @@ import dataclasses
 
 from pydantic import ValidationError
 
-from shuto.config import Config
+from shuto.core.config import Config
 
 from . import check_json
 
 
 def _seam():
-    from shuto import csv_export, describe, metadata_rules, photo_context, pipeline, prepare
+    from shuto.ai import describe
+    from shuto.deliver import csv_export, prepare
+    from shuto.metadata import rules as metadata_rules
+    from shuto.places import context as photo_context
+    from shuto.workflow import checks
 
     return {
-        "not_english": pipeline.not_english,
+        "not_english": checks.not_english,
         "release_check": prepare.release_check,
         "build_csv": csv_export.build_csv,
         "NotEnglishError": csv_export.NotEnglishError,

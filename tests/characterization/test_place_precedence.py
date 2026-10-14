@@ -15,14 +15,18 @@ from . import check_json
 
 
 def _seam():
-    from shuto import describe, metadata, photo_context, photo_meta, report
+    from shuto.ai import describe
+    from shuto.core import validate as core_validate
+    from shuto.deliver import report
+    from shuto.ingest import photo_meta
+    from shuto.places import context as photo_context
 
     return {
         "resolve_place": describe.resolve_place,
         "build_context": photo_context.build_context,
         "place_text": photo_context.place_text,
         "usable_part": photo_context._usable_place_part,
-        "clean_part": metadata.clean_place_part,
+        "clean_part": core_validate.clean_place_part,
         "read_photo_meta": photo_meta.read_photo_meta,
         "PhotoMeta": photo_meta.PhotoMeta,
         "report_place_text": report._place_text,

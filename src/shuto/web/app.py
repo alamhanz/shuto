@@ -18,11 +18,11 @@ from fastapi import FastAPI, Request
 from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
-from ..config import Config
-from .common import HERE, LOOPBACK_HOSTS, WebCtx, WebState, hostname
-from .routes_batch import register_batch_routes
-from .routes_setup import register_setup_routes
-from .ux import BUSY_WHAT, friendly_error
+from shuto.core.config import Config
+from shuto.web.routes.batch import register_batch_routes
+from shuto.web.routes.setup import register_setup_routes
+from shuto.web.state import HERE, LOOPBACK_HOSTS, WebCtx, WebState, hostname
+from shuto.web.ux import BUSY_WHAT, friendly_error
 
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 CSP = (

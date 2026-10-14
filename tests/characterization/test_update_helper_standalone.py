@@ -11,7 +11,7 @@ from pathlib import Path
 
 
 def _seam() -> Path:
-    from shuto import updates
+    from shuto.update import core as updates
 
     return updates.HELPER_SCRIPT
 

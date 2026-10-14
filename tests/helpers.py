@@ -8,6 +8,8 @@ from pathlib import Path
 
 from PIL import Image, ImageEnhance, ImageFilter
 
+from shuto.ai import hardware
+
 DEFAULT_SIZE = (2400, 1800)  # 4.32 MP
 
 
@@ -72,3 +74,51 @@ def write_jpeg(
     kwargs = {"exif": exif.tobytes()} if len(exif) else {}
     img.save(path, "JPEG", quality=quality, **kwargs)
     return path
+
+
+class FakeOllama:
+    url = "http://127.0.0.1:11434"
+
+    def __init__(self, pulled=(), running=True):
+        self.pulled = list(pulled)
+        self.running = running
+        self.pull_calls: list[str] = []
+        self.delete_calls: list[str] = []
+        self.sizes: dict[str, int] = {}  # bytes, as Ollama reports them
+
+    def version(self):
+        if not self.running:
+            raise OSError("down")
+        return "0.0-test"
+
+    def tags(self):
+        return [{"name": n, "size": self.sizes.get(n, 0)} for n in self.pulled]
+
+    def delete(self, tag):
+        self.delete_calls.append(tag)
+        if tag not in self.pulled:
+            raise OSError("model not found")
+        self.pulled.remove(tag)
+
+    def pull(self, tag, on_progress=None):
+        self.pull_calls.append(tag)
+        if on_progress:
+            on_progress({"status": "pulling", "total": 100, "completed": 100})
+
+    def chat(self, *a, **k):  # pragma: no cover - benchmark uses a fake provider instead
+        raise AssertionError("no network in tests")
+
+
+def fake_profile(ram_gb=32.0, tier="cpu", gpu_gb=0.0):
+    return hardware.HardwareProfile(
+        os="linux",
+        arch="x86_64",
+        cpu="Test CPU",
+        cores=8,
+        ram_gb=ram_gb,
+        gpus=[],
+        apple_silicon=False,
+        usable_gpu_gb=gpu_gb,
+        tier=tier,
+        fingerprint="test-fp",
+    )

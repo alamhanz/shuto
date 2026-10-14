@@ -33,16 +33,40 @@ TIME_KEYS = ("at", "time", "seconds", "checked_at", "described_at", "elapsed")
 
 
 def _seam():
-    from shuto import csv_export, deliver, embed, pipeline, report
-    from shuto import store as store_mod
-    from shuto.llm.fake import DEFAULT_RESPONSE, FakeProvider
-    from shuto.models import Status
+    from shuto.ai.providers.fake import DEFAULT_RESPONSE, FakeProvider
+    from shuto.core import paths
+    from shuto.core import text as core_text
+    from shuto.core.models import Status
+    from shuto.deliver import csv_export, report, send
+    from shuto.metadata import embed
+    from shuto.settings import effective
+    from shuto.settings import ui as settings_ui
+    from shuto.store import db as store_mod
+    from shuto.workflow import (
+        culling,
+        delivering,
+        describing,
+        exporting,
+        importing,
+        reports,
+        review,
+    )
 
     return {
-        "pipeline": pipeline,
+        "core_text": core_text,
+        "paths": paths,
+        "settings_ui": settings_ui,
+        "effective": effective,
+        "importing": importing,
+        "culling": culling,
+        "describing": describing,
+        "review": review,
+        "delivering": delivering,
+        "exporting": exporting,
+        "reports": reports,
         "store_mod": store_mod,
         "embed": embed,
-        "deliver": deliver,
+        "deliver": send,
         "report": report,
         "csv_export": csv_export,
         "FakeProvider": FakeProvider,
@@ -139,30 +163,29 @@ def _embedded(embed, meta: dict, blob: bytes) -> bool:
 def _run(cfg, store, tmp_path, monkeypatch, text, language) -> dict:
     photos_dir = _photos(tmp_path / "shots")
     s = _seam()
-    pipeline = s["pipeline"]
-    monkeypatch.setattr(pipeline, "_now_iso", lambda: FIXED_ISO)
+    monkeypatch.setattr(s["core_text"], "now_iso", lambda: FIXED_ISO)
     monkeypatch.setattr(s["store_mod"], "_now", lambda: FIXED_UTC)
     monkeypatch.setenv("SHUTO_FTPS_USER", "u")
     monkeypatch.setenv("SHUTO_FTPS_PASSWORD", "p")
     if language:
-        pipeline.set_ui_setting(store, "language", language)
-    pipeline.set_ui_setting(store, "max_tries", 3)
-    run_cfg = pipeline.apply_style_overrides(cfg, store)
+        s["settings_ui"].set_ui_setting(store, "language", language)
+    s["settings_ui"].set_ui_setting(store, "max_tries", 3)
+    run_cfg = s["effective"].apply_style_overrides(cfg, store)
     run_cfg.deliver.upload_enabled = True
 
-    (batch,) = pipeline.import_folder(run_cfg, store, photos_dir).batches
-    pipeline.cull_batch(run_cfg, store, batch)
+    (batch,) = s["importing"].import_folder(run_cfg, store, photos_dir).batches
+    s["culling"].cull_batch(run_cfg, store, batch)
     llm = s["FakeProvider"]("fake", response=_responder(s["DEFAULT_RESPONSE"], text))
-    pipeline.describe_batch(run_cfg, store, batch, llm=llm)
-    pipeline.approve(run_cfg, store, batch_id=batch)
-    prep = pipeline.prepare_batch(run_cfg, store, batch)
+    s["describing"].describe_batch(run_cfg, store, batch, llm=llm)
+    s["review"].approve(run_cfg, store, batch_id=batch)
+    prep = s["delivering"].prepare_batch(run_cfg, store, batch)
     ftp = _FakeFTP()
-    pipeline.upload_batch(run_cfg, store, batch, confirm=True, connect=lambda *a, **k: ftp)
-    export = pipeline.export_batch(run_cfg, store, batch)
+    s["delivering"].upload_batch(run_cfg, store, batch, confirm=True, connect=lambda *a, **k: ftp)
+    export = s["exporting"].export_batch(run_cfg, store, batch)
 
     photos = store.list_photos(batch)
     after_export = {p.orig_name: p.status.value for p in photos}
-    header, records = pipeline.build_report(run_cfg, store, batch)
+    header, records = s["reports"].build_report(run_cfg, store, batch)
     keep = [i for i, name in enumerate(header) if name not in TIME_COLUMNS]
     report_rows = [{header[i]: row[i] for i in keep} for row in sorted(records, key=lambda r: r[0])]
     csv_text = "\n".join(f.read_bytes().decode("utf-8") for f in export.files)
@@ -183,7 +206,10 @@ def _run(cfg, store, tmp_path, monkeypatch, text, language) -> dict:
     blob = b""
     if first:
         blob = (
-            pipeline.batch_dir(run_cfg, batch).joinpath("prepared", first.submit_name).read_bytes()
+            s["paths"]
+            .batch_dir(run_cfg, batch)
+            .joinpath("prepared", first.submit_name)
+            .read_bytes()
         )
     return {
         "batch": batch,

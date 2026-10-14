@@ -9,21 +9,23 @@ from . import check_json
 
 
 def _seam():
-    from shuto import metadata_rules, pipeline
+    from shuto.metadata import rules as metadata_rules
+    from shuto.settings import effective
+    from shuto.settings import ui as settings_ui
 
     return (
-        pipeline.set_ui_setting,
-        pipeline.get_ui_setting,
-        pipeline.apply_style_overrides,
-        pipeline.UI_SETTING_KEYS,
+        settings_ui.set_ui_setting,
+        settings_ui.get_ui_setting,
+        effective.apply_style_overrides,
+        settings_ui.UI_SETTING_KEYS,
         metadata_rules.MAX_TRIES,
     )
 
 
 def _templates_dir() -> Path:
-    from shuto.web import common
+    from shuto.web import state
 
-    return Path(common.__file__).parent / "templates"
+    return Path(state.__file__).parent / "templates"
 
 
 RULES = [

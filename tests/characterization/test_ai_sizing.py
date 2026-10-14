@@ -8,9 +8,10 @@ from . import check_json
 
 
 def _seam():
-    from shuto import local_models, pipeline
-    from shuto.hardware import HardwareProfile
-    from shuto.llm.ollama import OllamaProvider
+    from shuto.ai import catalog as local_models
+    from shuto.ai import selection
+    from shuto.ai.hardware import HardwareProfile
+    from shuto.ai.providers.ollama import OllamaProvider
 
     return {
         "effective_num_ctx": local_models.effective_num_ctx,
@@ -19,8 +20,8 @@ def _seam():
         "is_small_context": local_models.is_small_context,
         "SMALL": local_models.SMALL_CONTEXT_TOKENS,
         "TARGET": local_models.NUM_CTX_TARGET,
-        "use_condensed_prompt": pipeline.use_condensed_prompt,
-        "resolve_llm": pipeline.resolve_llm,
+        "use_condensed_prompt": selection.use_condensed_prompt,
+        "resolve_llm": selection.resolve_llm,
         "OllamaProvider": OllamaProvider,
         "Profile": HardwareProfile,
     }

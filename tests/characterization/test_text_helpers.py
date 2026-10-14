@@ -9,24 +9,32 @@ from . import check_json
 
 
 def _seam():
-    from shuto import cli, csv_export, estimate, imaging, ollama_store, pipeline, updates
-    from shuto.web import common, routes_batch, routes_setup, ux
+    from shuto import cli
+    from shuto.ai import estimate
+    from shuto.core import files as core_files
+    from shuto.deliver import csv_export
+    from shuto.ollama import models_dir as ollama_store
+    from shuto.update import core as updates
+    from shuto.web import state, ux
+    from shuto.web.routes import batch as routes_batch
+    from shuto.web.routes import setup as routes_setup
+    from shuto.workflow import check_batch, delivering
 
     return {
-        "time_left": pipeline._time_left,
+        "time_left": check_batch._time_left,
         "plain_seconds": routes_setup._plain_seconds,
         "ai_time_text": ux.ai_time_text,
         "format_duration": estimate.format_duration,
         "mb": routes_batch._mb,
-        "megabytes": pipeline._megabytes,
+        "megabytes": delivering._megabytes,
         "gb": ollama_store._gb,
         "cli_short": cli._short,
-        "web_short": common.short,
+        "web_short": state.short,
         "cli_yn": cli._yn,
         "csv_yn": csv_export._yn,
         "ux_n": ux._n,
         "setup_n": routes_setup._n,
-        "sha256_file": imaging.sha256_file,
+        "sha256_file": core_files.sha256_file,
         "sha256_of": updates.sha256_of,
     }
 

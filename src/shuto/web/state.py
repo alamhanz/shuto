@@ -8,12 +8,13 @@ import secrets as _stdlib_secrets
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from importlib import metadata
 from pathlib import Path
 from typing import Annotated, Any
 from urllib.parse import quote
 
 from fastapi import Depends, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 from starlette.datastructures import FormData
 
@@ -24,12 +25,20 @@ from shuto.core.config import Config
 from shuto.core.jobs import JobBusy, JobContext, JobRunner
 from shuto.core.models import REASON_CODES, Photo
 from shuto.metadata.categories import SHUTTERSTOCK_CATEGORIES
+from shuto.settings import effective
 from shuto.web import ux
 
 HERE = Path(__file__).parent
 LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "[::1]", "::1"}
 MODELS_JOB_KEY = "models"  # pseudo batch id: one model download/benchmark at a time
 IMPORT_JOB_KEY = "import"
+
+
+def app_version() -> str:
+    try:
+        return metadata.version("shuto")
+    except metadata.PackageNotFoundError:
+        return "dev"
 
 
 def hostname(host_header: str) -> str:
@@ -81,9 +90,10 @@ class WebState:
     """Everything the routes share; one per app. Routes read `state.cfg` on every request."""
 
     def __init__(self, cfg: Config, config_path: str | None, extra_hosts: set[str]):
-        self.cfg = cfg
+        self.base_cfg = cfg
         self.config_path = config_path
         self.store = store_pkg.open_store(cfg)
+        self.cfg = effective.apply_style_overrides(self.base_cfg, self.store)
         self.runner = JobRunner(self.store)
         self.csrf = _stdlib_secrets.token_urlsafe(32)
         # (provider, model, ollama url) -> (when, ModelStatus); cleared by any change
@@ -92,6 +102,14 @@ class WebState:
         self.pending_model: str | None = None
         # batch id -> live speed check of the local describe job running for it
         self.live: dict[str, Any] = {}
+        # import job id -> (batch id, photo count) pairs, and the photos left out as "sent before"
+        self.import_results: dict[int, list[tuple[str, int]]] = {}
+        self.import_known: dict[int, list[int]] = {}
+        # page the latest models job returns to; (job id, {"tag", "status"}) of that job, one
+        # tuple swapped in one step; finished downloads whose end was already shown once
+        self.pull_return: str = "/settings"
+        self.pull_state: tuple[int, dict] | None = None
+        self.announced_done: set[int] = set()
         self.allowed_hosts = LOOPBACK_HOSTS | {h.lower() for h in extra_hosts}
         if cfg.web.host not in ("0.0.0.0", "::"):
             self.allowed_hosts.add(hostname(cfg.web.host))
@@ -109,6 +127,12 @@ class WebState:
             TERMS=ux.TERMS,
         )
         self.templates.env.filters["pct"] = lambda v: f"{float(v):.0f}"
+        self.templates.env.globals["friendly"] = ux.friendly
+        self.templates.env.globals["app_version"] = app_version()
+
+    def reload_settings(self) -> None:
+        """Re-read the settings saved in the app, so the next request sees them."""
+        self.cfg = effective.apply_style_overrides(self.base_cfg, self.store)
 
 
 async def post_form(request: Request) -> FormData:
@@ -125,7 +149,7 @@ PostForm = Annotated[FormData, Depends(post_form)]
 
 
 class WebCtx:
-    """Request helpers bound to one app's state; passed to every `register_*_routes`."""
+    """Request helpers bound to one app's state; handed to routes by `get_ctx`."""
 
     def __init__(self, state: WebState):
         self.state = state
@@ -254,6 +278,13 @@ class WebCtx:
         url = path + (sep + "&".join(query) if query else "")
         return RedirectResponse(url, status_code=303)
 
+    def go(self, path: str, notice: str | None, error: str | None, request: Request | None = None):
+        """Redirect with a message. For htmx posts (the confirm dialog ones) use HX-Redirect."""
+        resp = self.back(path, notice=notice, error=error)
+        if request is not None and request.headers.get("hx-request"):
+            return Response(status_code=204, headers={"HX-Redirect": resp.headers["location"]})
+        return resp
+
     def get_batch_or_404(self, batch_id: str):
         batch = self.store.get_batch(batch_id)
         if batch is None:
@@ -306,3 +337,11 @@ class WebCtx:
     @staticmethod
     def ids_from(form: FormData) -> list[int]:
         return [int(v) for v in form.getlist("ids") if str(v).isdigit()]
+
+
+def get_ctx(request: Request) -> WebCtx:
+    """The request helpers of the app that is serving this request."""
+    return request.app.state.ctx
+
+
+Ctx = Annotated[WebCtx, Depends(get_ctx)]

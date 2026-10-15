@@ -6,6 +6,7 @@ Nothing in this module touches the database or the network.
 
 from __future__ import annotations
 
+import re
 from urllib.parse import quote
 
 from shuto.core.status_text import BUCKET_LABELS, BUCKETS, LABELS, bucket, label  # noqa: F401 (re-exported)
@@ -233,3 +234,13 @@ def friendly_error(exc: BaseException | str, context: str = "ai") -> dict[str, s
             if any(n in low for n in needles if n not in ("timed out", "timeout")):
                 return {"what": what, "todo": todo}
     return {"what": raw or "Something went wrong.", "todo": _FALLBACK_TODO}
+
+
+ERROR_PREFIX_RE = re.compile(r"^[A-Za-z_.]*(?:Error|Exception|Busy|Refused): ")
+UPLOAD_JOB_KINDS = ("deliver", "ftps_test", "upload")
+
+
+def friendly(error: str | None, kind: str = "") -> dict[str, str]:
+    """Plain-words error; upload-type jobs get upload advice instead of AI advice."""
+    context = "upload" if kind in UPLOAD_JOB_KINDS else "ai"
+    return friendly_error(ERROR_PREFIX_RE.sub("", error or ""), context=context)

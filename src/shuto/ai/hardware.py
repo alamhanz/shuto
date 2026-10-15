@@ -20,7 +20,6 @@ from shuto.core import platform as core_platform
 
 GPU_TIERS = ("gpu_6", "gpu_8", "gpu_12", "gpu_24")
 APPLE_TIERS = ("apple_16", "apple_32", "apple_64")
-TIERS = ("cpu", *GPU_TIERS, *APPLE_TIERS)
 
 
 @dataclass

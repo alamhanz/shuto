@@ -139,6 +139,13 @@ def _load() -> _Index:
         return _index
 
 
+def clear() -> None:
+    """Forget the loaded place index (the next lookup loads it again)."""
+    global _index
+    with _lock:
+        _index = None
+
+
 def reverse_geocode(lat: float, lon: float) -> Place | None:
     """Nearest place for a coordinate, or None when invalid or nothing is within 200 km.
 

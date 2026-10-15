@@ -75,7 +75,7 @@ def open_image(path: str | Path | bytes) -> Image.Image:
     return Image.open(Path(path))
 
 
-def _parse_exif_date(value: object) -> datetime | None:
+def parse_exif_date(value: object) -> datetime | None:
     if not isinstance(value, str):
         return None
     text = value.strip().strip("\x00")
@@ -85,6 +85,9 @@ def _parse_exif_date(value: object) -> datetime | None:
         except ValueError:
             continue
     return None
+
+
+_parse_exif_date = parse_exif_date  # alias until T9
 
 
 def read_info(path: str | Path | bytes) -> ImageInfo:
@@ -100,11 +103,11 @@ def read_info(path: str | Path | bytes) -> ImageInfo:
             width, height = height, width
         captured = None
         try:
-            captured = _parse_exif_date(exif.get_ifd(EXIF_IFD).get(_TAG_DATETIME_ORIGINAL))
+            captured = parse_exif_date(exif.get_ifd(EXIF_IFD).get(_TAG_DATETIME_ORIGINAL))
         except Exception:
             captured = None
         if captured is None:
-            captured = _parse_exif_date(exif.get(_TAG_DATETIME))
+            captured = parse_exif_date(exif.get(_TAG_DATETIME))
         make = str(exif.get(_TAG_MAKE) or "").strip().strip("\x00")
         model = str(exif.get(_TAG_MODEL) or "").strip().strip("\x00")
         if make and model and model.lower().startswith(make.lower()):

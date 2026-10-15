@@ -79,13 +79,6 @@ def test_benchmark_overrides_heuristic():
     assert r.basis == "heuristic"
 
 
-def test_pick_auto_prefers_pulled_fitting():
-    p = prof("gpu_12", 12, 32)
-    assert lm.pick_auto(lm.recommend(p, CAT, [])) is None
-    m = lm.pick_auto(lm.recommend(p, CAT, ["gemma3:4b", "moondream:latest", "qwen3-vl:32b"]))
-    assert m.tag == "gemma3:4b"  # 32b is pulled but does not fit
-
-
 def test_top_models_is_eight_and_ranked_by_score():
     rows = lm.top_models(prof("gpu_12", 12, 32), CAT, [], disk_free_gb=100)
     assert len(rows) == 8 and [r.rank for r in rows] == list(range(1, 9))

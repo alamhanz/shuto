@@ -22,10 +22,10 @@ from typing import Any
 import yaml
 
 from shuto.metadata.model import is_editorial_caption
+from shuto.metadata.rules import MIN_COMMERCIAL_WORDS
 
 SEVERITY = {"ok": 0, "force_editorial": 1, "review": 2, "block": 3}
 LEVEL_ACTIONS = {"restricted": "force_editorial", "prohibited": "block", "no_upload": "block"}
-MIN_COMMERCIAL_WORDS = 5
 _PEOPLE_KEYS = ("recognizable_people", "people")
 _LOGO_KEYS = ("logos_or_brands", "logos", "has_logos")
 

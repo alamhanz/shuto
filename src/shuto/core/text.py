@@ -16,3 +16,7 @@ def parse_dt(value: str | None) -> datetime | None:
         return datetime.fromisoformat(value)
     except ValueError:
         return None
+
+
+def yes_no(value: object) -> str:
+    return "yes" if bool(value) else "no"

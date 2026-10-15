@@ -7,10 +7,10 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from shuto.core.paths import folder_name
 from shuto.core.secrets import get_secret
 from shuto.deliver import ftps
 from shuto.deliver.csv_export import build_csv
-from shuto.deliver.report import folder_name
 
 
 @dataclass(frozen=True)

@@ -9,3 +9,7 @@ class PipelineError(Exception):
 
 class UploadRefused(PipelineError):
     pass
+
+
+class SettingsError(PipelineError):
+    """A saved-setting value that is not valid (the message says what to fix)."""

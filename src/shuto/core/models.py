@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Any
+from typing import Any, TypedDict
 
 
 class Status(StrEnum):
@@ -190,3 +190,63 @@ FILE_FACT_KEYS = ("file_meta", "gps_place", "ai_run")
 def _file_facts(metadata: dict | None) -> dict[str, Any]:
     """The stored facts read from the photo file, to carry over when metadata is rewritten."""
     return {k: metadata[k] for k in FILE_FACT_KEYS if metadata and k in metadata}
+
+
+class StoredPlace(TypedDict, total=False):
+    """`metadata["place"]`: the place used for the text and which source decided it."""
+
+    city: str
+    country: str
+    source: str  # gps, file, ai, "gps + AI", default, "partly default" or unknown
+    default: bool
+
+
+class AiRun(TypedDict, total=False):
+    """`metadata["ai_run"]`: the model (`provider/model`) and max tries that wrote the text."""
+
+    model: str
+    max_tries: int
+
+
+class StoredMetadata(TypedDict, total=False):
+    """`Photo.metadata` (column `metadata_json`): every key written today."""
+
+    filename: str
+    title: str
+    description: str
+    keywords: list[str]
+    categories: list[str]
+    editorial: bool
+    mature: bool
+    illustration: bool
+    warnings: list[str]
+    location: dict[str, Any]
+    place: StoredPlace
+    file_meta: dict[str, Any]
+    gps_place: dict[str, Any]
+    ai_run: AiRun
+    language: str
+    metadata_issues: list[dict[str, Any]]
+
+
+class StoredFilters(TypedDict, total=False):
+    """`Photo.filters` (column `filters_json`): the theme/rules check result."""
+
+    v: int
+    at: str
+    model: str
+    fingerprint: str
+    verdict: str
+    theme: dict[str, Any] | None
+    rules: list[dict[str, Any]]
+    set_aside_by: list[str]
+    overridden: dict[str, Any] | None
+
+
+class StoredGuardrail(TypedDict, total=False):
+    """`Photo.guardrail` (column `guardrail_json`): the deterministic guardrail result."""
+
+    action: str
+    hits: list[dict[str, Any]]
+    removed_keywords: list[str]
+    messages: list[str]

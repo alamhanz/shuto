@@ -17,6 +17,7 @@ import csv
 import io
 from collections.abc import Iterable
 
+from shuto.core.text import yes_no
 from shuto.metadata.rules import has_foreign_script
 
 HEADERS = [
@@ -34,8 +35,7 @@ class NotEnglishError(ValueError):
     """A CSV cell has non-Latin text. Shutterstock needs English; the file is not written."""
 
 
-def _yn(v) -> str:
-    return "yes" if bool(v) else "no"
+_yn = yes_no  # alias until T9
 
 
 def build_csv(items: Iterable[dict], strict: bool = True) -> str:
@@ -50,9 +50,9 @@ def build_csv(items: Iterable[dict], strict: bool = True) -> str:
             it["description"],
             ",".join(it["keywords"]),
             ",".join(it["categories"]),
-            _yn(it.get("editorial")),
-            _yn(it.get("mature")),
-            _yn(it.get("illustration")),
+            yes_no(it.get("editorial")),
+            yes_no(it.get("mature")),
+            yes_no(it.get("illustration")),
         ]
         if strict and any(has_foreign_script(cell) for cell in row[:4]):
             raise NotEnglishError(f"{it['filename']}: the text is not in English")

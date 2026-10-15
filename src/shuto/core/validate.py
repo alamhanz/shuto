@@ -10,7 +10,8 @@ MAX_LANGUAGE_CHARS = 30
 
 
 MAX_PLACE_CHARS = 60
-_PLACE_OK = re.compile(r"[A-Za-z][A-Za-z .'-]*")
+PLACE_NAME_RE = re.compile(r"[A-Za-z][A-Za-z .'-]*")
+_PLACE_OK = PLACE_NAME_RE  # alias until T9
 
 
 def clean_place_part(text: object) -> str:
@@ -24,7 +25,7 @@ def clean_place_part(text: object) -> str:
         return ""
     if len(value) > MAX_PLACE_CHARS:
         raise ValueError(f"Keep each place name under {MAX_PLACE_CHARS} characters.")
-    if not _PLACE_OK.fullmatch(value):
+    if not PLACE_NAME_RE.fullmatch(value):
         raise ValueError("Write the place in English letters, for example Tokyo or Japan.")
     return value
 

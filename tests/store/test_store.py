@@ -240,11 +240,11 @@ def test_concurrent_writers(store):
 
 def _make_v1_db(path):
     """A database exactly as the previous release created it (v1 DDL, one photo)."""
-    from shuto.store.db import _SCHEMA_V1
+    from shuto.store.schema import SCHEMA_V1
 
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
-    for stmt in _SCHEMA_V1.split(";"):
+    for stmt in SCHEMA_V1.split(";"):
         if stmt.strip():
             conn.execute(stmt)
     conn.execute("PRAGMA user_version=1")

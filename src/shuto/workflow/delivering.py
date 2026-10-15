@@ -161,6 +161,76 @@ def _megabytes(n: int) -> str:
     return f"{n / 1_000_000:.1f}"
 
 
+def _uploadable(
+    cfg: Config, photos: list[Photo], summary: UploadSummary
+) -> tuple[dict[str, Photo], list[Path]]:
+    """The prepared copies that may be sent; the others are recorded in `summary`."""
+    by_name: dict[str, Photo] = {}
+    files: list[Path] = []
+    for photo in photos:
+        if (photo.guardrail or {}).get("action") == "block" or not photo.prepared_path:
+            summary.skipped_blocked.append(photo.orig_name)
+            continue
+        if checks.not_english(photo.metadata or {}, cfg.style.english_only):  # e.g. a 0.4.0 copy
+            summary.failed[Path(photo.prepared_path).name] = (
+                NOT_ENGLISH_TEXT + ": edit it in Review"
+            )
+            continue
+        if not cfg.prepare.include_gps:  # copies prepared before 0.5 may still hold a location
+            try:
+                _strip_gps_file(Path(photo.prepared_path))
+            except (OSError, ValueError) as exc:
+                summary.failed[Path(photo.prepared_path).name] = (
+                    f"could not remove the GPS location, so it was not sent: {exc}"
+                )
+                continue
+        by_name[Path(photo.prepared_path).name] = photo
+        files.append(Path(photo.prepared_path))
+    return by_name, files
+
+
+class _UploadReport:
+    """The progress text of one upload run."""
+
+    def __init__(
+        self, progress: Progress, count: int, text_prefix: str, by_name: dict[str, Photo]
+    ) -> None:
+        self.progress = progress
+        self.count = count
+        self.text_prefix = text_prefix
+        self.by_name = by_name
+        self.done = 0
+        self.began = check_batch._mono()
+        self.last_bytes = 0.0
+        self.current = ""
+
+    def say(self, extra: str = "", name: str = "") -> None:
+        text = f"{self.text_prefix}Uploading photo {min(self.done + 1, self.count)} of {self.count}"
+        if name:
+            text += f" · {self.by_name[name].orig_name}"
+        if extra:
+            text += f" · {extra}"
+        if 0 < self.done < self.count:
+            left = (check_batch._mono() - self.began) / self.done * (self.count - self.done)
+            text += f" · {check_batch._time_left(left)}"
+        self.progress(self.done, self.count, text)
+
+    def on_start(self, name: str) -> None:
+        self.current = name
+        self.last_bytes = 0.0
+        self.say(name=name)
+
+    def on_bytes(self, sent: int) -> None:
+        now = check_batch._mono()
+        if now - self.last_bytes < 0.5:  # the callback fires per block; keep the database calm
+            return
+        self.last_bytes = now
+        self.say(f"{_megabytes(sent)} MB sent", name=self.current)
+
+    def on_wait(self, text: str) -> None:
+        self.progress(self.done, self.count, self.text_prefix + text)
+
+
 def upload_batch(
     cfg: Config,
     store: Store,
@@ -193,27 +263,7 @@ def upload_batch(
         wanted = set(only_ids)
         photos = [p for p in photos if p.id in wanted]
     summary = UploadSummary()
-    by_name: dict[str, Photo] = {}
-    files: list[Path] = []
-    for photo in photos:
-        if (photo.guardrail or {}).get("action") == "block" or not photo.prepared_path:
-            summary.skipped_blocked.append(photo.orig_name)
-            continue
-        if checks.not_english(photo.metadata or {}, cfg.style.english_only):  # e.g. a 0.4.0 copy
-            summary.failed[Path(photo.prepared_path).name] = (
-                NOT_ENGLISH_TEXT + ": edit it in Review"
-            )
-            continue
-        if not cfg.prepare.include_gps:  # copies prepared before 0.5 may still hold a location
-            try:
-                _strip_gps_file(Path(photo.prepared_path))
-            except (OSError, ValueError) as exc:
-                summary.failed[Path(photo.prepared_path).name] = (
-                    f"could not remove the GPS location, so it was not sent: {exc}"
-                )
-                continue
-        by_name[Path(photo.prepared_path).name] = photo
-        files.append(Path(photo.prepared_path))
+    by_name, files = _uploadable(cfg, photos, summary)
     if not files:
         return summary
     if len(files) > importing.MAX_BATCH_PHOTOS:
@@ -221,38 +271,11 @@ def upload_batch(
         files = files[: importing.MAX_BATCH_PHOTOS]
     creds = creds or send.creds_from_secrets(cfg.deliver.ftps_host)
     count = len(files)
-    done = [0]
-    began = check_batch._mono()
-    last_bytes = [0.0]
-
-    def say(extra: str = "", name: str = "") -> None:
-        text = f"{text_prefix}Uploading photo {min(done[0] + 1, count)} of {count}"
-        if name:
-            text += f" · {by_name[name].orig_name}"
-        if extra:
-            text += f" · {extra}"
-        if 0 < done[0] < count:
-            left = (check_batch._mono() - began) / done[0] * (count - done[0])
-            text += f" · {check_batch._time_left(left)}"
-        progress(done[0], count, text)
-
-    current = [""]
-
-    def on_start(name: str) -> None:
-        current[0] = name
-        last_bytes[0] = 0.0
-        say(name=name)
-
-    def on_bytes(sent: int) -> None:
-        now = check_batch._mono()
-        if now - last_bytes[0] < 0.5:  # the callback fires per block; keep the database calm
-            return
-        last_bytes[0] = now
-        say(f"{_megabytes(sent)} MB sent", name=current[0])
+    rep = _UploadReport(progress, count, text_prefix, by_name)
 
     def on_result(name: str, exc: Exception | None) -> None:
-        done[0] += 1
-        say()
+        rep.done += 1
+        rep.say()
         photo = by_name[name]
         assert photo.id is not None
         if exc is None:
@@ -264,9 +287,9 @@ def upload_batch(
 
     options: dict[str, Any] = {
         "cancel": cancel,
-        "on_start": on_start,
-        "on_bytes": on_bytes,
-        "on_wait": lambda text: progress(done[0], count, text_prefix + text),
+        "on_start": rep.on_start,
+        "on_bytes": rep.on_bytes,
+        "on_wait": rep.on_wait,
     }
     if waits is not None:
         options["waits"] = waits
@@ -274,7 +297,7 @@ def upload_batch(
         options["sleep"] = sleep
     kwargs = {"connect": connect} if connect is not None else {}
     send.upload_files(creds, files, on_result, **kwargs, **options)
-    summary.stopped = max(count - done[0], 0)
+    summary.stopped = max(count - rep.done, 0)
     if summary.uploaded:
         ledger_sync.refresh_ledger(cfg, store)
         reports.refresh_report(cfg, store, batch_id)
@@ -286,6 +309,16 @@ class DeliverSummary:
     prepare: PrepareSummary
     upload: UploadSummary | None = None
     export: ExportSummary | None = None
+
+
+def _offset_progress(progress: Progress, total: int, offset: int, limit: int) -> Progress:
+    """Report `offset + done` (at most `limit`) of `total` on the outer bar. Local until the shared
+    helper exists in core.progress."""
+
+    def report(done: int, _count: int, message: str = "") -> None:
+        progress(min(offset + done, limit), total, message)
+
+    return report
 
 
 def deliver_batch(
@@ -318,12 +351,12 @@ def deliver_batch(
     )
     total = 2 * n + 1
 
-    def prepare_progress(done: int, _total: int, message: str = "") -> None:
-        text = f"Step 1 of 2 · Preparing photos {min(done, n)}/{n}"
-        progress(min(done, n), total, text)
+    prepare_window = _offset_progress(progress, total, 0, n)
 
-    def upload_progress(done: int, _total: int, message: str = "") -> None:
-        progress(min(n + done, 2 * n), total, message)
+    def prepare_progress(done: int, _total: int, message: str = "") -> None:
+        prepare_window(done, _total, f"Step 1 of 2 · Preparing photos {min(done, n)}/{n}")
+
+    upload_progress = _offset_progress(progress, total, n, 2 * n)
 
     summary = DeliverSummary(
         prepare_batch(cfg, store, batch_id, progress=prepare_progress, cancel=cancel)

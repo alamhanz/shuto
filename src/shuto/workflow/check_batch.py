@@ -5,17 +5,15 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, replace
 
-from shuto.ai import catalog as local_models
-from shuto.ai import estimate, machine, selection, speedcheck
+from shuto.ai import estimate, selection, speedcheck
 from shuto.ai.providers.base import VisionLLM
-from shuto.core import paths
 from shuto.core import progress as core_progress
 from shuto.core.config import Config
 from shuto.core.errors import PipelineError
 from shuto.core.models import Status
 from shuto.core.progress import Cancel, Progress
 from shuto.store import Store
-from shuto.workflow import checks, culling, describing, importing
+from shuto.workflow import checks, culling, describing, importing, speed
 from shuto.workflow.culling import CullSummary
 from shuto.workflow.describing import DescribeSummary
 
@@ -112,12 +110,7 @@ def estimate_check(cfg: Config, store: Store, batch_id: str) -> estimate.Estimat
     side = cfg.llm.image_max_side or llm_cls.default_image_side
     conc = cfg.llm.concurrency or llm_cls.default_concurrency
     if sel.provider == "ollama":
-        recs = local_models.recommend(
-            machine.hardware_profile(),
-            local_models.load_catalog(),
-            [],
-            local_models.load_benchmarks(paths.benchmark_cache_path()),
-        )
+        recs = speed._recs(cfg, [])
         rec = next((r for r in recs if r.model.tag == sel.model), None)
         est = estimate.for_batch(
             n,

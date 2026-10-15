@@ -10,14 +10,19 @@ from shuto.core.config import Config
 from shuto.store import Store
 
 
-def expected_seconds_per_photo(cfg: Config, model: str) -> float | None:
-    """The seconds per photo shown before a local run (estimate_check uses the same figure)."""
-    recs = local_models.recommend(
+def _recs(cfg: Config, pulled: list[str]) -> list[local_models.Recommendation]:
+    """The catalog ranked for this machine (with measured speeds when there are any)."""
+    return local_models.recommend(
         machine.hardware_profile(),
         local_models.load_catalog(),
-        [],
+        pulled,
         local_models.load_benchmarks(paths.benchmark_cache_path()),
     )
+
+
+def expected_seconds_per_photo(cfg: Config, model: str) -> float | None:
+    """The seconds per photo shown before a local run (estimate_check uses the same figure)."""
+    recs = _recs(cfg, [])
     rec = next((r for r in recs if r.model.tag == model), None)
     return float(rec.est_seconds_per_image) if rec else None
 
@@ -31,12 +36,7 @@ def faster_model_options(cfg: Config, model: str) -> tuple[float, list[speedchec
         pulled = hardware.ollama_status(selection.ollama_client(cfg)).pulled
     except Exception:
         pulled = []
-    recs = local_models.recommend(
-        machine.hardware_profile(),
-        local_models.load_catalog(),
-        pulled,
-        local_models.load_benchmarks(paths.benchmark_cache_path()),
-    )
+    recs = _recs(cfg, pulled)
     here = next((r for r in recs if r.model.tag == model), None)
     current = float(here.est_seconds_per_image) if here else 0.0
     faster = [
@@ -65,7 +65,10 @@ def make_live_run(
         provider, model = sel.provider, sel.model
     if provider != "ollama":
         return None
-    expected = expected_seconds_per_photo(cfg, model)
+    try:
+        expected = expected_seconds_per_photo(cfg, model)
+    except Exception:
+        return None
     if not expected:
         return None
     return speedcheck.LiveRun(

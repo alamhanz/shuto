@@ -1,30 +1,25 @@
-"""In-app updates: find the newest release, and start the detached updater that installs it.
+"""In-app updates: can we update, and start the detached updater that installs the release.
 
-Only stdlib plus shuto config/pipeline helpers. Downloads come only from the fixed GitHub
-release URL below; the version string is validated before it is put in any URL or command.
-shuto downloads the wheel itself, checks its sha256 against the digest GitHub publishes for
-the release asset, and keeps the verified file in the workspace; the helper re-checks the hash
-right before installing from that file. The install itself is done by `_helper.py`, a
-stdlib-only script that runs outside the shuto tool folder (Windows locks the files of a
-running program).
+Only stdlib plus shuto config and settings helpers. `release` finds the newest release and
+`download` fetches the wheel; this module keeps the rest. Downloads come only from the fixed
+GitHub release URL (see `release`); the version string is validated before it is put in any
+URL or command. shuto downloads the wheel itself, checks its sha256 against the digest GitHub
+publishes for the release asset, and keeps the verified file in the workspace; the helper
+re-checks the hash right before installing from that file. The install itself is done by
+`_helper.py`, a stdlib-only script that runs outside the shuto tool folder (Windows locks the
+files of a running program).
 """
 
 from __future__ import annotations
 
-import hashlib
-import hmac
 import json
 import os
-import re
 import shutil
 import subprocess
 import sys
 import tempfile
 import threading
 import time
-import urllib.error
-import urllib.parse
-import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -35,290 +30,56 @@ from typing import Any, Literal
 from shuto.core import platform as core_platform
 from shuto.core.config import Config
 from shuto.settings import ui as settings_ui
+from shuto.update.download import (  # noqa: F401  (re-exported: other packages use update.core.X)
+    DOWNLOAD_TIMEOUT_S,
+    MAX_WHEEL_BYTES,
+    WHEEL_HOSTS,
+    _GithubOnlyRedirect,
+    _is_wheel_host,
+    download_wheel,
+    prune_wheels,
+    sha256_of,
+    wheels_dir,
+)
+from shuto.update.release import (  # noqa: F401  (re-exported: other packages use update.core.X)
+    DIGEST_RE,
+    HTTP_TIMEOUT_S,
+    LATEST_PAGE,
+    MAX_API_BYTES,
+    MSG_DOWNLOAD,
+    MSG_MISMATCH,
+    MSG_NO_DIGEST,
+    RELEASE_API,
+    REPO_RELEASES,
+    SHA256_RE,
+    TAG_URL_RE,
+    VERSION_RE,
+    WHEEL_PREFIX,
+    Latest,
+    UpdateError,
+    _latest_from_cache,
+    _NoRedirect,
+    _parts,
+    current_version,
+    fetch_latest,
+    fetch_wheel_digest,
+    is_newer,
+    notes_url,
+    wheel_name,
+    wheel_url,
+)
 
-REPO_RELEASES = "https://github.com/alamhanz/shuto/releases"
-LATEST_PAGE = REPO_RELEASES + "/latest"
-WHEEL_PREFIX = REPO_RELEASES + "/download/v"
-VERSION_RE = re.compile(r"\d+\.\d+\.\d+")  # final releases only; always use fullmatch
-TAG_URL_RE = re.compile(r"https://github\.com/alamhanz/shuto/releases/tag/v(\d+\.\d+\.\d+)")
-SHA256_RE = re.compile(r"[0-9a-f]{64}")
-DIGEST_RE = re.compile(r"sha256:([0-9a-f]{64})")
-RELEASE_API = "https://api.github.com/repos/alamhanz/shuto/releases/tags/v"
-MAX_API_BYTES = 2 * 1024 * 1024
-MSG_NO_DIGEST = "Could not check the update download. Try again later."
-MSG_DOWNLOAD = "shuto could not download the update. Try again later."
-MSG_MISMATCH = (
-    "The downloaded update did not match what was published, so nothing was changed. "
-    "Try again later."
-)
-# The release download redirects to GitHub's file storage; nothing else is followed.
-WHEEL_HOSTS = frozenset(
-    {"github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com"}
-)
-MAX_WHEEL_BYTES = 200 * 1024 * 1024
-DOWNLOAD_TIMEOUT_S = 30
-REDIRECTS = (301, 302, 303, 307, 308)
 CHECK_TTL_S = 24 * 3600
-HTTP_TIMEOUT_S = 5
 LOOPBACK = {"127.0.0.1", "::1", "localhost"}
 HELPER_SCRIPT = Path(__file__).with_name("_helper.py")
 
 _FETCH_LOCK = threading.Lock()
 
 
-class UpdateError(Exception):
-    """The update could not be started; the message is plain language."""
-
-
-@dataclass(frozen=True)
-class Latest:
-    version: str
-    wheel_url: str
-    notes_url: str
-    checked_at: float
-
-
 @dataclass(frozen=True)
 class Eligibility:
     ok: bool
     reason: str | None
-
-
-def wheel_url(version: str) -> str:
-    if not VERSION_RE.fullmatch(version):
-        raise ValueError(f"Not a release version: {version!r}")
-    return f"{WHEEL_PREFIX}{version}/shuto-{version}-py3-none-any.whl"
-
-
-def notes_url(version: str) -> str:
-    if not VERSION_RE.fullmatch(version):
-        raise ValueError(f"Not a release version: {version!r}")
-    return f"{REPO_RELEASES}/tag/v{version}"
-
-
-def wheel_name(version: str) -> str:
-    if not VERSION_RE.fullmatch(version):
-        raise ValueError(f"Not a release version: {version!r}")
-    return f"shuto-{version}-py3-none-any.whl"
-
-
-def wheels_dir(cfg: Config) -> Path:
-    """Where verified wheels are kept (the installed tool's receipt points here)."""
-    return cfg.workspace_path("updates", "wheels")
-
-
-def fetch_wheel_digest(version: str, opener: Any = None, timeout: float = HTTP_TIMEOUT_S) -> str:
-    """The sha256 GitHub reports for this release's wheel. Any problem is an UpdateError.
-
-    Redirects are not followed: api.github.com answers this URL directly.
-    """
-    if not VERSION_RE.fullmatch(version):
-        raise UpdateError(MSG_NO_DIGEST)
-    url = RELEASE_API + version  # only a validated version goes into the URL
-    opener = opener or urllib.request.build_opener(_NoRedirect)
-    req = urllib.request.Request(
-        url,
-        headers={
-            "User-Agent": f"shuto/{current_version()}",
-            "Accept": "application/vnd.github+json",
-        },
-    )
-    try:
-        resp = opener.open(req, timeout=timeout)
-        try:
-            data = json.loads(resp.read(MAX_API_BYTES))
-        finally:
-            close = getattr(resp, "close", None)
-            if close:
-                close()
-        if not isinstance(data, dict) or data.get("tag_name") != f"v{version}":
-            raise ValueError("wrong release")
-        name = wheel_name(version)
-        digests = [
-            a.get("digest")
-            for a in data.get("assets") or []
-            if isinstance(a, dict) and a.get("name") == name
-        ]
-        match = DIGEST_RE.fullmatch(digests[0]) if len(digests) == 1 else None
-        if not match:
-            raise ValueError("no usable digest")
-        return match.group(1)
-    except Exception:
-        raise UpdateError(MSG_NO_DIGEST) from None
-
-
-def _is_wheel_host(url: str) -> bool:
-    parts = urllib.parse.urlsplit(url)
-    try:
-        port = parts.port
-    except ValueError:
-        return False
-    return parts.scheme == "https" and parts.hostname in WHEEL_HOSTS and port in (None, 443)
-
-
-class _GithubOnlyRedirect(urllib.request.HTTPRedirectHandler):
-    """Follow redirects only to https URLs on GitHub's own download hosts."""
-
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        if not _is_wheel_host(newurl):
-            raise urllib.error.URLError("redirect to a foreign host refused")
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
-
-
-def sha256_of(path: Path) -> str:
-    h = hashlib.sha256()
-    with path.open("rb") as fh:
-        for chunk in iter(lambda: fh.read(1024 * 1024), b""):
-            h.update(chunk)
-    return h.hexdigest()
-
-
-def download_wheel(
-    version: str,
-    sha256: str,
-    folder: Path,
-    opener: Any = None,
-    timeout: float = DOWNLOAD_TIMEOUT_S,
-) -> Path:
-    """Download the release wheel into `folder`, keep it only if its sha256 matches.
-
-    A file already there with the right hash is reused. Any problem is an UpdateError.
-    """
-    if not SHA256_RE.fullmatch(sha256):
-        raise UpdateError(MSG_NO_DIGEST)
-    dest = folder / wheel_name(version)
-    try:
-        if dest.is_file() and hmac.compare_digest(sha256_of(dest), sha256):
-            return dest
-        folder.mkdir(parents=True, exist_ok=True)
-    except OSError:
-        raise UpdateError(MSG_DOWNLOAD) from None
-    opener = opener or urllib.request.build_opener(_GithubOnlyRedirect)
-    part = dest.with_name(dest.name + ".part")
-    req = urllib.request.Request(
-        wheel_url(version), headers={"User-Agent": f"shuto/{current_version()}"}
-    )
-    h = hashlib.sha256()
-    try:
-        resp = opener.open(req, timeout=timeout)
-        try:
-            if not _is_wheel_host(resp.geturl()):
-                raise ValueError("final address is not on GitHub")
-            size = 0
-            with part.open("wb") as out:
-                while chunk := resp.read(1024 * 1024):
-                    size += len(chunk)
-                    if size > MAX_WHEEL_BYTES:
-                        raise ValueError("download too large")
-                    h.update(chunk)
-                    out.write(chunk)
-        finally:
-            close = getattr(resp, "close", None)
-            if close:
-                close()
-        if not hmac.compare_digest(h.hexdigest(), sha256):
-            raise UpdateError(MSG_MISMATCH)
-        os.replace(part, dest)
-    except UpdateError:
-        raise
-    except Exception:
-        raise UpdateError(MSG_DOWNLOAD) from None
-    finally:
-        part.unlink(missing_ok=True)
-    return dest
-
-
-def prune_wheels(folder: Path, keep: set[str]) -> None:
-    """Delete every stored wheel (and half download) except the named files."""
-    try:
-        entries = list(folder.iterdir())
-    except OSError:
-        return
-    for entry in entries:
-        if entry.name not in keep and entry.name.startswith("shuto-"):
-            try:
-                entry.unlink()
-            except OSError:
-                pass
-
-
-def _parts(version: str) -> tuple[int, ...] | None:
-    if not VERSION_RE.fullmatch(version):
-        return None
-    return tuple(int(p) for p in version.split("."))
-
-
-def is_newer(latest: str, current: str) -> bool:
-    a, b = _parts(latest), _parts(current)
-    return a is not None and b is not None and a > b
-
-
-def current_version() -> str:
-    try:
-        return metadata.version("shuto")
-    except metadata.PackageNotFoundError:
-        return "dev"
-
-
-# --------------------------------------------------------------------------- version check
-
-
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, *args, **kwargs):
-        return None
-
-
-def fetch_latest(
-    opener: Any = None, timeout: float = HTTP_TIMEOUT_S, wheel_opener: Any = None
-) -> Latest | None:
-    """Ask GitHub which release is the latest. Any problem (offline, odd answer) gives None.
-
-    The wheel is only probed: a redirect from the release URL proves it exists, and it is not
-    followed, so nothing is downloaded.
-    """
-    if opener is None:
-        opener = urllib.request.build_opener()
-        wheel_opener = wheel_opener or urllib.request.build_opener(_NoRedirect)
-    wheel_opener = wheel_opener or opener
-    headers = {"User-Agent": f"shuto/{current_version()}"}
-
-    def head(client: Any, url: str) -> tuple[str, int]:
-        req = urllib.request.Request(url, method="HEAD", headers=headers)
-        try:
-            resp = client.open(req, timeout=timeout)
-        except urllib.error.HTTPError as err:
-            location = err.headers.get("Location", "") if err.headers else ""
-            if err.code in REDIRECTS and location.startswith("https://"):
-                return url, 200
-            raise
-        try:
-            return resp.geturl(), resp.getcode()
-        finally:
-            close = getattr(resp, "close", None)
-            if close:
-                close()
-
-    try:
-        final, _ = head(opener, LATEST_PAGE)
-        match = TAG_URL_RE.fullmatch(final)
-        if not match:
-            return None
-        version = match.group(1)
-        _, code = head(wheel_opener, wheel_url(version))
-        if code != 200:
-            return None
-        return Latest(version, wheel_url(version), notes_url(version), time.time())
-    except Exception:
-        return None
-
-
-def _latest_from_cache(cache: Any) -> Latest | None:
-    if not isinstance(cache, dict) or not cache.get("ok"):
-        return None
-    version = cache.get("version")
-    if not isinstance(version, str) or not VERSION_RE.fullmatch(version):
-        return None
-    return Latest(version, wheel_url(version), notes_url(version), float(cache["checked_at"]))
 
 
 def peek_cached(store) -> Latest | None:

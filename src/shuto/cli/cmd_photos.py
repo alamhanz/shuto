@@ -6,8 +6,8 @@ import argparse
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from shuto.ai import catalog as local_models
 from shuto.ai import filters as filters_mod
+from shuto.ai import model_choice as ai_choice
 from shuto.ai import selection
 from shuto.cli._io import (
     COMMON,
@@ -15,7 +15,6 @@ from shuto.cli._io import (
     _progress_printer,
     _short,
     _split_csv,
-    _yn,
     add_command,
     out,
     table,
@@ -23,6 +22,7 @@ from shuto.cli._io import (
 from shuto.cli.cmd_models import print_disk_advice, show_model_choice
 from shuto.core import paths as core_paths
 from shuto.core.models import REASON_CODES, Status
+from shuto.core.text import yes_no
 from shuto.workflow import (
     culling,
     describing,
@@ -135,7 +135,7 @@ def _describe_flow(
     cfg, store = ctx.run_cfg, ctx.store
     try:
         sel = selection.resolve_selection(cfg, store, provider, model)
-    except local_models.ModelChoiceRequired:
+    except ai_choice.ModelChoiceRequired:
         show_model_choice(cfg)
         return 2
     problems = selection.describe_preflight(cfg, sel)
@@ -220,7 +220,7 @@ def cmd_review(ctx: Ctx) -> int:
         m = p.metadata or {}
         out(
             f"[{p.id}] {p.orig_name}  status={p.status.value}  "
-            f"editorial={_yn(bool(m.get('editorial')))}"
+            f"editorial={yes_no(bool(m.get('editorial')))}"
         )
         out(f"  description: {m.get('description', '')}")
         out(f"  keywords ({len(m.get('keywords') or [])}): {', '.join(m.get('keywords') or [])}")

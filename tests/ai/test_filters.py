@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from shuto.ai.describe import Style, build_prompt, describe_photo
+from shuto.ai.describe import describe_photo
 from shuto.ai.filters import (
     MAX_RULES,
     FilterRuleError,
@@ -17,6 +17,7 @@ from shuto.ai.filters import (
     schema_properties,
     status_effect,
 )
+from shuto.ai.prompts import Style, build_prompt
 from shuto.ai.providers.base import LLMRequest, describe_structured
 from shuto.ai.providers.fake import DEFAULT_RESPONSE, FakeProvider
 from shuto.ai.providers.schema import PHOTO_OUTPUT_SCHEMA, PhotoOutput, photo_schema, repair_json

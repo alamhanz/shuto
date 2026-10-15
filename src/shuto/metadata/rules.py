@@ -21,7 +21,6 @@ from itertools import islice
 from shuto.core.validate import MAX_LANGUAGE_CHARS, MAX_TRIES, clean_language  # noqa: F401 (re-exported)
 
 MIN_COMMERCIAL_WORDS = 5  # the one "complete sentence" rule: model, guardrails, prepare, rules
-MIN_WORDS = MIN_COMMERCIAL_WORDS
 KEYWORD_FLOOR = 7  # Shutterstock's minimum; below it the photo cannot be sent
 DESC_JACCARD = 0.9
 KEYWORD_JACCARD = 0.85
@@ -83,7 +82,7 @@ class Issue:
 def reason(code: str, limits: Limits = DEFAULT_LIMITS, count: int = 0) -> str:
     """The plain-words reason for a problem code."""
     return {
-        "too_few_words": f"Description has fewer than {MIN_WORDS} words",
+        "too_few_words": f"Description has fewer than {MIN_COMMERCIAL_WORDS} words",
         "too_long": f"Description is over {limits.desc_max} characters",
         "comma_list": "Description reads like a list of words",
         "few_keywords": f"Only {count} keywords (Shutterstock needs at least {KEYWORD_FLOOR})",
@@ -166,8 +165,6 @@ def latin_words_only(text: str | None) -> str:
     words = [w for w in ascii_fold(text).split() if not has_foreign_script(w)]
     return re.sub(r"\s+", " ", " ".join(words)).strip()
 
-
-english_only = latin_words_only  # alias until T9 (same name as the language flag)
 
 ENGLISH = "English"
 
@@ -299,8 +296,8 @@ def check_description(
 
     n_words = len(words_of(text))
     if not english and has_spaceless_script(text):
-        n_words = max(n_words, MIN_WORDS)
-    if n_words < MIN_WORDS:
+        n_words = max(n_words, MIN_COMMERCIAL_WORDS)
+    if n_words < MIN_COMMERCIAL_WORDS:
         add("too_few_words")
     if prefix_len + len(text) > limits.desc_max:
         add("too_long")
@@ -308,7 +305,7 @@ def check_description(
         add("comma_list")
     if english and repeated_words(text):
         add("repeated_words")
-    if n_words >= MIN_WORDS:
+    if n_words >= MIN_COMMERCIAL_WORDS:
         if len(text) < limits.desc_target_min:
             add("short_description")
         elif len(text) > limits.desc_target_max and "too_long" not in {i.code for i in out}:

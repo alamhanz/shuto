@@ -18,14 +18,25 @@ from .helpers import fake_profile, write_jpeg
 
 
 @pytest.fixture(autouse=True)
+def _fresh_caches():
+    """Every process-wide cache starts empty, so no test depends on what an earlier one loaded."""
+    from shuto.places import geo
+    from shuto.workflow import checks
+
+    ai_machine.clear_cache()
+    geo.clear()
+    checks.clear_cache()
+
+
+@pytest.fixture(autouse=True)
 def _no_real_registry(monkeypatch):
     """Tests never read the real Windows registry: the 'saved' user value is the test's env."""
     import os
 
-    from shuto.ollama import models_dir as ollama_store
+    from shuto.ollama import env as ollama_env
 
     monkeypatch.setattr(
-        ollama_store,
+        ollama_env,
         "_win_read",
         lambda machine: None if machine else os.environ.get("OLLAMA_MODELS") or None,
     )

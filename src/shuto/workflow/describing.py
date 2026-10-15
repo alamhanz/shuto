@@ -9,8 +9,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from shuto.ai import benchmark as ai_benchmark
 from shuto.ai import catalog as local_models
-from shuto.ai import describe, estimate, hardware, machine, selection, speedcheck
+from shuto.ai import describe, estimate, hardware, machine, prompts, selection, speedcheck
+from shuto.ai import filters as filters_mod
+from shuto.ai import recommend as ai_recommend
 from shuto.ai.providers.base import LLMError, VisionLLM
 from shuto.core import models, paths
 from shuto.core import progress as core_progress
@@ -72,11 +75,11 @@ def estimate_describe(
     if sel.provider == "ollama":
         profile = profile or machine.hardware_profile()
         local_catalog = local_models.load_catalog()
-        recs = local_models.recommend(
+        recs = ai_recommend.recommend(
             profile,
             local_catalog,
             [],
-            local_models.load_benchmarks(paths.benchmark_cache_path()),
+            ai_benchmark.load_benchmarks(paths.benchmark_cache_path()),
         )
         rec = next((r for r in recs if r.model.tag == sel.model), None)
         return estimate.for_batch(
@@ -156,7 +159,7 @@ class DescribeRun:
     summary: DescribeSummary
     notes: str
     restrictions: Any
-    style: describe.Style
+    style: prompts.Style
     spec: Any
     feedback: Any
     seen: metadata_rules.BatchSeen
@@ -361,11 +364,9 @@ def describe_batch(
         summary,
         notes=batch.notes if batch else "",
         restrictions=checks.load_restrictions(cfg),
-        style=describe.Style.from_config(cfg.style),
-        spec=checks.filter_spec(cfg),
-        feedback=describe.feedback_lines(
-            store.rejection_stats(), store.recent_rejection_examples()
-        ),
+        style=prompts.Style.from_config(cfg.style),
+        spec=filters_mod.filter_spec(cfg),
+        feedback=prompts.feedback_lines(store.rejection_stats(), store.recent_rejection_examples()),
         seen=_seen_in_batch(store, batch_id, photos),
         side=cfg.llm.image_max_side or llm.default_image_side,
         cancel=cancel,

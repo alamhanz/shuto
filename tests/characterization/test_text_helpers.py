@@ -1,4 +1,4 @@
-"""Small text helpers that exist in several copies today. 0.5.1 may merge two copies only when
+"""Small text helpers that exist in several copies today. 0.6.0 may merge two copies only when
 the golden shows they give identical output for every input here (see IDENTICAL below)."""
 
 from __future__ import annotations
@@ -12,30 +12,27 @@ def _seam():
     from shuto import cli
     from shuto.ai import estimate
     from shuto.core import files as core_files
-    from shuto.deliver import csv_export
-    from shuto.ollama import models_dir as ollama_store
-    from shuto.update import core as updates
+    from shuto.core import text as core_text
+    from shuto.ollama import move as ollama_move
     from shuto.web import state, ux
-    from shuto.web.routes import batch as routes_batch
-    from shuto.web.routes import setup as routes_setup
+    from shuto.web.routes import home, model_support, upload
     from shuto.workflow import check_batch, delivering
 
     return {
         "time_left": check_batch._time_left,
-        "plain_seconds": routes_setup._plain_seconds,
+        "plain_seconds": model_support._plain_seconds,
         "ai_time_text": ux.ai_time_text,
         "format_duration": estimate.format_duration,
-        "mb": routes_batch._mb,
+        "mb": upload._mb,
         "megabytes": delivering._megabytes,
-        "gb": ollama_store._gb,
+        "gb": ollama_move._gb,
         "cli_short": cli._short,
         "web_short": state.short,
-        "cli_yn": cli._yn,
-        "csv_yn": csv_export._yn,
+        "cli_yn": core_text.yes_no,
+        "csv_yn": core_text.yes_no,
         "ux_n": ux._n,
-        "setup_n": routes_setup._n,
+        "setup_n": home._n,
         "sha256_file": core_files.sha256_file,
-        "sha256_of": updates.sha256_of,
     }
 
 
@@ -95,13 +92,12 @@ def test_which_copies_agree():
     check_json("text_helpers_identical.json", found)
 
 
-def test_the_two_sha256_functions_agree(tmp_path):
+def test_sha256_file(tmp_path):
     s = _seam()
     path = tmp_path / "blob.bin"
     path.write_bytes(b"shuto" * 100_000)
     expected = hashlib.sha256(path.read_bytes()).hexdigest()
     assert s["sha256_file"](path) == expected
-    assert s["sha256_of"](path) == expected
     empty = tmp_path / "empty.bin"
     empty.write_bytes(b"")
-    assert s["sha256_file"](empty) == s["sha256_of"](empty) == hashlib.sha256(b"").hexdigest()
+    assert s["sha256_file"](empty) == hashlib.sha256(b"").hexdigest()

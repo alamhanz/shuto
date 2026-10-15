@@ -15,7 +15,7 @@ import pytest
 
 from shuto.ai import hardware
 from shuto.core import platform as core_platform
-from shuto.ollama import env, move, service
+from shuto.ollama import env, errors, move, service
 from shuto.ollama import models_dir as store
 
 
@@ -77,7 +77,7 @@ def sysfake(monkeypatch, tmp_path):
     monkeypatch.setattr(core_platform, "os_name", lambda: "windows")  # same on every CI runner
     # never read the real registry: the "saved" user value is what the test put in the env
     monkeypatch.setattr(
-        store, "_win_read", lambda machine: None if machine else os.environ.get("OLLAMA_MODELS")
+        env, "_win_read", lambda machine: None if machine else os.environ.get("OLLAMA_MODELS")
     )
     return fake
 
@@ -105,19 +105,19 @@ def make_models(root: Path, blobs: dict[str, bytes]):
 def test_validate_rejects_bad_folders(tmp_path):
     cur = tmp_path / "old"
     cur.mkdir()
-    with pytest.raises(store.StoreError, match="Choose a folder"):
+    with pytest.raises(errors.StoreError, match="Choose a folder"):
         store.validate_target("  ", cur)
-    with pytest.raises(store.StoreError, match="full location"):
+    with pytest.raises(errors.StoreError, match="full location"):
         store.validate_target("models", cur)
-    with pytest.raises(store.StoreError, match="already"):
+    with pytest.raises(errors.StoreError, match="already"):
         store.validate_target(str(cur), cur)
-    with pytest.raises(store.StoreError, match="not inside"):
+    with pytest.raises(errors.StoreError, match="not inside"):
         store.validate_target(str(cur / "sub"), cur)
-    with pytest.raises(store.StoreError, match="not inside"):
+    with pytest.raises(errors.StoreError, match="not inside"):
         store.validate_target(str(tmp_path), cur)
     f = tmp_path / "afile"
     f.write_text("x")
-    with pytest.raises(store.StoreError, match="file"):
+    with pytest.raises(errors.StoreError, match="file"):
         store.validate_target(str(f), cur)
 
 
@@ -140,7 +140,7 @@ def test_prepare_folder_makes_and_tests_the_folder(tmp_path, monkeypatch):
         raise PermissionError("no")
 
     monkeypatch.setattr(Path, "write_bytes", boom)
-    with pytest.raises(store.StoreError, match="cannot save files"):
+    with pytest.raises(errors.StoreError, match="cannot save files"):
         move.prepare_folder(tmp_path / "other", move.Created())
 
 
@@ -164,9 +164,9 @@ def test_same_folder_under_another_name_is_rejected(tmp_path):
     cur.mkdir()
     link = tmp_path / "alias"
     _alias(link, cur)
-    with pytest.raises(store.StoreError, match="already"):
+    with pytest.raises(errors.StoreError, match="already"):
         store.validate_target(str(link), cur)
-    with pytest.raises(store.StoreError, match="not inside"):
+    with pytest.raises(errors.StoreError, match="not inside"):
         store.validate_target(str(link / "sub"), cur)  # inside the old folder, via the alias
 
 
@@ -176,7 +176,7 @@ def test_folder_containing_the_old_one_via_alias_is_rejected(tmp_path):
     cur.mkdir(parents=True)
     link = tmp_path / "alias"
     _alias(link, parent)
-    with pytest.raises(store.StoreError, match="not inside"):
+    with pytest.raises(errors.StoreError, match="not inside"):
         store.validate_target(str(link), cur)
 
 
@@ -187,7 +187,7 @@ def test_case_variant_of_the_old_folder_is_the_same_folder(tmp_path):
     if not other.exists():
         pytest.skip("case-sensitive file system")
     assert move.same_dir(cur, other)
-    with pytest.raises(store.StoreError, match="already"):
+    with pytest.raises(errors.StoreError, match="already"):
         store.validate_target(str(other), cur)
 
 
@@ -241,15 +241,15 @@ def test_windows_set_and_reset_use_user_environment(monkeypatch):
     monkeypatch.setattr(env, "_winreg", lambda: reg)
     monkeypatch.setattr(env, "_win_broadcast", lambda: broadcasts.append(1))
     monkeypatch.delenv("OLLAMA_MODELS", raising=False)
-    store.set_models_dir(Path("D:/ollama/models"), "windows")
+    env.set_models_dir(Path("D:/ollama/models"), "windows")
     assert reg.values == {"OLLAMA_MODELS": str(Path("D:/ollama/models"))}
     assert reg.opened == [("HKCU", "Environment", 2)]
     assert os.environ["OLLAMA_MODELS"] == str(Path("D:/ollama/models"))
     assert broadcasts == [1]
     assert store.is_custom()
-    store.reset_models_dir("windows")
+    env.reset_models_dir("windows")
     assert reg.values == {} and "OLLAMA_MODELS" not in os.environ
-    store.reset_models_dir("windows")  # nothing to delete: still fine
+    env.reset_models_dir("windows")  # nothing to delete: still fine
     assert len(broadcasts) == 3
 
 
@@ -261,7 +261,7 @@ def test_windows_broadcast_failure_is_not_fatal(monkeypatch):
 
     monkeypatch.setattr(env, "_win_broadcast", boom)
     monkeypatch.delenv("OLLAMA_MODELS", raising=False)
-    store.set_models_dir("D:\\m", "windows")
+    env.set_models_dir("D:\\m", "windows")
     assert os.environ["OLLAMA_MODELS"] == "D:\\m"
 
 
@@ -275,7 +275,7 @@ def test_mac_set_and_reset_write_login_item(monkeypatch, tmp_path):
         lambda cmd, timeout=20: cmds.append(cmd) or types.SimpleNamespace(returncode=0),
     )
     monkeypatch.delenv("OLLAMA_MODELS", raising=False)
-    store.set_models_dir("/Volumes/Big/ollama", "macos")
+    env.set_models_dir("/Volumes/Big/ollama", "macos")
     assert cmds == [["launchctl", "setenv", "OLLAMA_MODELS", "/Volumes/Big/ollama"]]
     data = plistlib.loads(plist.read_bytes())
     assert data["RunAtLoad"] is True
@@ -285,7 +285,7 @@ def test_mac_set_and_reset_write_login_item(monkeypatch, tmp_path):
         "OLLAMA_MODELS",
         "/Volumes/Big/ollama",
     ]
-    store.reset_models_dir("macos")
+    env.reset_models_dir("macos")
     assert cmds[-1] == ["launchctl", "unsetenv", "OLLAMA_MODELS"]
     assert not plist.exists() and "OLLAMA_MODELS" not in os.environ
 
@@ -294,18 +294,18 @@ def test_mac_launchctl_failure_is_reported(monkeypatch, tmp_path):
     monkeypatch.setattr(env, "_plist_path", lambda: tmp_path / "p.plist")
     monkeypatch.setattr(env, "_run", lambda cmd, timeout=20: types.SimpleNamespace(returncode=1))
     monkeypatch.delenv("OLLAMA_MODELS", raising=False)
-    with pytest.raises(store.StoreError, match="macOS would not"):
-        store.set_models_dir("/x", "macos")
+    with pytest.raises(errors.StoreError, match="macOS would not"):
+        env.set_models_dir("/x", "macos")
     assert "OLLAMA_MODELS" not in os.environ
 
 
 def test_linux_is_not_supported_in_app():
     assert not store.supported("linux") and store.supported("windows") and store.supported("macos")
-    with pytest.raises(store.StoreUnsupported, match="Help"):
-        store.set_models_dir("/mnt/x", "linux")
-    with pytest.raises(store.StoreUnsupported):
-        store.reset_models_dir("linux")
-    with pytest.raises(store.StoreUnsupported):
+    with pytest.raises(errors.StoreUnsupported, match="Help"):
+        env.set_models_dir("/mnt/x", "linux")
+    with pytest.raises(errors.StoreUnsupported):
+        env.reset_models_dir("linux")
+    with pytest.raises(errors.StoreUnsupported):
         store.change_models_dir(Path("/mnt/x"), move=False, client=None, os_name="linux")
 
 
@@ -314,7 +314,7 @@ def test_linux_is_not_supported_in_app():
 
 def test_stop_reports_when_ollama_will_not_close(sysfake, monkeypatch):
     monkeypatch.setattr(env, "_run", lambda cmd, timeout=20: types.SimpleNamespace(returncode=1))
-    with pytest.raises(store.StoreError, match="would not close"):
+    with pytest.raises(errors.StoreError, match="would not close"):
         service.stop_ollama(sysfake, "windows")
 
 
@@ -369,7 +369,7 @@ def test_a_same_name_file_of_other_size_is_a_conflict(sysfake, envlog, folders):
     (new / "blobs" / "sha256-aaa").write_bytes(b"A" * 10)
     plan = move.plan_move(old, new)
     assert plan.conflicts == [str(Path("blobs") / "sha256-aaa")]
-    with pytest.raises(store.StoreError, match="will not overwrite"):
+    with pytest.raises(errors.StoreError, match="will not overwrite"):
         store.change_models_dir(new, move=True, client=sysfake, os_name="windows")
     assert sysfake.cmds == [] and envlog == []  # stopped before anything was changed
     assert (new / "blobs" / "sha256-aaa").read_bytes() == b"A" * 10
@@ -381,7 +381,7 @@ def test_a_differing_manifest_in_the_target_is_never_overwritten(sysfake, envlog
     manifest = new / "manifests" / "registry" / "library" / "gemma3" / "4b"
     manifest.parent.mkdir(parents=True)
     manifest.write_text('{"v": 2}')
-    with pytest.raises(store.StoreError, match="will not overwrite"):
+    with pytest.raises(errors.StoreError, match="will not overwrite"):
         store.change_models_dir(new, move=True, client=sysfake, os_name="windows")
     assert manifest.read_text() == '{"v": 2}' and not (new / "blobs").exists()
     assert (old / "manifests").exists()
@@ -402,7 +402,7 @@ def test_a_target_with_other_models_is_merged(sysfake, envlog, folders):
 def test_not_enough_space_changes_nothing(sysfake, envlog, folders, monkeypatch):
     old, new = folders
     monkeypatch.setattr(hardware, "free_gb", lambda p: 0.5)
-    with pytest.raises(store.StoreError, match="not enough room"):
+    with pytest.raises(errors.StoreError, match="not enough room"):
         store.change_models_dir(new, move=True, client=sysfake, os_name="windows")
     assert envlog == [] and sysfake.cmds == [] and (old / "blobs" / "sha256-aaa").exists()
 
@@ -419,7 +419,7 @@ def test_copy_failure_keeps_old_files_and_restores_setting(sysfake, envlog, fold
         return real(src, dst, *a)
 
     monkeypatch.setattr(move, "_copy_file", flaky)
-    with pytest.raises(store.StoreError, match="models were not changed"):
+    with pytest.raises(errors.StoreError, match="models were not changed"):
         store.change_models_dir(new, move=True, client=sysfake, os_name="windows")
     assert (old / "blobs" / "sha256-aaa").exists() and (old / "blobs" / "sha256-bbb").exists()
     assert (old / "manifests").exists()
@@ -437,7 +437,7 @@ def test_corrupt_copy_is_detected(sysfake, envlog, folders, monkeypatch):
             dst.write_bytes(b"short")
 
     monkeypatch.setattr(move, "_copy_file", short)
-    with pytest.raises(store.StoreError, match="did not match"):
+    with pytest.raises(errors.StoreError, match="did not match"):
         store.change_models_dir(new, move=True, client=sysfake, os_name="windows")
     assert (old / "blobs" / "sha256-bbb").stat().st_size == 1_500_000
 
@@ -451,7 +451,7 @@ def test_models_missing_after_restart_keeps_old_files(sysfake, envlog, folders):
         sysfake.hide_models = True
 
     sysfake.spawn = spawn_and_hide
-    with pytest.raises(store.StoreError, match="cannot see gemma3:4b"):
+    with pytest.raises(errors.StoreError, match="cannot see gemma3:4b"):
         store.change_models_dir(new, move=True, client=sysfake, os_name="windows")
     assert (old / "blobs" / "sha256-aaa").exists()
     assert envlog[-1] == str(old)
@@ -477,7 +477,7 @@ def test_unexpected_error_still_recovers(sysfake, envlog, folders, monkeypatch):
         raise RuntimeError("odd")
 
     monkeypatch.setattr(move, "copy_models", boom)
-    with pytest.raises(store.StoreError, match="unexpected"):
+    with pytest.raises(errors.StoreError, match="unexpected"):
         store.change_models_dir(new, move=True, client=sysfake, os_name="windows")
     assert envlog[-1:] == [str(old)] and sysfake.up
     assert (old / "blobs" / "sha256-aaa").exists()
@@ -498,7 +498,7 @@ def test_failure_removes_only_files_this_run_created(sysfake, envlog, folders, m
         return real(src, dst, *a)
 
     monkeypatch.setattr(move, "_copy_file", flaky)
-    with pytest.raises(store.StoreError, match="models were not changed"):
+    with pytest.raises(errors.StoreError, match="models were not changed"):
         store.change_models_dir(new, move=True, client=sysfake, os_name="windows")
     assert keep.read_bytes() == b"mine"
     assert [p.name for p in new.rglob("*") if p.is_file()] == ["sha256-keep"]
@@ -512,7 +512,7 @@ def test_target_folder_is_created_in_the_job_and_removed_on_failure(
     target = tmp_path / "x" / "y" / "models"
     assert not target.exists()
     sysfake.start_works = False
-    with pytest.raises(store.StoreError, match="did not start again"):
+    with pytest.raises(errors.StoreError, match="did not start again"):
         store.change_models_dir(target, move=True, client=sysfake, os_name="windows")
     assert not (tmp_path / "x").exists()
 
@@ -536,7 +536,7 @@ def test_move_is_refused_when_ollama_cannot_be_asked_for_its_models(
 ):
     old, new = folders
     monkeypatch.setattr(store, "_names", lambda client: None)
-    with pytest.raises(store.StoreError, match="could not ask"):
+    with pytest.raises(errors.StoreError, match="could not ask"):
         store.change_models_dir(new, move=True, client=sysfake, os_name="windows")
     assert (old / "blobs" / "sha256-aaa").exists()
 
@@ -556,16 +556,16 @@ def test_machine_wide_setting_is_refused_with_a_plain_message(
     sysfake, envlog, folders, monkeypatch
 ):
     _, new = folders
-    monkeypatch.setattr(store, "_win_read", lambda machine: "E:\\models" if machine else None)
+    monkeypatch.setattr(env, "_win_read", lambda machine: "E:\\models" if machine else None)
     assert store.machine_wide_value("windows") == "E:\\models"
     assert store.machine_wide_value("macos") is None
-    with pytest.raises(store.StoreError, match="whole computer"):
+    with pytest.raises(errors.StoreError, match="whole computer"):
         store.change_models_dir(new, move=False, client=sysfake, os_name="windows")
-    with pytest.raises(store.StoreError, match="whole computer"):
+    with pytest.raises(errors.StoreError, match="whole computer"):
         store.change_models_dir(None, move=False, client=sysfake, os_name="windows")
     assert envlog == [] and sysfake.cmds == []
     # a value of the user's own wins over the machine-wide one
-    monkeypatch.setattr(store, "_win_read", lambda machine: "E:\\m" if machine else "D:\\m")
+    monkeypatch.setattr(env, "_win_read", lambda machine: "E:\\m" if machine else "D:\\m")
     assert store.machine_wide_value("windows") is None
 
 
@@ -620,10 +620,10 @@ def test_delete_refuses_when_a_copy_is_missing_or_a_different_size(folders):
     plan = _plan(old, new)
     move.copy_models(plan)
     (new / "blobs" / "sha256-bbb").write_bytes(b"short")
-    with pytest.raises(store.StoreError, match="missing or incomplete"):
+    with pytest.raises(errors.StoreError, match="missing or incomplete"):
         move.delete_old_models(plan)
     (new / "blobs" / "sha256-bbb").unlink()
-    with pytest.raises(store.StoreError, match="missing or incomplete"):
+    with pytest.raises(errors.StoreError, match="missing or incomplete"):
         move.delete_old_models(plan)
     assert (old / "blobs" / "sha256-aaa").exists() and (old / "manifests").exists()
 
@@ -637,7 +637,7 @@ def test_delete_refuses_when_the_copy_is_the_same_file(tmp_path):
     except (OSError, NotImplementedError):
         pytest.skip("hard links not allowed here")
     plan = move.MovePlan(old, new, move._model_files(old), 0)
-    with pytest.raises(store.StoreError, match="same file"):
+    with pytest.raises(errors.StoreError, match="same file"):
         move.delete_old_models(plan)
     assert (old / "blobs" / "sha256-aaa").read_bytes() == b"A" * 100
 
@@ -648,7 +648,7 @@ def test_delete_refuses_when_both_folders_are_one_place(tmp_path):
     link = tmp_path / "alias"
     _alias(link, old)
     plan = move.MovePlan(old, link, move._model_files(old), 0)
-    with pytest.raises(store.StoreError, match="same place"):
+    with pytest.raises(errors.StoreError, match="same place"):
         move.delete_old_models(plan)
     assert (old / "blobs" / "sha256-aaa").exists()
 
@@ -661,7 +661,7 @@ def test_a_move_into_an_alias_of_the_old_folder_deletes_nothing(
     monkeypatch.setenv("OLLAMA_MODELS", str(old))
     link = tmp_path / "alias"
     _alias(link, old)
-    with pytest.raises(store.StoreError, match="already"):
+    with pytest.raises(errors.StoreError, match="already"):
         store.change_models_dir(link, move=True, client=sysfake, os_name="windows")
     assert (old / "blobs" / "sha256-aaa").read_bytes() == b"A" * 100
     assert sysfake.cmds == [] and envlog == []
@@ -670,7 +670,7 @@ def test_a_move_into_an_alias_of_the_old_folder_deletes_nothing(
 def test_ollama_not_coming_back_rolls_back(sysfake, envlog, folders):
     old, new = folders
     sysfake.start_works = False
-    with pytest.raises(store.StoreError, match="did not start again"):
+    with pytest.raises(errors.StoreError, match="did not start again"):
         store.change_models_dir(new, move=False, client=sysfake, os_name="windows")
     assert envlog[0] == str(new) and envlog[-1] == str(old)
     assert (old / "blobs" / "sha256-aaa").exists()
@@ -703,7 +703,7 @@ def test_reset_goes_back_to_default(sysfake, envlog, folders, monkeypatch, tmp_p
 def test_reset_when_already_default_says_so(sysfake, envlog, folders, monkeypatch):
     old, _ = folders
     monkeypatch.setattr(store, "default_models_dir", lambda home=None: old)
-    with pytest.raises(store.StoreError, match="already"):
+    with pytest.raises(errors.StoreError, match="already"):
         store.change_models_dir(None, move=False, client=sysfake, os_name="windows")
 
 
@@ -771,7 +771,7 @@ def test_a_big_blob_already_in_the_target_must_match_its_name(
     monkeypatch.setenv("OLLAMA_MODELS", str(old))
     plan = move.plan_move(old, new)
     assert plan.conflicts == [str(Path("blobs") / name)]
-    with pytest.raises(store.StoreError, match="will not overwrite"):
+    with pytest.raises(errors.StoreError, match="will not overwrite"):
         store.change_models_dir(new, move=True, client=sysfake, os_name="windows")
     assert (old / "blobs" / name).read_bytes() == good  # the only good copy is still there
     assert (new / "blobs" / name).read_bytes() == b"D" * len(good)
@@ -793,12 +793,12 @@ def test_the_saved_value_not_the_process_env_decides(sysfake, envlog, tmp_path, 
     saved = tmp_path / "saved"
     make_models(saved, {"sha256-aaa": b"A" * 100})
     monkeypatch.delenv("OLLAMA_MODELS", raising=False)  # a stale shell that never saw the setting
-    monkeypatch.setattr(store, "_win_read", lambda machine: None if machine else str(saved))
+    monkeypatch.setattr(env, "_win_read", lambda machine: None if machine else str(saved))
     assert store.current_models_dir() == saved and store.is_custom()
     sysfake.start_works = False
     new = tmp_path / "new"
     new.mkdir()
-    with pytest.raises(store.StoreError, match="did not start again"):
+    with pytest.raises(errors.StoreError, match="did not start again"):
         store.change_models_dir(new, move=False, client=sysfake, os_name="windows")
     assert envlog[-1] == str(saved)  # the owner's earlier choice is put back, not erased
     assert (saved / "blobs" / "sha256-aaa").exists()
@@ -829,10 +829,10 @@ def test_reset_is_refused_when_a_machine_wide_value_exists_even_with_a_user_valu
     sysfake, envlog, folders, monkeypatch
 ):
     old, _ = folders
-    monkeypatch.setattr(store, "_win_read", lambda machine: "E:\admin" if machine else str(old))
+    monkeypatch.setattr(env, "_win_read", lambda machine: "E:\admin" if machine else str(old))
     assert store.machine_wide_value("windows") is None  # the user's own value wins for Ollama
     assert store.machine_any_value("windows") == "E:\admin"
-    with pytest.raises(store.StoreError, match="administrator"):
+    with pytest.raises(errors.StoreError, match="administrator"):
         store.change_models_dir(None, move=True, client=sysfake, os_name="windows")
     assert envlog == [] and sysfake.cmds == [] and (old / "blobs" / "sha256-aaa").exists()
 
@@ -851,6 +851,6 @@ def test_freeable_bytes_ignores_layers_shared_with_other_models(tmp_path):
     (root / "blobs").mkdir()
     for d, size in (("x", 10), ("y", 20), ("shared", 1000)):
         (root / "blobs" / f"sha256-{d}").write_bytes(b"0" * size)
-    assert store.freeable_bytes(root, "a") == 10
-    assert store.freeable_bytes(root, "b:latest") == 20
-    assert store.freeable_bytes(root, "missing") is None
+    assert move.freeable_bytes(root, "a") == 10
+    assert move.freeable_bytes(root, "b:latest") == 20
+    assert move.freeable_bytes(root, "missing") is None

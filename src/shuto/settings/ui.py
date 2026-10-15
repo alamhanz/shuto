@@ -9,10 +9,10 @@ from typing import Any, TypedDict
 from shuto.ai import filters as filters_mod
 from shuto.core.config import Config
 from shuto.core.errors import SettingsError
+from shuto.core.text import fold_words
 from shuto.core.validate import clean_place_part
 from shuto.metadata import rules as metadata_rules
 from shuto.store import Store
-from shuto.workflow import checks, review
 
 
 class UiStyle(TypedDict, total=False):
@@ -111,7 +111,7 @@ def _clean_style(value: Any) -> UiStyle:
         words = value.get("always_include") or []
         if isinstance(words, str):
             words = words.replace("\n", ",").split(",")
-        words = review._fold(words)
+        words = fold_words(words)
         if len(words) > MAX_ALWAYS_INCLUDE:
             raise SettingsError(f"Use at most {MAX_ALWAYS_INCLUDE} always-include keywords.")
         out["always_include"] = words
@@ -171,7 +171,7 @@ def _clean_filters(value: Any) -> UiFilters:
 
 def get_filter_rules(cfg: Config) -> list[filters_mod.UserRule]:
     """The rules new photos are checked with (config plus web app settings)."""
-    return list(checks.filter_spec(cfg).rules)
+    return list(filters_mod.filter_spec(cfg).rules)
 
 
 def _clean_update_cache(value: Any) -> dict[str, Any]:

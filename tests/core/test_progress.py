@@ -13,10 +13,7 @@ def test_scaled_progress_maps_onto_part_of_a_bar():
     assert seen == [(50, 1000, "a"), (400, 1000, "b"), (100, 1000, "")]
 
 
-def test_folder_name_lives_in_core_and_is_still_in_report():
-    from shuto.deliver import report
-
-    assert report.folder_name is folder_name
+def test_folder_name_lives_in_core():
     assert folder_name("trip (2)") == "trip (2)"
 
 

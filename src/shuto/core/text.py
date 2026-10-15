@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from datetime import datetime
 
 
@@ -20,3 +21,15 @@ def parse_dt(value: str | None) -> datetime | None:
 
 def yes_no(value: object) -> str:
     return "yes" if bool(value) else "no"
+
+
+def fold_words(words: Iterable[str]) -> list[str]:
+    """The words trimmed, empty ones dropped and repeats (ignoring case) removed, in order."""
+    seen: set[str] = set()
+    out: list[str] = []
+    for w in words:
+        w = str(w).strip()
+        if w and w.lower() not in seen:
+            seen.add(w.lower())
+            out.append(w)
+    return out

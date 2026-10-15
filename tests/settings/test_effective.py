@@ -15,7 +15,6 @@ def test_effective_config_applies_saved_values(cfg, store):
     assert out.llm.max_tries == 3 and out.prepare.include_gps is True
     assert out.style.english_only is False and out.style.metadata_language == "Japanese"
     assert out.style.theme == "Rain" and out.style.default_place.city == "Kyoto"
-    assert effective.apply_style_overrides is effective.effective_config
 
 
 def test_effective_config_ignores_damaged_values(cfg, store):

@@ -1,4 +1,4 @@
-"""Local web app: FastAPI + Jinja2 + htmx. Calls only the service layer (pipeline, jobs).
+"""Local web app: FastAPI + Jinja2 + htmx. Calls only the service layer (workflow, jobs).
 
 Security model: loopback bind by default, Host header allow-list (DNS rebinding), Origin check on
 every state-changing request, a per-process CSRF token, autoescaped templates, files served by

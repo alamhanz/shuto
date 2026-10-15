@@ -2,7 +2,7 @@
 
 Pure module: no SQLite, no config files, no network. Everything the model says about the
 filters is read leniently and never raises. A missing, garbled or unusable answer becomes
-"unknown", which the pipeline shows as "Needs a look" (never a silent pass).
+"unknown", which shuto shows as "Needs a look" (never a silent pass).
 """
 
 from __future__ import annotations
@@ -13,7 +13,12 @@ import re
 import secrets
 import unicodedata
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+from shuto.core.errors import PipelineError
+
+if TYPE_CHECKING:
+    from shuto.core.config import Config
 
 MAX_RULES = 10
 MIN_RULE_TEXT = 2
@@ -138,6 +143,21 @@ class FilterSpec:
         }
         blob = json.dumps(canon, sort_keys=True, ensure_ascii=False, separators=(",", ":"))
         return hashlib.sha1(blob.encode("utf-8")).hexdigest()[:12]
+
+
+def filter_spec(cfg: Config) -> FilterSpec:
+    """The theme and the user's rules that describe asks the model about (from `cfg`, which
+    already includes the web app's `ui.filters` when built with `effective_config`)."""
+    try:
+        rules = clean_rules([r.model_dump() for r in cfg.filters.rules])
+    except FilterRuleError as exc:
+        raise PipelineError(str(exc)) from exc
+    return FilterSpec(
+        theme=cfg.style.theme or "",
+        theme_check=cfg.filters.theme_check,
+        theme_partly=cfg.filters.theme_partly,
+        rules=tuple(rules),
+    )
 
 
 def _quote(text: str) -> str:

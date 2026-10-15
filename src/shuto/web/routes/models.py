@@ -5,11 +5,13 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
-from shuto.ai import catalog as local_models
 from shuto.ai import hardware, selection
+from shuto.ai import model_choice as ai_choice
 from shuto.core import paths
 from shuto.core.jobs import JobCancelled, JobContext
+from shuto.ollama import env as ollama_env
 from shuto.ollama import models_dir as ollama_store
+from shuto.ollama.errors import StoreError
 from shuto.web import ux
 from shuto.web.routes.actions import RETURN_PAGES, TAG_RE, apply_model
 from shuto.web.routes.model_support import (
@@ -249,7 +251,7 @@ def settings_model_remove(request: Request, form: PostForm, ctx: Ctx):
         return ctx.go(back, None, msg, request)
     if model_in_use(ctx, tag):
         # nothing is chosen any more: the "No AI model set" note shows until the user picks
-        local_models.clear_choice(paths.model_choice_path())
+        ai_choice.clear_choice(paths.model_choice_path())
         ctx.store.set_setting("llm.provider", "")
         ctx.store.set_setting("llm.model", "")
         ctx.invalidate_model_status()
@@ -261,18 +263,18 @@ def settings_model_remove(request: Request, form: PostForm, ctx: Ctx):
 
 def change_models_dir(ctx: WebCtx, request: Request, form, reset: bool):
     if not ollama_store.supported():
-        return ctx.message_fragment(request, ollama_store.LINUX_TEXT)
+        return ctx.message_fragment(request, ollama_env.LINUX_TEXT)
     if ollama_store.machine_wide_value():
-        return ctx.message_fragment(request, ollama_store.MACHINE_TEXT)
+        return ctx.message_fragment(request, ollama_env.MACHINE_TEXT)
     if reset and ollama_store.machine_any_value():
-        return ctx.message_fragment(request, ollama_store.MACHINE_RESET_TEXT)
+        return ctx.message_fragment(request, ollama_env.MACHINE_RESET_TEXT)
     back = str(form.get("return_to") or "")
     back = back if back in RETURN_PAGES else "/settings"
     target, warnings = None, []
     if not reset:
         try:
             check = ollama_store.validate_target(str(form.get("path") or ""))
-        except ollama_store.StoreError as exc:
+        except StoreError as exc:
             return ctx.message_fragment(request, str(exc))
         target, warnings = check.path, check.warnings
     move = form.get("move") == "yes"

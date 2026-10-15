@@ -108,6 +108,3 @@ def effective_config(cfg: Config, store: Store) -> Config:
     ):
         cfg = step(cfg, store)
     return cfg
-
-
-apply_style_overrides = effective_config  # alias until T9

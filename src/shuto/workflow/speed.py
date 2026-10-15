@@ -2,21 +2,23 @@
 
 from __future__ import annotations
 
+from shuto.ai import benchmark as ai_benchmark
 from shuto.ai import catalog as local_models
 from shuto.ai import hardware, machine, selection, speedcheck
+from shuto.ai import recommend as ai_recommend
 from shuto.ai.providers.base import VisionLLM
 from shuto.core import paths
 from shuto.core.config import Config
 from shuto.store import Store
 
 
-def _recs(cfg: Config, pulled: list[str]) -> list[local_models.Recommendation]:
+def _recs(cfg: Config, pulled: list[str]) -> list[ai_recommend.Recommendation]:
     """The catalog ranked for this machine (with measured speeds when there are any)."""
-    return local_models.recommend(
+    return ai_recommend.recommend(
         machine.hardware_profile(),
         local_models.load_catalog(),
         pulled,
-        local_models.load_benchmarks(paths.benchmark_cache_path()),
+        ai_benchmark.load_benchmarks(paths.benchmark_cache_path()),
     )
 
 

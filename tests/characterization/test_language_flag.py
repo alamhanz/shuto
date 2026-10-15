@@ -13,7 +13,7 @@ from . import check_json
 
 
 def _seam():
-    from shuto.ai import describe
+    from shuto.ai import prompts
     from shuto.deliver import csv_export, prepare
     from shuto.metadata import rules as metadata_rules
     from shuto.places import context as photo_context
@@ -24,10 +24,10 @@ def _seam():
         "release_check": prepare.release_check,
         "build_csv": csv_export.build_csv,
         "NotEnglishError": csv_export.NotEnglishError,
-        "language_rule": describe.language_rule,
-        "Style": describe.Style,
+        "language_rule": prompts.language_rule,
+        "Style": prompts.Style,
         "clean_text": photo_context._clean_text,
-        "english_only_fn": metadata_rules.english_only,
+        "english_only_fn": metadata_rules.latin_words_only,
         "has_foreign_script": metadata_rules.has_foreign_script,
         "clean_language": metadata_rules.clean_language,
     }

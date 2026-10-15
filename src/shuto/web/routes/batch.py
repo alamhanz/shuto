@@ -9,13 +9,12 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from shuto.ai import selection
-from shuto.ai.catalog import ModelChoiceRequired
+from shuto.ai.model_choice import ModelChoiceRequired
 from shuto.core.errors import PipelineError
 from shuto.core.jobs import JobContext
 from shuto.core.models import Status
 from shuto.web import ux
 from shuto.web.routes.batch_support import batch_page, batch_url, count_by_status
-from shuto.web.routes.upload import _mb  # noqa: F401  alias until T9 (characterization seam)
 from shuto.web.state import Ctx, PostForm, WebCtx
 from shuto.workflow import check_batch, checks, speed
 

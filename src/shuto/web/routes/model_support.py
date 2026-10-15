@@ -9,13 +9,16 @@ from fastapi.responses import HTMLResponse
 
 from shuto.ai import catalog as local_models
 from shuto.ai import estimate, hardware, selection
+from shuto.ai import model_choice as ai_choice
+from shuto.ai.providers import API_KEY_SECRETS, API_PROVIDERS
 from shuto.core import secrets as shuto_secrets
 from shuto.core.jobs import JobBusy, JobContext
+from shuto.ollama import env as ollama_env
 from shuto.ollama import models_dir as ollama_store
-from shuto.web.routes.actions import API_KEY_ENV, API_PROVIDERS, TAG_RE
+from shuto.ollama import move as ollama_move
+from shuto.web.routes.actions import TAG_RE
 from shuto.web.state import MODELS_JOB_KEY, WebCtx
 
-OLLAMA_URL = "https://ollama.com/download"
 AI_JOB_KINDS = {"check", "describe"}  # jobs that use the AI model
 # Pages that reload by themselves when a model download ends well, so the chosen model shows at
 # once. Pages with text fields (other wizard steps, Settings, Add photos) are left alone: a
@@ -95,7 +98,7 @@ def selected_tag(ctx: WebCtx) -> str | None:
     """
     try:
         sel = selection.resolve_selection(ctx.cfg, ctx.store)
-    except local_models.ModelChoiceRequired:
+    except ai_choice.ModelChoiceRequired:
         return None  # nothing chosen yet, so nothing is in use
     except Exception:
         raise RuntimeError("The model in use could not be read.") from None
@@ -131,7 +134,7 @@ def removable_models(ctx: WebCtx, include_in_use: bool = False) -> list[dict]:
             or norm not in listed
         ):
             continue
-        freed = ollama_store.freeable_bytes(root, name)
+        freed = ollama_move.freeable_bytes(root, name)
         out.append({"tag": name, "size_gb": (freed or 0) / 1024**3, "known": freed is not None})
     return out
 
@@ -151,7 +154,7 @@ def model_context(ctx: WebCtx, report) -> dict:
     providers = []
     for prov in API_PROVIDERS:
         entry = selection.api_model(prov)
-        env = API_KEY_ENV.get(prov)
+        env = API_KEY_SECRETS.get(prov)
         providers.append(
             {
                 "name": prov,
@@ -183,7 +186,7 @@ def model_context(ctx: WebCtx, report) -> dict:
 def storage_context(ctx: WebCtx) -> dict:
     """Where Ollama keeps models now, free space, and drives that could hold them."""
     cur = ollama_store.current_models_dir()
-    size = ollama_store.models_size_bytes(cur)
+    size = ollama_move.models_size_bytes(cur)
     gb = size / 1024**3
     try:
         drives = hardware.other_volumes(max(10.0, gb + 2), cur)
@@ -200,8 +203,8 @@ def storage_context(ctx: WebCtx) -> dict:
         "supported": ollama_store.supported(),
         "machine": machine,
         "machine_any": bool(ollama_store.machine_any_value()),
-        "machine_text": ollama_store.MACHINE_TEXT,
-        "machine_reset_text": ollama_store.MACHINE_RESET_TEXT,
+        "machine_text": ollama_env.MACHINE_TEXT,
+        "machine_reset_text": ollama_env.MACHINE_RESET_TEXT,
         "mac_warning": warning,
         "current": str(cur),
         "free_gb": hardware.free_gb(cur),
@@ -209,7 +212,7 @@ def storage_context(ctx: WebCtx) -> dict:
         "has_models": size > 0,
         "models_gb": round(gb, 1),
         "drives": [v.to_dict() for v in drives],
-        "linux_text": ollama_store.LINUX_TEXT,
+        "linux_text": ollama_env.LINUX_TEXT,
     }
 
 

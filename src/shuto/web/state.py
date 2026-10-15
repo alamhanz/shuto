@@ -19,8 +19,8 @@ from fastapi.templating import Jinja2Templates
 from starlette.datastructures import FormData
 
 from shuto import store as store_pkg
-from shuto.ai import catalog as local_models
 from shuto.ai import hardware, selection
+from shuto.ai import model_choice as ai_choice
 from shuto.core.config import Config
 from shuto.core.jobs import JobBusy, JobContext, JobRunner
 from shuto.core.models import REASON_CODES, Photo
@@ -93,7 +93,7 @@ class WebState:
         self.base_cfg = cfg
         self.config_path = config_path
         self.store = store_pkg.open_store(cfg)
-        self.cfg = effective.apply_style_overrides(self.base_cfg, self.store)
+        self.cfg = effective.effective_config(self.base_cfg, self.store)
         self.runner = JobRunner(self.store)
         self.csrf = _stdlib_secrets.token_urlsafe(32)
         # (provider, model, ollama url) -> (when, ModelStatus); cleared by any change
@@ -132,7 +132,7 @@ class WebState:
 
     def reload_settings(self) -> None:
         """Re-read the settings saved in the app, so the next request sees them."""
-        self.cfg = effective.apply_style_overrides(self.base_cfg, self.store)
+        self.cfg = effective.effective_config(self.base_cfg, self.store)
 
 
 async def post_form(request: Request) -> FormData:
@@ -202,7 +202,7 @@ class WebCtx:
         cfg = self.cfg
         try:
             sel = selection.resolve_selection(cfg, self.store)
-        except local_models.ModelChoiceRequired:
+        except ai_choice.ModelChoiceRequired:
             return ModelStatus("missing", NO_MODEL)
         except Exception:
             return ModelStatus("unknown", CANT_TELL)

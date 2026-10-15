@@ -1,4 +1,4 @@
-"""0.5.1 fixes: thinking models, keyword top-up, warmer retries, prepare warning."""
+"""Fixes after 0.5.0 (shipped in 0.6.0): thinking models, keyword top-up, warmer retries."""
 
 from __future__ import annotations
 
@@ -7,7 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from shuto.ai.describe import Style, describe_photo, topup_prompt
+from shuto.ai.describe import describe_photo
+from shuto.ai.prompts import Style, topup_prompt
 from shuto.ai.providers.base import LLMError, LLMRequest
 from shuto.ai.providers.fake import DEFAULT_RESPONSE, FakeProvider
 from shuto.ai.providers.ollama import OllamaClient, OllamaProvider

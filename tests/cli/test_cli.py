@@ -5,13 +5,15 @@ import yaml
 
 from shuto import cli
 from shuto import store as store_pkg
+from shuto.ai import benchmark as ai_benchmark
 from shuto.ai import catalog as local_models
+from shuto.ai import model_choice as ai_choice
 from shuto.ai import selection
 from shuto.cli import build_parser, main
 from shuto.core import errors, paths
 from shuto.core.config import load_config
+from shuto.core.paths import folder_name
 from shuto.deliver import send
-from shuto.deliver.report import folder_name
 from shuto.settings import ui as settings_ui
 
 from ..helpers import FakeOllama
@@ -198,7 +200,7 @@ def test_models_use_pull_confirmation(config_file, capsys, monkeypatch):
         encoding="utf-8",
     )
     assert run(config_file, "models", "use", "moondream") == 0
-    assert local_models.load_choice(paths.model_choice_path()) == "moondream"
+    assert ai_choice.load_choice(paths.model_choice_path()) == "moondream"
     assert not client.pull_calls  # choosing never downloads
     monkeypatch.setattr(cli, "_input", lambda prompt: "n")
     assert run(config_file, "models", "pull", "moondream") == 0
@@ -233,7 +235,7 @@ def test_init_asks_before_download(config_file, capsys, monkeypatch):
     answers = iter(["1", "n"])  # pick row 1, then decline the download
     monkeypatch.setattr(cli, "_input", lambda prompt: next(answers))
     assert run(config_file, "init") == 0
-    assert local_models.load_choice(paths.model_choice_path())
+    assert ai_choice.load_choice(paths.model_choice_path())
     assert not client.pull_calls
     out = capsys.readouterr().out
     assert "Saved choice" in out and "Nothing was downloaded" in out
@@ -242,7 +244,7 @@ def test_init_asks_before_download(config_file, capsys, monkeypatch):
 def test_models_bench(config_file, capsys, monkeypatch):
     monkeypatch.setattr(selection, "ollama_client", lambda cfg: FakeOllama())
     monkeypatch.setattr(
-        local_models,
+        ai_benchmark,
         "benchmark",
         lambda *a: {"cold_s": 2.0, "warm_s": 1.0, "ok_json": True},
     )

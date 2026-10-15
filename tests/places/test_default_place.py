@@ -8,19 +8,15 @@ import re
 
 import pytest
 
-from shuto.ai.describe import (
-    NO_PLACE_WARNING,
-    Style,
-    describe_photo,
-    editorial_caption,
-    resolve_place,
-)
+from shuto.ai.describe import describe_photo, editorial_caption
+from shuto.ai.prompts import Style
 from shuto.ai.providers.fake import DEFAULT_RESPONSE, FakeProvider
 from shuto.core import errors
 from shuto.core.config import Config, DefaultPlace
 from shuto.core.models import Status
 from shuto.core.validate import clean_place_part
 from shuto.metadata import guardrails
+from shuto.places.resolve import NO_PLACE_WARNING, resolve_place
 from shuto.settings import effective
 from shuto.settings import ui as settings_ui
 from shuto.workflow import check_batch, reports
@@ -122,11 +118,11 @@ def test_ui_setting_validation_and_override(cfg, store):
         store, "style", {"default_city": " Tokyo ", "default_country": "Japan"}
     )
     assert saved == {"default_city": "Tokyo", "default_country": "Japan"}
-    styled = effective.apply_style_overrides(cfg, store)
+    styled = effective.effective_config(cfg, store)
     assert styled.style.default_place.city == "Tokyo"
     assert cfg.style.default_place.city == ""
     settings_ui.set_ui_setting(store, "style", {"default_city": "", "default_country": ""})
-    assert effective.apply_style_overrides(cfg, store).style.default_place.city == ""
+    assert effective.effective_config(cfg, store).style.default_place.city == ""
     for bad in ({"default_city": "東京"}, {"default_country": "J" * 61}):
         with pytest.raises(errors.PipelineError):
             settings_ui.set_ui_setting(store, "style", bad)
@@ -143,7 +139,7 @@ def _check_with_default(cfg, store, photos_dir, **style):
             "caption_sentence": "x.",
         }
     )
-    check_batch.check_batch(effective.apply_style_overrides(cfg, store), store, bid, llm=fake)
+    check_batch.check_batch(effective.effective_config(cfg, store), store, bid, llm=fake)
     return bid
 
 

@@ -8,12 +8,13 @@ from pathlib import Path
 from shuto.core.config import default_config_dir
 
 KEYRING_SERVICE = "shuto"
-KNOWN_SECRETS = (
-    "SHUTO_FTPS_USER",
-    "SHUTO_FTPS_PASSWORD",
-    "ANTHROPIC_API_KEY",
-    "GEMINI_API_KEY",
-)
+FTPS_USER = "SHUTO_FTPS_USER"
+FTPS_PASSWORD = "SHUTO_FTPS_PASSWORD"
+ANTHROPIC_API_KEY = "ANTHROPIC_API_KEY"
+GEMINI_API_KEY = "GEMINI_API_KEY"
+# The provider registry (ai.providers.REGISTRY) takes its key names from the two API constants,
+# so this list and the registry cannot drift; tests/ai/test_registry.py checks it.
+KNOWN_SECRETS = (FTPS_USER, FTPS_PASSWORD, ANTHROPIC_API_KEY, GEMINI_API_KEY)
 
 
 def _keyring():

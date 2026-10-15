@@ -87,9 +87,6 @@ def parse_exif_date(value: object) -> datetime | None:
     return None
 
 
-_parse_exif_date = parse_exif_date  # alias until T9
-
-
 def read_info(path: str | Path | bytes) -> ImageInfo:
     """Dimensions (after EXIF orientation), capture time, camera and GPS presence."""
     with open_image(path) as im:

@@ -4,7 +4,7 @@ import ftplib
 
 import pytest
 
-from shuto.ai import catalog as local_models
+from shuto.ai import model_choice as ai_choice
 from shuto.ai import selection
 from shuto.ai.providers.fake import FakeProvider
 from shuto.core import errors, paths, secrets
@@ -89,7 +89,7 @@ def test_check_batch_preflight_before_work(cfg, store, photos_dir, monkeypatch):
     cfg_ollama = cfg.model_copy(update={"llm": cfg.llm.model_copy(update={"provider": "ollama"})})
     monkeypatch.undo()
     monkeypatch.setattr(paths, "model_choice_path", lambda: photos_dir / "no-choice.json")
-    with pytest.raises(local_models.ModelChoiceRequired):
+    with pytest.raises(ai_choice.ModelChoiceRequired):
         check_batch.check_batch(cfg_ollama, store, batch)
     assert len(store.list_photos(batch, [Status.IMPORTED])) == 5
 
@@ -109,7 +109,7 @@ def test_style_overrides_reach_prompt(cfg, store, photos_dir):
         "style",
         {"theme": "Quiet Hokkaido", "always_include": "hokkaido, snow", "tone": "calm"},
     )
-    styled = effective.apply_style_overrides(cfg, store)
+    styled = effective.effective_config(cfg, store)
     assert styled.style.theme == "Quiet Hokkaido"
     assert styled.style.keywords.always_include == ["hokkaido", "snow"]
     assert cfg.style.theme == ""  # original untouched
@@ -121,7 +121,7 @@ def test_style_overrides_reach_prompt(cfg, store, photos_dir):
 
 
 def test_style_without_override_is_same_config(cfg, store):
-    assert effective.apply_style_overrides(cfg, store) is cfg
+    assert effective.effective_config(cfg, store) is cfg
 
 
 def test_ui_settings_validation(store):
@@ -301,7 +301,7 @@ def test_clearing_style_fields_really_clears(cfg, store):
         }
     )
     settings_ui.set_ui_setting(store, "style", {"theme": "", "tone": "", "always_include": ""})
-    styled = effective.apply_style_overrides(cfg, store)
+    styled = effective.effective_config(cfg, store)
     assert styled.style.theme == "" and styled.style.tone == ""
     assert styled.style.keywords.always_include == []
     assert cfg.style.theme == "Config theme"  # original untouched
@@ -310,7 +310,7 @@ def test_clearing_style_fields_really_clears(cfg, store):
 def test_style_fields_not_submitted_stay_unset(cfg, store):
     stored = settings_ui.set_ui_setting(store, "style", {"theme": "Only theme"})
     assert stored == {"theme": "Only theme"}
-    styled = effective.apply_style_overrides(cfg, store)
+    styled = effective.effective_config(cfg, store)
     assert styled.style.keywords.always_include == cfg.style.keywords.always_include
 
 
@@ -318,7 +318,7 @@ def test_region_focus_setting(cfg, store):
     assert settings_ui.set_ui_setting(store, "style", {"region_focus": "Japan"}) == {
         "region_focus": "japan"
     }
-    styled = effective.apply_style_overrides(cfg, store)
+    styled = effective.effective_config(cfg, store)
     assert styled.style.region_focus == "japan"
     names = {r.id for r in checks.load_restrictions(styled).rules}
     assert "shuto-konbini" in names
@@ -330,7 +330,7 @@ def test_region_focus_setting(cfg, store):
 
 def test_bedrock_profile_setting(cfg, store):
     settings_ui.set_ui_setting(store, "bedrock_profile", "photos-prod")
-    assert effective.apply_style_overrides(cfg, store).llm.bedrock.profile == "photos-prod"
+    assert effective.effective_config(cfg, store).llm.bedrock.profile == "photos-prod"
     with pytest.raises(errors.PipelineError):
         settings_ui.set_ui_setting(store, "bedrock_profile", "bad profile; rm")
 
@@ -343,6 +343,6 @@ def test_bedrock_profile_cleared_overrides_config(cfg, store):
             )
         }
     )
-    assert effective.apply_style_overrides(file_cfg, store).llm.bedrock.profile == "from-file"
+    assert effective.effective_config(file_cfg, store).llm.bedrock.profile == "from-file"
     settings_ui.set_ui_setting(store, "bedrock_profile", "")
-    assert effective.apply_style_overrides(file_cfg, store).llm.bedrock.profile == ""
+    assert effective.effective_config(file_cfg, store).llm.bedrock.profile == ""

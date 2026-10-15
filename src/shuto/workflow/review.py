@@ -6,6 +6,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 
 from shuto.ai import filters as filters_mod
+from shuto.core import status_text
 from shuto.core import text as core_text
 from shuto.core.config import Config
 from shuto.core.errors import PipelineError
@@ -14,6 +15,7 @@ from shuto.core.models import (
     Photo,
     Status,
 )
+from shuto.metadata import rules as metadata_rules
 from shuto.store import InvalidTransition, Store
 from shuto.workflow import checks, describing, reports
 from shuto.workflow.checks import NOT_ENGLISH_TEXT
@@ -150,7 +152,9 @@ def approve(
         if photo.status not in (Status.DESCRIBED, Status.NEEDS_REVIEW, Status.SET_ASIDE):
             summary.refused[pid] = f"status is {photo.status.value}"
             continue
-        if checks.not_english(photo.metadata or {}, cfg.style.english_only):
+        if checks.not_english(
+            photo.metadata or {}, metadata_rules.language_policy(cfg.style).strict
+        ):
             summary.refused[pid] = NOT_ENGLISH_TEXT + ": edit it to English first"
             continue
         meta, gr, _ = checks._evaluate(cfg, store, photo, photo.metadata or {})
@@ -207,17 +211,6 @@ class BulkEditSummary:
     refused: dict[int, str] = field(default_factory=dict)
 
 
-def _fold(words: Iterable[str]) -> list[str]:
-    seen: set[str] = set()
-    out: list[str] = []
-    for w in words:
-        w = str(w).strip()
-        if w and w.lower() not in seen:
-            seen.add(w.lower())
-            out.append(w)
-    return out
-
-
 def bulk_edit(
     cfg: Config,
     store: Store,
@@ -231,10 +224,8 @@ def bulk_edit(
     """Apply one keyword/category/editorial change to many photos (guardrails re-run on each)."""
     if categories is not None and len(categories) > 2:
         raise PipelineError("Pick at most 2 categories.")
-    add = _fold(add_keywords)
-    drop = {w.lower() for w in _fold(remove_keywords)}
-    from shuto.web import ux  # plain-words status names; imported late (web imports this module)
-
+    add = core_text.fold_words(add_keywords)
+    drop = {w.lower() for w in core_text.fold_words(remove_keywords)}
     summary = BulkEditSummary()
     batches: set[str] = set()
     for pid in photo_ids:
@@ -244,11 +235,11 @@ def bulk_edit(
             continue
         if photo.status not in PRE_UPLOAD_EDITABLE:
             summary.refused[pid] = (
-                f'it is marked "{ux.label(photo.status)}" and cannot be edited now'
+                f'it is marked "{status_text.label(photo.status)}" and cannot be edited now'
             )
             continue
         current = [str(k) for k in (photo.metadata or {}).get("keywords") or []]
-        keywords = _fold([k for k in current if k.lower() not in drop] + add)
+        keywords = core_text.fold_words([k for k in current if k.lower() not in drop] + add)
         try:
             update_metadata(
                 cfg,

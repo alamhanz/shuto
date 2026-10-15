@@ -7,10 +7,11 @@ from fastapi.responses import HTMLResponse
 
 from shuto.ai import selection
 from shuto.core import errors
+from shuto.metadata.rules import language_policy
+from shuto.ollama import OLLAMA_DOWNLOAD_URL
 from shuto.settings import ui as settings_ui
 from shuto.web.routes.actions import MAX_RULES
 from shuto.web.routes.model_support import (
-    OLLAMA_URL,
     helper_steps,
     model_context,
     storage_context,
@@ -68,12 +69,13 @@ def language_values(ctx: WebCtx) -> dict:
         local = selection.resolve_selection(ctx.cfg, ctx.store).provider == "ollama"
     except Exception:  # nothing chosen yet: the default is a local model
         local = ctx.cfg.llm.provider == "ollama"
-    name = style.metadata_language or "that language"
+    policy = language_policy(style)
+    name = policy.name or "that language"
     return {
-        "english_only": style.english_only,
-        "language": style.metadata_language,
+        "english_only": policy.strict,
+        "language": policy.name,
         "local": local,
-        "warnings": [] if style.english_only else language_warnings(name, local),
+        "warnings": [] if policy.strict else language_warnings(name, local),
     }
 
 
@@ -114,7 +116,7 @@ def settings_page(request: Request, ctx: Ctx):
         hw=report.hardware,
         ollama=report.ollama,
         helper_steps=helper_steps(report.hardware.get("os", "")),
-        ollama_url=OLLAMA_URL,
+        ollama_url=OLLAMA_DOWNLOAD_URL,
         login=ftps_login.ftps_login_status(ctx.cfg),
         style=style_values(ctx),
         language=language_values(ctx),

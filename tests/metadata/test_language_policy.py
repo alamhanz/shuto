@@ -17,11 +17,10 @@ def test_language_policy_from_style_config():
     assert rules.language_policy(SimpleNamespace()).strict is True
 
 
-def test_english_only_is_an_alias_of_latin_words_only():
-    assert rules.english_only is rules.latin_words_only
+def test_latin_words_only_drops_foreign_script_words():
     assert rules.latin_words_only("Tokyo 渋谷 street") == "Tokyo street"
 
 
 def test_one_commercial_words_constant():
     assert model.MIN_COMMERCIAL_WORDS is guardrails.MIN_COMMERCIAL_WORDS
-    assert rules.MIN_WORDS == rules.MIN_COMMERCIAL_WORDS == model.MIN_COMMERCIAL_WORDS
+    assert rules.MIN_COMMERCIAL_WORDS == model.MIN_COMMERCIAL_WORDS

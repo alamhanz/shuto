@@ -10,10 +10,12 @@ from fastapi.testclient import TestClient
 
 from shuto.ai import catalog as local_models
 from shuto.ai import hardware, selection
+from shuto.ai import recommend as ai_recommend
 from shuto.core import errors, paths
 from shuto.core.jobs import JobBusy
 from shuto.core.models import Status
 from shuto.ollama import models_dir as ollama_store
+from shuto.ollama.errors import StoreError
 from shuto.settings import ui as settings_ui
 from shuto.update import core as updates
 from shuto.web import create_app
@@ -362,25 +364,24 @@ def test_download_needs_explicit_confirm(web, cfg, ollama):
 
 def test_advice_when_model_does_not_fit_disk(web, cfg, monkeypatch):
     monkeypatch.setattr(ollama_store, "supported", lambda name=None: True)
-    from shuto.ai import catalog as local_models
 
     tag = workflow_models.list_models(cfg)[0].tag
     monkeypatch.setattr(
         workflow_models,
         "model_disk_advice",
-        lambda cfg, t: local_models.DiskAdvice(
+        lambda cfg, t: ai_recommend.DiskAdvice(
             tag=t,
             fits=False,
             models_dir="/m",
             free_gb=1.0,
             need_gb=9.0,
             volumes=[
-                local_models.VolumeOption(
+                ai_recommend.VolumeOption(
                     "D:", 500.0, "D:\\ollama", "setx OLLAMA_MODELS D:\\ollama"
                 )
             ],
             api_options=[
-                local_models.ApiOption("gemini", "m1", 0.002, "2026-10", "~$0.002 per image")
+                ai_recommend.ApiOption("gemini", "m1", 0.002, "2026-10", "~$0.002 per image")
             ],
             message="Not enough room.",
         ),
@@ -646,14 +647,13 @@ def test_pages_have_no_jargon(web, batch):
 
 
 def test_advice_fragment_has_no_jargon(web, cfg, monkeypatch):
-    from shuto.ai import catalog as local_models
 
     tag = workflow_models.list_models(cfg)[0].tag
-    vol = local_models.VolumeOption("D:", 500.0, r"D:\ollama", r"setx OLLAMA_MODELS D:\ollama")
+    vol = ai_recommend.VolumeOption("D:", 500.0, r"D:\ollama", r"setx OLLAMA_MODELS D:\ollama")
     monkeypatch.setattr(
         workflow_models,
         "model_disk_advice",
-        lambda cfg, t: local_models.DiskAdvice(
+        lambda cfg, t: ai_recommend.DiskAdvice(
             tag=t,
             fits=False,
             models_dir="/m",
@@ -862,7 +862,7 @@ def test_models_dir_failure_is_shown_in_plain_words(web, monkeypatch, tmp_path):
     monkeypatch.setenv("OLLAMA_MODELS", str(tmp_path / "old"))
 
     def boom(*a, **k):
-        raise ollama_store.StoreError("Ollama would not close. Quit Ollama yourself.")
+        raise StoreError("Ollama would not close. Quit Ollama yourself.")
 
     monkeypatch.setattr(ollama_store, "change_models_dir", boom)
     job, text = web.run_job("/settings/models-dir", {"path": str(tmp_path / "new")})
@@ -1004,7 +1004,7 @@ def _short_disk(monkeypatch, free_gb=0.0, need_gb=4 * MB / 1024**3):
     monkeypatch.setattr(
         workflow_models,
         "model_disk_advice",
-        lambda cfg, t: local_models.DiskAdvice(
+        lambda cfg, t: ai_recommend.DiskAdvice(
             tag=t,
             fits=False,
             models_dir="/m",

@@ -1,6 +1,6 @@
 """Characterization tests: behaviour recorded on shuto 0.5.0 (commit 7b9fbc7).
 
-They test through public entry points so the 0.5.1 module moves do not change them. Each test
+They test through public entry points so the 0.6.0 module moves do not change them. Each test
 file resolves the module paths it needs in a `_seam()` function at the top; only those lines
 change when a module moves.
 

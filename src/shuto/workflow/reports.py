@@ -6,7 +6,7 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
 
-from shuto.core import paths
+from shuto.core import paths, status_text
 from shuto.core.config import Config
 from shuto.core.models import Status
 from shuto.deliver import report as report_mod
@@ -34,8 +34,6 @@ def batch_report(store: Store, batch_id: str | None = None) -> list[dict[str, An
 
 def build_report(cfg: Config, store: Store, batch_id: str) -> tuple[list[str], list[list[str]]]:
     """Header and records of the batch report, built from the database."""
-    from shuto.web import ux  # plain-words status names; imported late (web imports this module)
-
     photos = store.list_photos(batch_id)
     by_id = {p.id: p for p in photos}
     keepers: dict[int, str] = {}
@@ -64,7 +62,7 @@ def build_report(cfg: Config, store: Store, batch_id: str) -> tuple[list[str], l
         photos,
         times=store.status_times(batch_id),
         duplicate_of=duplicate_of,
-        labels=ux.label,
+        labels=status_text.label,
         rejections=rejections,
         ai_times=store.ai_times(batch_id),
     )

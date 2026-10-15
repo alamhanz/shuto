@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 from shuto.ai import catalog as local_models
 from shuto.ai import hardware, machine
+from shuto.ai import model_choice as ai_choice
 from shuto.ai.providers import API_KEY_SECRETS, API_SDK_MODULES, get_provider, provider_class
 from shuto.ai.providers.base import VisionLLM
 from shuto.ai.providers.fake import FakeProvider
@@ -46,7 +47,7 @@ def resolve_selection(
 ) -> Selection:
     """flag > saved choice (settings table / model_choice.json) > config > auto.
 
-    Raises local_models.ModelChoiceRequired for ollama with `auto` and no saved choice.
+    Raises ai_choice.ModelChoiceRequired for ollama with `auto` and no saved choice.
     """
     saved_provider = store.get_setting("llm.provider") if store else None
     saved_model = store.get_setting("llm.model") if store else None
@@ -61,9 +62,7 @@ def resolve_selection(
     else:
         chosen = "auto"
     if prov == "ollama":
-        return Selection(
-            prov, local_models.resolve_model(chosen, paths.model_choice_path()), source
-        )
+        return Selection(prov, ai_choice.resolve_model(chosen, paths.model_choice_path()), source)
     if prov == "fake":
         return Selection(prov, "fake", source)
     if chosen == "auto":
@@ -85,9 +84,6 @@ def num_ctx_for(model: str) -> int:
     except Exception:
         profile = None
     return local_models.effective_num_ctx(model, profile)
-
-
-_num_ctx_for = num_ctx_for  # alias until T9
 
 
 def resolve_llm(

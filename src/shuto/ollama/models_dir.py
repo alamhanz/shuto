@@ -23,27 +23,21 @@ from shuto.ai import hardware
 from shuto.core import platform as core_platform
 from shuto.ollama import env, service
 from shuto.ollama import move as moving
-from shuto.ollama.env import (  # alias until T9
+from shuto.ollama.env import (
     ENV_NAME,
     LINUX_TEXT,
     MACHINE_RESET_TEXT,
     MACHINE_TEXT,
-    _win_read,  # tests/conftest.py patches models_dir._win_read (kept as a seam)
     reset_models_dir,
     set_models_dir,
 )
 from shuto.ollama.errors import MoveCancelled, StoreError, StoreUnsupported
-from shuto.ollama.move import _gb, freeable_bytes, models_size_bytes  # noqa: F401  alias until T9
 
 
 @dataclass
 class Check:
     path: Path
     warnings: list[str] = field(default_factory=list)
-
-
-def os_name() -> str:  # alias until T9
-    return core_platform.os_name()
 
 
 def supported(name: str | None = None) -> bool:
@@ -77,7 +71,7 @@ def machine_any_value(os_name: str | None = None) -> str | None:
     if (os_name or core_platform.os_name()) != "windows":
         return None
     try:
-        return _win_read(True)
+        return env._win_read(True)
     except Exception:
         return None
 
@@ -88,7 +82,7 @@ def machine_wide_value(os_name: str | None = None) -> str | None:
     if (os_name or core_platform.os_name()) != "windows":
         return None
     try:
-        if _win_read(False):
+        if env._win_read(False):
             return None
     except Exception:
         return None
@@ -101,7 +95,7 @@ def saved_value(os_name: str | None = None) -> str | None:
     os_ = os_name or core_platform.os_name()
     if os_ == "windows":
         try:
-            return _win_read(False)
+            return env._win_read(False)
         except Exception:
             return None
     if os_ == "macos":
@@ -270,7 +264,8 @@ def change_models_dir(
             freed = moving.delete_old_models(plan)
         except StoreError as exc:
             return f"{where} The models were copied, but the originals in {old} were kept: {exc}"
-        return f"{where} {len(plan.files)} model file(s) were moved; {_gb(freed)} freed in {old}."
+        freed_text = moving._gb(freed)
+        return f"{where} {len(plan.files)} model file(s) were moved; {freed_text} freed in {old}."
     return where + (
         " Models you downloaded before stay in the old folder."
         if moving.models_size_bytes(old)

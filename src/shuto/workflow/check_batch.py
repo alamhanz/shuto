@@ -61,12 +61,20 @@ def check_batch(
     # one bar over CHECK_SCALE units: the quality check is the first tenth, the AI the rest. The AI
     # photo count is only known after culling, so each step reports its own counter.
     quality_units = CHECK_SCALE // 10
+    quality_bar = core_progress.ScaledProgress(progress, 0, quality_units, CHECK_SCALE)
+
+    def below_full(units: int, scale: int, text: str = "") -> None:
+        progress(min(units, scale - 1), scale, text)  # only the last write may reach 100%
+
+    ai_bar = core_progress.ScaledProgress(
+        below_full, quality_units, CHECK_SCALE - quality_units, CHECK_SCALE
+    )
 
     def cull_progress(done: int, count: int, name: str = "") -> None:
         text = f"Step 1 of 2 · Quality check {done}/{count}"
         if name and done < count:
             text += f" (just finished: {name})"
-        progress(quality_units * done // max(count, 1), CHECK_SCALE, text)
+        quality_bar(done, count, text)
 
     started = [0.0]
 
@@ -77,8 +85,7 @@ def check_batch(
             text += f" · {_time_left((count - done) * per_photo)}"
         if name and done < count:
             text += f" (just finished: {name})"
-        units = quality_units + (CHECK_SCALE - quality_units) * done // max(count, 1)
-        progress(min(units, CHECK_SCALE - 1), CHECK_SCALE, text)
+        ai_bar(done, count, text)
 
     to_cull = min(len(store.list_photos(batch_id, [Status.IMPORTED])), importing.MAX_BATCH_PHOTOS)
     if to_cull:

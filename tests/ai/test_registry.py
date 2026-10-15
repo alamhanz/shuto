@@ -4,8 +4,6 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-import pytest
-
 from shuto.ai import catalog, hardware, machine, recommend, selection
 from shuto.ai.providers import (
     API_KEY_SECRETS,
@@ -16,6 +14,7 @@ from shuto.ai.providers import (
     provider_class,
 )
 from shuto.ai.providers.ollama import DEFAULT_NUM_CTX
+from shuto.core.secrets import KNOWN_SECRETS
 
 from ..helpers import fake_profile
 
@@ -29,7 +28,6 @@ def test_registry_derives_the_provider_maps():
         "gemini": "google.genai",
         "bedrock": "boto3",
     }
-    assert selection.API_KEY_SECRETS is API_KEY_SECRETS
     assert all(info.label for info in REGISTRY.values())
 
 
@@ -61,17 +59,6 @@ def test_gpu_fit_and_ram_spare_drive_the_fit_decisions():
     assert tight == catalog.SMALL_CONTEXT_TOKENS and roomy == catalog.NUM_CTX_TARGET
 
 
-def test_moved_names_stay_reachable_on_catalog():
-    assert catalog.recommend is recommend.recommend
-    assert catalog.ModelChoiceRequired.__module__ == "shuto.ai.model_choice"
-    with pytest.raises(AttributeError):
-        catalog.no_such_name  # noqa: B018
-
-
-def test_num_ctx_for_alias():
-    assert selection._num_ctx_for is selection.num_ctx_for
-
-
 def test_hardware_cache_clear(monkeypatch):
     calls = []
     monkeypatch.setattr(hardware, "detect", lambda: calls.append(1) or profile(0, 8))
@@ -82,3 +69,11 @@ def test_hardware_cache_clear(monkeypatch):
     machine._cache.get()
     assert calls == [1, 1]
     machine.clear_cache()
+
+
+def test_every_registry_key_is_a_known_secret():
+    assert set(API_KEY_SECRETS.values()) <= set(KNOWN_SECRETS)
+    assert set(KNOWN_SECRETS) - set(API_KEY_SECRETS.values()) == {
+        "SHUTO_FTPS_USER",
+        "SHUTO_FTPS_PASSWORD",
+    }

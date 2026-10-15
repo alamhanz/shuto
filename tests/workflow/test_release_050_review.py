@@ -10,8 +10,8 @@ import pytest
 from shuto import cli
 from shuto.ai import catalog as local_models
 from shuto.ai import machine, selection
-from shuto.ai.describe import Style, build_prompt, resolve_place
 from shuto.ai.hardware import HardwareProfile
+from shuto.ai.prompts import Style, build_prompt
 from shuto.ai.providers.base import LLMRequest
 from shuto.ai.providers.fake import FakeProvider
 from shuto.ai.providers.ollama import OllamaProvider
@@ -20,6 +20,7 @@ from shuto.ingest.photo_meta import PhotoMeta, read_photo_meta
 from shuto.metadata import embed
 from shuto.metadata.rules import has_foreign_script
 from shuto.places.context import build_context
+from shuto.places.resolve import resolve_place
 from shuto.settings import ui as settings_ui
 from shuto.workflow import delivering
 

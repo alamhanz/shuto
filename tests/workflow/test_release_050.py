@@ -8,11 +8,12 @@ from pathlib import Path
 
 from PIL import Image
 
-from shuto.ai.describe import Style, build_prompt, resolve_place
+from shuto.ai.prompts import Style, build_prompt
 from shuto.ai.providers.fake import DEFAULT_RESPONSE, FakeProvider
 from shuto.core.models import Status
 from shuto.deliver.prepare import prepare_file
 from shuto.metadata import embed
+from shuto.places.resolve import resolve_place
 from shuto.settings import effective
 from shuto.settings import ui as settings_ui
 from shuto.workflow import delivering, describing, importing, reports
@@ -44,7 +45,7 @@ def _run(cfg, store, folder, location, *, editorial=True, style=None):
     )
     for p in store.list_photos(bid):
         store.set_status(p.id, Status.READY, force=True)
-    run_cfg = effective.apply_style_overrides(cfg, store)
+    run_cfg = effective.effective_config(cfg, store)
     describing.describe_batch(run_cfg, store, bid, [p.id for p in store.list_photos(bid)], llm=fake)
     return bid, store.list_photos(bid)[0], fake
 
@@ -214,7 +215,7 @@ def test_pipeline_prepares_without_gps_unless_asked(cfg, store, tmp_path):
     assert _gps(photo.src_path)  # the original keeps its location
 
     settings_ui.set_ui_setting(store, "include_gps", True)
-    on = effective.apply_style_overrides(cfg, store)
+    on = effective.effective_config(cfg, store)
     assert on.prepare.include_gps is True
     workflow_review.update_metadata(on, store, photo.id, title="Another title for the photo")
     workflow_review.approve(on, store, photo_ids=[photo.id])
@@ -224,7 +225,7 @@ def test_pipeline_prepares_without_gps_unless_asked(cfg, store, tmp_path):
 
 def test_setting_default_is_off_and_validated(cfg, store):
     assert cfg.prepare.include_gps is False
-    assert effective.apply_style_overrides(cfg, store).prepare.include_gps is False
+    assert effective.effective_config(cfg, store).prepare.include_gps is False
     assert settings_ui.set_ui_setting(store, "include_gps", "yes") is True
 
 

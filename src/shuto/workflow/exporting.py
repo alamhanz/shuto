@@ -12,6 +12,7 @@ from shuto.core import text as core_text
 from shuto.core.config import Config
 from shuto.core.models import Photo, Status
 from shuto.deliver import send
+from shuto.metadata import rules as metadata_rules
 from shuto.store import Store
 from shuto.workflow import checks, reports
 from shuto.workflow.checks import NOT_ENGLISH_TEXT
@@ -59,7 +60,7 @@ def export_batch(
     photos = [p for p in photos if p.submit_name]
     skipped: dict[int, str] = {}
     for p in photos:  # last guard: the CSV never carries non-Latin text (flagged, not altered)
-        if checks.not_english(p.metadata or {}, cfg.style.english_only):
+        if checks.not_english(p.metadata or {}, metadata_rules.language_policy(cfg.style).strict):
             assert p.id is not None
             skipped[p.id] = NOT_ENGLISH_TEXT
     if skipped and not dry_run:
@@ -70,7 +71,12 @@ def export_batch(
     summary = ExportSummary(rows=rows, dry_run=dry_run, skipped=skipped)
     if dry_run or not rows:
         return summary
-    dest = send.write_csv(batch_id, rows, paths.batch_dir(cfg, batch_id), cfg.style.english_only)
+    dest = send.write_csv(
+        batch_id,
+        rows,
+        paths.batch_dir(cfg, batch_id),
+        metadata_rules.language_policy(cfg.style).strict,
+    )
     summary.files = [dest]
     for photo in photos:
         assert photo.id is not None

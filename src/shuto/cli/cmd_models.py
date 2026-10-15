@@ -7,27 +7,27 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from shuto.ai import catalog as local_models
+from shuto.ai import model_choice as ai_choice
+from shuto.ai import recommend as ai_recommend
 from shuto.ai import selection
 from shuto.cli._io import (
     COMMON,
     _confirm,
-    _yn,
     add_command,
     out,
     table,
 )
 from shuto.core import paths as core_paths
 from shuto.core.config import Config
+from shuto.core.text import yes_no
+from shuto.ollama import OLLAMA_DOWNLOAD_URL
 from shuto.workflow import models as workflow_models
 
 if TYPE_CHECKING:
     from shuto.cli import Ctx
 
 
-OLLAMA_URL = "https://ollama.com/download"
-
-
-def print_models_table(rows: Sequence[local_models.ModelRow]) -> None:
+def print_models_table(rows: Sequence[ai_recommend.ModelRow]) -> None:
     body = [
         (
             r.rank,
@@ -35,9 +35,9 @@ def print_models_table(rows: Sequence[local_models.ModelRow]) -> None:
             f"{r.size_gb:g} GB",
             f"{r.est_seconds_per_image:g} s ({r.basis})",
             r.tier_label,
-            _yn(r.fits_hardware),
-            _yn(r.fits_disk),
-            _yn(r.pulled),
+            yes_no(r.fits_hardware),
+            yes_no(r.fits_disk),
+            yes_no(r.pulled),
         )
         for r in rows
     ]
@@ -60,7 +60,7 @@ def print_models_table(rows: Sequence[local_models.ModelRow]) -> None:
     out("Pick one with: shuto models use <model>   (nothing is downloaded until you confirm).")
 
 
-def print_disk_advice(adv: local_models.DiskAdvice) -> None:
+def print_disk_advice(adv: ai_recommend.DiskAdvice) -> None:
     out(adv.message)
     for v in adv.volumes:
         out(f"  {v.mount}  {v.free_gb:g} GB free -> suggested OLLAMA_MODELS={v.suggested_path}")
@@ -80,7 +80,7 @@ def ollama_guidance(os_name: str) -> str:
     }.get(
         os_name, "Use the install command from the link, then run `ollama serve` (or the service)."
     )
-    return f"Ollama is needed for local models. Download: {OLLAMA_URL}\n  {steps}"
+    return f"Ollama is needed for local models. Download: {OLLAMA_DOWNLOAD_URL}\n  {steps}"
 
 
 def no_model_message() -> str:
@@ -158,7 +158,7 @@ def cmd_models(ctx: Ctx) -> int:
         model = a.model or selection.resolve_selection(cfg, ctx.store, provider="ollama").model
         out(f"Benchmarking {model} (two calls on a small sample image)...")
         rec = workflow_models.bench_model(cfg, ctx.store, model)
-        out(f"cold {rec['cold_s']} s, warm {rec['warm_s']} s, valid JSON: {_yn(rec['ok_json'])}")
+        out(f"cold {rec['cold_s']} s, warm {rec['warm_s']} s, valid JSON: {yes_no(rec['ok_json'])}")
         out(f"Saved to {core_paths.benchmark_cache_path()}")
         return 0
     raise AssertionError(sub)
@@ -167,7 +167,7 @@ def cmd_models(ctx: Ctx) -> int:
 def _selected_or_none(ctx: Ctx) -> str | None:
     try:
         sel = selection.resolve_selection(ctx.cfg, ctx.store)
-    except local_models.ModelChoiceRequired:
+    except ai_choice.ModelChoiceRequired:
         return None
     return f"{sel.provider}:{sel.model}"
 

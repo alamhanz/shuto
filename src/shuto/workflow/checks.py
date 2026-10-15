@@ -22,6 +22,11 @@ def _restrictions(
     return guardrails.load_restrictions(builtin, extra, disabled, house_rules=house)
 
 
+def clear_cache() -> None:
+    """Forget the loaded restriction sets (the next check loads them again)."""
+    _restrictions.cache_clear()
+
+
 def load_restrictions(cfg: Config) -> guardrails.Restrictions:
     r = cfg.restrictions
     return _restrictions(
@@ -38,25 +43,10 @@ def _release_flags(release_ids: list[str]) -> tuple[bool, bool]:
     return has_model, has_property
 
 
-def filter_spec(cfg: Config) -> filters_mod.FilterSpec:
-    """The theme and the user's rules that describe asks the model about (from `cfg`, which
-    already includes the web app's `ui.filters` when built with `apply_style_overrides`)."""
-    try:
-        rules = filters_mod.clean_rules([r.model_dump() for r in cfg.filters.rules])
-    except filters_mod.FilterRuleError as exc:
-        raise PipelineError(str(exc)) from exc
-    return filters_mod.FilterSpec(
-        theme=cfg.style.theme or "",
-        theme_check=cfg.filters.theme_check,
-        theme_partly=cfg.filters.theme_partly,
-        rules=tuple(rules),
-    )
-
-
 def active_checks(cfg: Config) -> list[str]:
     """Plain-English lines for the checks that new photos get (empty when there are none)."""
     try:
-        spec = filter_spec(cfg)
+        spec = filters_mod.filter_spec(cfg)
     except PipelineError as exc:
         return [f"Your rules are not usable: {exc}"]
     lines: list[str] = []
@@ -72,7 +62,7 @@ def active_checks(cfg: Config) -> list[str]:
 def checks_summary(cfg: Config) -> str:
     """One line for `doctor`: 'theme "X" (set aside if no) + 2 rules', or 'none'."""
     try:
-        spec = filter_spec(cfg)
+        spec = filters_mod.filter_spec(cfg)
     except PipelineError:
         return "your rules are not usable"
     parts = []
@@ -145,6 +135,6 @@ def _evaluate(
         has_property_release=has_property,
     )
     meta.warnings.extend(m for m in gr.messages if m not in meta.warnings)
-    if not_english(data, cfg.style.english_only):
+    if not_english(data, metadata_rules.language_policy(cfg.style).strict):
         meta.warnings.append(NOT_ENGLISH_TEXT)
     return meta, gr, _status_for(meta, gr, photo.filters)

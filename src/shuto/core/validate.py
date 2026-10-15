@@ -11,7 +11,6 @@ MAX_LANGUAGE_CHARS = 30
 
 MAX_PLACE_CHARS = 60
 PLACE_NAME_RE = re.compile(r"[A-Za-z][A-Za-z .'-]*")
-_PLACE_OK = PLACE_NAME_RE  # alias until T9
 
 
 def clean_place_part(text: object) -> str:

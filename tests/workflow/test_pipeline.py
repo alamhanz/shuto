@@ -5,7 +5,9 @@ from pathlib import Path
 
 import pytest
 
+from shuto.ai import benchmark as ai_benchmark
 from shuto.ai import catalog as local_models
+from shuto.ai import model_choice as ai_choice
 from shuto.ai import selection
 from shuto.ai.providers.base import LLMError
 from shuto.ai.providers.fake import DEFAULT_RESPONSE, FakeProvider
@@ -223,7 +225,7 @@ def test_redescribe_by_ids(cfg, store, photos_dir):
 
 def test_auto_requires_explicit_choice(cfg, store):
     cfg.llm.provider = "ollama"
-    with pytest.raises(local_models.ModelChoiceRequired):
+    with pytest.raises(ai_choice.ModelChoiceRequired):
         selection.resolve_selection(cfg, store)
     sel = workflow_models.use_model(cfg, store, "moondream")
     assert (sel.provider, sel.model) == ("ollama", "moondream")
@@ -293,7 +295,7 @@ def test_bench_model(cfg, store, monkeypatch):
         calls.append((provider.model, fp))
         return {"cold_s": 3.0, "warm_s": 1.0, "ok_json": True}
 
-    monkeypatch.setattr(local_models, "benchmark", fake_bench)
+    monkeypatch.setattr(ai_benchmark, "benchmark", fake_bench)
     rec = workflow_models.bench_model(cfg, store, "moondream", client=FakeOllama())
     assert rec["warm_s"] == 1.0 and calls == [("moondream", "test-fp")]
 

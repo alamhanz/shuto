@@ -1,7 +1,7 @@
 """The per-batch report CSV: one row per photo with every check and its reason.
 
 UTF-8 with BOM (so Excel reads Japanese file names), formula-safe cells, written atomically.
-Pure data shaping and file handling: no database and no config here; `pipeline` feeds it.
+Pure data shaping and file handling: no database and no config here; `workflow` feeds it.
 """
 
 from __future__ import annotations
@@ -18,8 +18,8 @@ from pathlib import Path
 from typing import Any
 
 from shuto.core.models import UPLOADED_STATES, Photo
-from shuto.core.paths import folder_name  # noqa: F401  # alias until T9
 from shuto.deliver.ledger import safe_cell
+from shuto.places.resolve import default_flag, short_place_text
 
 FIXED_BEFORE = (
     "file",
@@ -83,19 +83,6 @@ def _described_at(p: Photo, times: dict[str, str]) -> str:
     return max(found, default="")
 
 
-def _place_text(place: Any) -> str:
-    """'TOKYO, JAPAN' from a stored place; blank when no part is known."""
-    if not isinstance(place, dict):
-        return ""
-    return ", ".join(str(place[k]) for k in ("city", "country") if place.get(k))
-
-
-def _default_flag(place: Any) -> str:
-    if not isinstance(place, dict):
-        return ""
-    return "yes" if place.get("default") else "no"
-
-
 def _row(
     p: Photo,
     times: dict[str, str],
@@ -151,9 +138,9 @@ def _row(
         "status": status,
         "status_label": labels(status),
         "title": str(meta.get("title") or ""),
-        "place": _place_text(meta.get("place")),
+        "place": short_place_text(meta.get("place")),
         "place_source": str((meta.get("place") or {}).get("source") or ""),
-        "default_place": _default_flag(meta.get("place")),
+        "default_place": default_flag(meta.get("place")),
         "keyword_count": str(len(keywords)) if keywords else "",
         "metadata_issues": "; ".join(
             str(i.get("text") or "")

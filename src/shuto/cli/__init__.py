@@ -14,9 +14,9 @@ import webbrowser
 from collections.abc import Sequence
 
 from shuto import store as store_pkg
-from shuto.ai import catalog as local_models
+from shuto.ai import model_choice as ai_choice
 from shuto.ai.providers.base import LLMError
-from shuto.cli._io import COMMON, _short, _yn, out, table
+from shuto.cli._io import COMMON, _short, out, table
 from shuto.cli.cmd_app import (
     PARSERS as _APP_PARSERS,
 )
@@ -44,16 +44,15 @@ from shuto.cli.cmd_deliver import (
     cmd_upload,
 )
 from shuto.cli.cmd_models import (
-    OLLAMA_URL,
+    PARSERS as _MODELS_PARSERS,
+)
+from shuto.cli.cmd_models import (
     cmd_models,
     no_model_message,
     ollama_guidance,
     print_disk_advice,
     print_models_table,
     show_model_choice,
-)
-from shuto.cli.cmd_models import (
-    PARSERS as _MODELS_PARSERS,
 )
 from shuto.cli.cmd_photos import (
     PARSERS as _PHOTOS_PARSERS,
@@ -91,7 +90,6 @@ __all__ = [
     "Config",
     "Ctx",
     "HANDLERS",
-    "OLLAMA_URL",
     "build_parser",
     "cmd_accept",
     "cmd_approve",
@@ -138,7 +136,6 @@ __all__ = [
     "webbrowser",
     "_installed_version",
     "_short",
-    "_yn",
     "_input",
 ]
 
@@ -171,7 +168,7 @@ class Ctx:
     def run_cfg(self) -> Config:
         """The config plus the style, theme and rules saved in the web app (shared with it)."""
         if self._run_cfg is None:
-            self._run_cfg = effective.apply_style_overrides(self.cfg, self.store)
+            self._run_cfg = effective.effective_config(self.cfg, self.store)
         return self._run_cfg
 
 
@@ -278,7 +275,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     command = args.command or "ui"
     try:
         return HANDLERS[command](Ctx(args))
-    except local_models.ModelChoiceRequired:
+    except ai_choice.ModelChoiceRequired:
         out(no_model_message())
         return 2
     except (ConfigError, PipelineError, LLMError, RuntimeError) as exc:

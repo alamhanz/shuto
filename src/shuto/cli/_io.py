@@ -47,10 +47,6 @@ def table(headers: Sequence[str], rows: Sequence[Sequence[object]]) -> str:
     return "\n".join(lines)
 
 
-def _yn(flag: bool) -> str:
-    return "yes" if flag else "no"
-
-
 def _short(text: str, n: int) -> str:
     text = " ".join(str(text).split())
     return text if len(text) <= n else text[: n - 3] + "..."

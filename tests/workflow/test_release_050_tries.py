@@ -11,7 +11,8 @@ from PIL import Image
 
 from shuto.ai import catalog as local_models
 from shuto.ai import selection
-from shuto.ai.describe import Style, build_prompt, describe_photo, resolve_place
+from shuto.ai.describe import describe_photo
+from shuto.ai.prompts import Style, build_prompt
 from shuto.ai.providers.fake import DEFAULT_RESPONSE, FakeProvider
 from shuto.core.models import Status
 from shuto.deliver import csv_export, prepare
@@ -21,6 +22,7 @@ from shuto.metadata import embed, guardrails
 from shuto.metadata import rules as metadata_rules
 from shuto.places import geo
 from shuto.places.context import build_context
+from shuto.places.resolve import resolve_place
 from shuto.workflow import delivering, describing, exporting, importing, review
 
 from ..ingest.test_photo_meta import SHIBUYA, make_jpeg
@@ -174,7 +176,7 @@ def test_ascii_fold_keeps_other_scripts_visible():
     assert metadata_rules.has_foreign_script("서울")
     assert not metadata_rules.has_foreign_script("A quiet café in Kyōto, 2026")
     assert (
-        metadata_rules.english_only("Photographer 東京 title Shibuya")
+        metadata_rules.latin_words_only("Photographer 東京 title Shibuya")
         == "Photographer title Shibuya"
     )
 

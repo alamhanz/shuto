@@ -1,7 +1,7 @@
 """The uploaded.csv ledger: a plain, portable list of photos already sent to Shutterstock.
 
 UTF-8 CSV, one row per photo, keyed by sha256. Rewritten atomically (temp file + replace) so a
-crash never leaves half a file. Pure file handling; the database side lives in `pipeline`.
+crash never leaves half a file. Pure file handling; the database side lives in `workflow`.
 """
 
 from __future__ import annotations

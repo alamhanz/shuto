@@ -33,8 +33,6 @@ WHEEL_HOSTS = frozenset(
 MAX_WHEEL_BYTES = 200 * 1024 * 1024
 DOWNLOAD_TIMEOUT_S = 30
 
-sha256_of = sha256_file  # alias until T9
-
 
 def wheels_dir(cfg: Config) -> Path:
     """Where verified wheels are kept (the installed tool's receipt points here)."""
@@ -74,7 +72,7 @@ def download_wheel(
         raise UpdateError(MSG_NO_DIGEST)
     dest = folder / wheel_name(version)
     try:
-        if dest.is_file() and hmac.compare_digest(sha256_of(dest), sha256):
+        if dest.is_file() and hmac.compare_digest(sha256_file(dest), sha256):
             return dest
         folder.mkdir(parents=True, exist_ok=True)
     except OSError:

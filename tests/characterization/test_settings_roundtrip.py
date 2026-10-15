@@ -16,7 +16,7 @@ def _seam():
     return (
         settings_ui.set_ui_setting,
         settings_ui.get_ui_setting,
-        effective.apply_style_overrides,
+        effective.effective_config,
         settings_ui.UI_SETTING_KEYS,
         metadata_rules.MAX_TRIES,
     )
@@ -199,7 +199,7 @@ OVERLAYS = {
 }
 
 
-def test_apply_style_overrides_golden(cfg, store):
+def test_effective_config_golden(cfg, store):
     _set, _get, apply, _keys, _max = _seam()
     out = {}
     for label, saved in OVERLAYS.items():
@@ -211,7 +211,7 @@ def test_apply_style_overrides_golden(cfg, store):
     check_json("settings_overlay.json", out)
 
 
-def test_apply_style_overrides_does_not_touch_the_base_config(cfg, store):
+def test_effective_config_does_not_touch_the_base_config(cfg, store):
     _set, _get, apply, _keys, _max = _seam()
     before = cfg.model_dump()
     store.set_setting("ui.max_tries", 2)

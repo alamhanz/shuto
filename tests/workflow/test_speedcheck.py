@@ -313,7 +313,7 @@ def test_faster_options_fit_and_installed_first(cfg, monkeypatch):
 
 def test_max_tries_setting_validates_and_reaches_the_config(cfg, store):
     assert settings_ui.set_ui_setting(store, "max_tries", "3") == 3
-    assert effective.apply_style_overrides(cfg, store).llm.max_tries == 3
+    assert effective.effective_config(cfg, store).llm.max_tries == 3
     for bad in ("0", "9", "x", None, True):
         with pytest.raises(errors.PipelineError):
             settings_ui.set_ui_setting(store, "max_tries", bad)

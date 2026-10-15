@@ -16,15 +16,10 @@ from typing import Any
 
 from shuto.ai import filters as filters_mod
 from shuto.ai.filters import FilterResult, FilterSpec
-from shuto.ai.prompts import (  # noqa: F401  (names others import from here: alias until T9)
-    ENGLISH_RULE,
-    ENGLISH_RULE_SHORT,
-    MAX_FACTS_CHARS,
+from shuto.ai.prompts import (
     MONTHS,
     Style,
     build_prompt,
-    feedback_lines,
-    language_rule,
     repair_prompt,
     topup_prompt,
 )
@@ -32,10 +27,8 @@ from shuto.ai.providers.base import LLMError, LLMRequest, LLMResult, VisionLLM, 
 from shuto.ai.providers.schema import PhotoOutput, photo_schema
 from shuto.metadata import guardrails, rules
 from shuto.metadata.model import PhotoMetadata, normalize
-from shuto.places.resolve import (  # noqa: F401  (alias until T9)
+from shuto.places.resolve import (
     NO_PLACE_WARNING,
-    PLACE_SOURCES,
-    _ascii_upper,
     resolve_place,
 )
 

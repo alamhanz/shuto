@@ -104,7 +104,7 @@ def test_cli_prints_the_batch_folder(tmp_path, isolated, photos_dir, capsys):
 
 
 def test_folder_names_are_readable_and_safe():
-    from shuto.deliver.report import folder_name
+    from shuto.core.paths import folder_name
 
     assert folder_name("trip (2)") == "trip (2)"
     assert folder_name("2025-w10") == "2025-w10"
@@ -113,7 +113,7 @@ def test_folder_names_are_readable_and_safe():
 
 
 def test_folder_names_differing_only_by_case_do_not_collide():
-    from shuto.deliver.report import folder_name
+    from shuto.core.paths import folder_name
 
     a, b = folder_name("Kyoto"), folder_name("kyoto")
     assert a != b and a.lower() != b.lower() and a.startswith("Kyoto-") and b == "kyoto"
@@ -122,7 +122,7 @@ def test_folder_names_differing_only_by_case_do_not_collide():
 
 @pytest.mark.parametrize("bad", ["nul", "NUL", "con.txt", "COM1", "lpt9", "Aux", "prn.tar.gz"])
 def test_windows_reserved_names_are_prefixed(bad):
-    from shuto.deliver.report import folder_name
+    from shuto.core.paths import folder_name
 
     name = folder_name(bad)
     assert name.startswith("_") and name.split(".")[0].split("-")[0].upper() not in {
@@ -137,7 +137,7 @@ def test_windows_reserved_names_are_prefixed(bad):
 
 
 def test_folder_names_unicode_dots_empty_and_long():
-    from shuto.deliver.report import folder_name
+    from shuto.core.paths import folder_name
 
     uni = folder_name("京都 trip")
     assert uni.isascii() and uni.startswith("__ trip-")

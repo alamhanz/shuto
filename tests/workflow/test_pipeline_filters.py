@@ -231,7 +231,7 @@ def test_auto_approve_only_clean(cfg, store, photos_dir):
 
 def test_ui_filters_override_config(cfg, store):
     base = _cfg(cfg, rules=[_rule(text="from file")])
-    assert [r.text for r in workflow_checks.filter_spec(base).rules] == ["from file"]
+    assert [r.text for r in filters.filter_spec(base).rules] == ["from file"]
     stored = settings_ui.set_ui_setting(
         store,
         "filters",
@@ -246,14 +246,14 @@ def test_ui_filters_override_config(cfg, store):
     )
     assert [r["text"] for r in stored["rules"]] == ["people", "a car"]
     assert all(r["id"] for r in stored["rules"])
-    applied = effective.apply_style_overrides(base, store)
-    spec = workflow_checks.filter_spec(applied)
+    applied = effective.effective_config(base, store)
+    spec = filters.filter_spec(applied)
     assert [r.text for r in spec.rules] == ["people", "a car"]
     assert not spec.theme_check and spec.theme_partly == "flag" and not spec.theme_active
     assert [r.text for r in settings_ui.get_filter_rules(applied)] == ["people", "a car"]
     settings_ui.set_ui_setting(store, "filters", {"rules": []})
-    assert workflow_checks.filter_spec(effective.apply_style_overrides(base, store)).rules == ()
-    assert [r.text for r in workflow_checks.filter_spec(base).rules] == ["from file"]
+    assert filters.filter_spec(effective.effective_config(base, store)).rules == ()
+    assert [r.text for r in filters.filter_spec(base).rules] == ["from file"]
 
 
 @pytest.mark.parametrize(
@@ -283,9 +283,9 @@ def test_ui_filters_newline_is_collapsed(store):
 
 def test_damaged_saved_filters_do_not_break_the_app(cfg, store):
     store.set_setting("ui.filters", {"rules": "garbage", "theme_check": "x"})
-    assert effective.apply_style_overrides(cfg, store).filters == cfg.filters
+    assert effective.effective_config(cfg, store).filters == cfg.filters
     store.set_setting("ui.filters", {"rules": [{"kind": "x", "text": "bad rule"}]})
-    assert effective.apply_style_overrides(cfg, store).filters == cfg.filters
+    assert effective.effective_config(cfg, store).filters == cfg.filters
 
 
 def test_active_checks_and_doctor(cfg, store):

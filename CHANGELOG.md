@@ -2,7 +2,17 @@
 
 Release notes are also published on the GitHub Releases page. Newest first.
 
-## 0.5.1
+## 0.6.0
+
+### Internal refactor, no behavior change
+- The code is reorganised into packages with clear layers (`core`, `store`, `ingest`, `places`,
+  `metadata`, `ai`, `ollama`, `deliver`, `settings`, `update`, `system`, `workflow`, `cli`, `web`)
+  instead of one flat folder with a 2,700-line `pipeline.py`. A test keeps the layers honest.
+- Nothing you see changes: same web app, command line, settings, database, photo files, CSV and
+  self-update. Settings saved by 0.4.0 and 0.5.0 keep working; the update from either
+  version was simulated before release.
+- One table now describes every AI provider (name, label, key, SDK), and the same small helpers
+  are no longer copied in several places.
 
 ### Fixed
 - **Thinking models work** (for example qwen3.5): shuto turns the hidden "thinking" off for

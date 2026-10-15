@@ -38,7 +38,6 @@ from shuto.update.download import (  # noqa: F401  (re-exported: other packages 
     _is_wheel_host,
     download_wheel,
     prune_wheels,
-    sha256_of,
     wheels_dir,
 )
 from shuto.update.release import (  # noqa: F401  (re-exported: other packages use update.core.X)

@@ -14,7 +14,7 @@ from shuto.core.models import ALLOWED, Photo, Status
 from shuto.web import ux
 from shuto.web.routes.batch_support import batch_url, filter_of, in_filter, photo_path
 from shuto.web.state import Ctx, PostForm, WebCtx, split_lines
-from shuto.workflow import checks, describing, resend
+from shuto.workflow import describing, resend
 from shuto.workflow import review as workflow_review
 
 router = APIRouter()
@@ -67,7 +67,7 @@ def _older_rules(ctx: WebCtx, photo: Photo) -> bool:
     if not old:
         return False
     try:
-        return old != checks.filter_spec(ctx.cfg).fingerprint()
+        return old != filters_mod.filter_spec(ctx.cfg).fingerprint()
     except PipelineError:
         return False
 

@@ -8,12 +8,11 @@ this module.
 
 from __future__ import annotations
 
-import importlib
 from dataclasses import dataclass
 from datetime import date, datetime
 from importlib import resources
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import yaml
 
@@ -194,45 +193,3 @@ def catalog_staleness(today: date | None = None) -> tuple[str, bool]:
         return "", False
     age = ((today or date.today()) - updated).days
     return f"{updated.day} {updated:%B %Y}", age > STALE_AFTER_DAYS
-
-
-_MOVED = {
-    "shuto.ai.model_choice": (
-        "ModelChoiceRequired",
-        "load_choice",
-        "save_choice",
-        "clear_choice",
-        "resolve_model",
-    ),
-    "shuto.ai.recommend": (
-        "Recommendation",
-        "assess",
-        "recommend",
-        "speed_label",
-        "combined_score",
-        "ModelRow",
-        "top_models",
-        "ApiOption",
-        "VolumeOption",
-        "DiskAdvice",
-        "disk_advice",
-        "gpu_fit",
-        "ram_spare_gb",
-    ),
-    "shuto.ai.benchmark": (
-        "sample_jpeg_bytes",
-        "make_synthetic_sample",
-        "load_benchmarks",
-        "bench_key",
-        "benchmark",
-    ),
-}
-_HOME = {name: mod for mod, names in _MOVED.items() for name in names}
-
-
-def __getattr__(name: str) -> Any:
-    """The names that moved to recommend / model_choice / benchmark (alias until T9)."""
-    mod = _HOME.get(name)
-    if mod is None:
-        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
-    return getattr(importlib.import_module(mod), name)

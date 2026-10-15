@@ -9,13 +9,13 @@ from . import check_json
 
 def _seam():
     from shuto.ai import catalog as local_models
-    from shuto.ai import selection
+    from shuto.ai import recommend, selection
     from shuto.ai.hardware import HardwareProfile
     from shuto.ai.providers.ollama import OllamaProvider
 
     return {
         "effective_num_ctx": local_models.effective_num_ctx,
-        "assess": local_models.assess,
+        "assess": recommend.assess,
         "load_catalog": local_models.load_catalog,
         "is_small_context": local_models.is_small_context,
         "SMALL": local_models.SMALL_CONTEXT_TOKENS,

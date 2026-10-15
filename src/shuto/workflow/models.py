@@ -8,11 +8,15 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
 
+from shuto.ai import benchmark as ai_benchmark
 from shuto.ai import catalog as local_models
 from shuto.ai import hardware, machine
+from shuto.ai import model_choice as ai_choice
+from shuto.ai import recommend as ai_recommend
 from shuto.ai import selection as ai_selection
+from shuto.ai.providers import API_PROVIDERS
 from shuto.ai.providers.ollama import OllamaProvider
-from shuto.ai.selection import API_KEY_SECRETS, Selection
+from shuto.ai.selection import Selection
 from shuto.core import paths
 from shuto.core.config import Config
 from shuto.core.errors import PipelineError
@@ -26,15 +30,15 @@ def list_models(
     client: Any = None,
     profile: hardware.HardwareProfile | None = None,
     n: int = 8,
-) -> list[local_models.ModelRow]:
+) -> list[ai_recommend.ModelRow]:
     """Top-n runnable local models for this machine (never picks one for the user)."""
     profile = profile or machine.hardware_profile()
     status = hardware.ollama_status(ai_selection._client_or_default(cfg, client))
-    return local_models.top_models(
+    return ai_recommend.top_models(
         profile,
         local_models.load_catalog(),
         status.pulled,
-        local_models.load_benchmarks(paths.benchmark_cache_path()),
+        ai_benchmark.load_benchmarks(paths.benchmark_cache_path()),
         hardware.free_gb(hardware.ollama_models_dir()),
         n,
     )
@@ -46,7 +50,7 @@ class DoctorReport:
     ollama: hardware.OllamaStatus
     models_dir: str
     disk_free_gb: float | None
-    rows: list[local_models.ModelRow]
+    rows: list[ai_recommend.ModelRow]
     selected: str | None
     provider: str
     config_path: str | None
@@ -69,11 +73,11 @@ def doctor(
     status = hardware.ollama_status(client)
     models_dir = hardware.ollama_models_dir()
     free = hardware.free_gb(models_dir)
-    rows = local_models.top_models(
+    rows = ai_recommend.top_models(
         profile,
         local_models.load_catalog(),
         status.pulled,
-        local_models.load_benchmarks(paths.benchmark_cache_path()),
+        ai_benchmark.load_benchmarks(paths.benchmark_cache_path()),
         free,
     )
     unreadable = False
@@ -81,7 +85,7 @@ def doctor(
         selection = ai_selection.resolve_selection(cfg, store)
         selected: str | None = f"{selection.provider}:{selection.model}"
         provider = selection.provider
-    except local_models.ModelChoiceRequired:
+    except ai_choice.ModelChoiceRequired:
         selected, provider = None, cfg.llm.provider
     except (PipelineError, sqlite3.Error):  # what resolve_selection raises; bugs still surface
         selected, provider, unreadable = None, cfg.llm.provider, True
@@ -103,7 +107,7 @@ def doctor(
 
 def model_disk_advice(
     cfg: Config, tag: str, *, client: Any = None
-) -> local_models.DiskAdvice | None:
+) -> ai_recommend.DiskAdvice | None:
     """Disk check for a catalog model (None if the tag is not in the catalog)."""
     local, api = local_models.load_catalog()
     model = next((m for m in local if m.tag == tag), None)
@@ -113,7 +117,7 @@ def model_disk_advice(
         hardware.normalize_tag(p)
         for p in hardware.ollama_status(ai_selection._client_or_default(cfg, client)).pulled
     }
-    return local_models.disk_advice(model, hardware.ollama_models_dir(), api, pulled=pulled)
+    return ai_recommend.disk_advice(model, hardware.ollama_models_dir(), api, pulled=pulled)
 
 
 def pull_model(
@@ -131,14 +135,14 @@ def use_model(cfg: Config, store: Store, spec: str) -> Selection:
     """Persist an explicit choice. `TAG` = local Ollama model; `PROVIDER:MODEL` = API provider
     (`PROVIDER:` alone = that provider's catalog default)."""
     prov, sep, mod = spec.partition(":")
-    if sep and prov in (*API_KEY_SECRETS, "bedrock"):
+    if sep and prov in API_PROVIDERS:
         entry = ai_selection.api_model(prov, mod or None)
         if entry is None:
             raise PipelineError(f"{spec!r} is not in data/models.yaml for provider {prov}.")
         store.set_setting("llm.provider", prov)
         store.set_setting("llm.model", entry.model)
         return Selection(prov, entry.model, "settings")
-    local_models.save_choice(paths.model_choice_path(), spec)
+    ai_choice.save_choice(paths.model_choice_path(), spec)
     store.set_setting("llm.provider", "ollama")
     store.set_setting("llm.model", spec)  # beats an explicit config model (UI > config)
     return Selection("ollama", spec, "settings")
@@ -161,11 +165,11 @@ def bench_model(
         keep_alive=cfg.llm.ollama.keep_alive,
         timeout_s=cfg.llm.timeout_s,
         client=ai_selection._client_or_default(cfg, client),
-        num_ctx=local_models.effective_num_ctx(tag, profile),
+        num_ctx=ai_selection.num_ctx_for(tag),
     )
-    return local_models.benchmark(
+    return ai_benchmark.benchmark(
         provider,
-        local_models.sample_jpeg_bytes(),
+        ai_benchmark.sample_jpeg_bytes(),
         paths.benchmark_cache_path(),
         profile.fingerprint,
     )

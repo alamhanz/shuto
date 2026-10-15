@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import html
 import re
-import time
+import threading
 
 import pytest
 from fastapi.testclient import TestClient
@@ -124,9 +124,13 @@ def test_check_page_and_job(web, batch):
 
 
 def test_check_without_photos_or_busy(web, batch):
-    started = web.state.runner.submit("x", batch, lambda ctx: time.sleep(0.3))
-    r = web.post(f"/batch/{batch}/check")
-    assert "already has job" in r.text
+    release = threading.Event()  # the job stays running until the assertion is done
+    started = web.state.runner.submit("x", batch, lambda ctx: release.wait(30))
+    try:
+        r = web.post(f"/batch/{batch}/check")
+        assert "already has job" in r.text
+    finally:
+        release.set()
     web.state.runner.wait(started)
 
 
@@ -341,9 +345,13 @@ def test_deliver_requires_confirm_and_runs_one_job(web, described, monkeypatch):
     assert "Tick the box" in wrong.text and not calls
     job = web.run_job(f"/batch/{described}/deliver", {"confirm": "yes"})
     assert job.state == "done" and calls and calls[0]["confirm"] is True
-    started = web.state.runner.submit("x", described, lambda ctx: time.sleep(0.3))
-    busy = web.post(f"/batch/{described}/deliver", {"confirm": "yes"})
-    assert "already has job" in busy.text
+    release = threading.Event()  # the job stays running until the assertion is done
+    started = web.state.runner.submit("x", described, lambda ctx: release.wait(30))
+    try:
+        busy = web.post(f"/batch/{described}/deliver", {"confirm": "yes"})
+        assert "already has job" in busy.text
+    finally:
+        release.set()
     web.state.runner.wait(started)
 
 

@@ -56,6 +56,26 @@ Ubuntu, macOS and Windows with Python 3.12 and 3.13, and ruff once on Ubuntu 3.1
 not assume a GPU, a running Ollama, network access, POSIX paths or POSIX file permissions.
 Use the fake LLM and fake FTP helpers already in `tests/`.
 
+## Code layout
+
+Everything lives in `src/shuto/`. A package may import only from its own row or the rows below
+it; imports under `if TYPE_CHECKING:` are ignored. `tests/test_layers.py` enforces this.
+
+| Layer | Packages | What is in it |
+|---|---|---|
+| entry points | `cli/`, `web/` | The `shuto` command (one `cmd_*.py` per group) and the local web app (one router per page group in `web/routes/`, templates and static files). No business rules. Only `web` imports `web` (the `ui` command starts it). |
+| orchestration | `workflow/` | One module per use case: importing, culling, describing, checks, review, delivering, reports, speed. Combines the store with the domain packages. |
+| update, OS | `update/`, `system/` | Self-update (`release`, `download`, `core`, and `_helper.py`, which is standard library only because it runs alone) and OS integration (launcher, open folder). |
+| settings | `settings/` | Saved web app settings: keys, validators, `effective_config(cfg, store)`. |
+| domain services | `ai/`, `ollama/`, `deliver/` | AI prompts, providers (`ai/providers`, one `REGISTRY` table), model catalog and hardware; the Ollama models folder; FTPS, CSV, report and ledger. No store, settings, workflow or web. `ai` never imports `ollama` or `deliver`; `ollama` may import `ai.hardware`. |
+| pure domain | `ingest/`, `places/`, `metadata/` | Photo reading and culling, place names, metadata rules and embedding. `places` may import `ingest` and `metadata`; those two import neither. |
+| persistence | `store/` | SQLite (`schema.py`, `db.py`). |
+| base | `core/` | Config, models, validation, secrets, errors, paths, text, files, platform, progress, jobs. |
+
+Package data stays where it is: `src/shuto/data/`, `web/templates/`, `web/static/`. Callers import
+submodules (`from shuto.workflow import importing`) and call functions as module attributes
+(`selection.ollama_client(cfg)`), so tests can patch them where they are looked up.
+
 ## Principles
 
 - Local-first by default and usable offline. Cloud APIs are optional.
@@ -66,7 +86,8 @@ Use the fake LLM and fake FTP helpers already in `tests/`.
 ## Guidelines
 
 - Use `pathlib`, and `subprocess.run([...], timeout=...)` without `shell=True`. No OS-specific scripts.
-- Core modules stay pure; only `pipeline.py` touches the store and the config.
+- Keep to the layers in [Code layout](#code-layout): a package imports only from its own row or
+  rows below it (`tests/test_layers.py` checks this).
 - Keep `docs/shutterstock-restrictions.md` and `src/shuto/data/restrictions.yaml` in sync: change both in the same pull request and cite the Shutterstock source.
 - Model sizes, speeds and prices in `src/shuto/data/models.yaml` are approximate. Verify tags and prices against the Ollama library and provider pricing pages before changing them.
 - Do not add real personal photos to tests. Generate synthetic images (see `tests/helpers.py`) or use public-domain ones with a credit.

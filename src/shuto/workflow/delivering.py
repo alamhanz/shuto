@@ -49,7 +49,10 @@ def _text_problems(meta: dict[str, Any]) -> list[str]:
     keywords = [k for k in meta.get("keywords") or [] if str(k).strip()]
     if len(keywords) < metadata_rules.KEYWORD_FLOOR:
         found.append(metadata_rules.reason("few_keywords", count=len(keywords)))
-    if len(metadata_rules.words_of(str(meta.get("description") or ""))) < metadata_rules.MIN_WORDS:
+    if (
+        len(metadata_rules.words_of(str(meta.get("description") or "")))
+        < metadata_rules.MIN_COMMERCIAL_WORDS
+    ):
         found.append(metadata_rules.reason("too_few_words"))
     return found
 
@@ -85,7 +88,10 @@ def prepare_batch(
         meta = dict(photo.metadata or {})
         gr = (photo.guardrail or {}).get("action")
         problems = release_check(
-            meta, photo.detected, photo.release_ids, strict=cfg.style.english_only
+            meta,
+            photo.detected,
+            photo.release_ids,
+            strict=metadata_rules.language_policy(cfg.style).strict,
         )
         if gr == "block":
             problems.append("Blocked by guardrails.")
@@ -171,7 +177,9 @@ def _uploadable(
         if (photo.guardrail or {}).get("action") == "block" or not photo.prepared_path:
             summary.skipped_blocked.append(photo.orig_name)
             continue
-        if checks.not_english(photo.metadata or {}, cfg.style.english_only):  # e.g. a 0.4.0 copy
+        if checks.not_english(
+            photo.metadata or {}, metadata_rules.language_policy(cfg.style).strict
+        ):  # e.g. a 0.4.0 copy
             summary.failed[Path(photo.prepared_path).name] = (
                 NOT_ENGLISH_TEXT + ": edit it in Review"
             )
@@ -312,8 +320,8 @@ class DeliverSummary:
 
 
 def _offset_progress(progress: Progress, total: int, offset: int, limit: int) -> Progress:
-    """Report `offset + done` (at most `limit`) of `total` on the outer bar. Local until the shared
-    helper exists in core.progress."""
+    """Report `offset + done` (at most `limit`) of `total` on the outer bar: one unit per photo,
+    so unlike `core.progress.ScaledProgress` it does not stretch the step's own count."""
 
     def report(done: int, _count: int, message: str = "") -> None:
         progress(min(offset + done, limit), total, message)

@@ -7,6 +7,7 @@ import re
 from starlette.datastructures import FormData
 
 from shuto.ai import filters as filters_mod
+from shuto.ai.providers import API_PROVIDERS
 from shuto.core import errors
 from shuto.core import secrets as shuto_secrets
 from shuto.settings import ui as settings_ui
@@ -14,11 +15,6 @@ from shuto.web.state import WebCtx
 from shuto.workflow import ftps_login
 from shuto.workflow import models as workflow_models
 
-API_PROVIDERS = ("anthropic", "gemini", "bedrock")
-API_KEY_ENV = {
-    "anthropic": "ANTHROPIC_API_KEY",
-    "gemini": "GEMINI_API_KEY",
-}
 TAG_RE = re.compile(r"^[A-Za-z0-9._:/-]{1,100}$")
 RETURN_PAGES = {"/settings", "/welcome?step=3"}
 MAX_RULES = filters_mod.MAX_RULES
@@ -33,7 +29,7 @@ def apply_model(ctx: WebCtx, spec: str) -> tuple[str | None, str | None]:
         return None, "That model name is not valid."
     prov = spec.partition(":")[0]
     if ":" in spec and prov in API_PROVIDERS:
-        pass  # provider choice, validated by pipeline.use_model against the price table
+        pass  # provider choice, validated by workflow.models.use_model against the price table
     elif workflow_models.model_disk_advice(cfg, spec) is None:
         return None, f"{spec} is not in the model catalog."
     try:

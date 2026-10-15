@@ -35,9 +35,6 @@ class NotEnglishError(ValueError):
     """A CSV cell has non-Latin text. Shutterstock needs English; the file is not written."""
 
 
-_yn = yes_no  # alias until T9
-
-
 def build_csv(items: Iterable[dict], strict: bool = True) -> str:
     """The Shutterstock CSV text. ``strict`` (English only) refuses non-Latin cells; with
     strict off (another metadata language) the cells are written as they are, in UTF-8."""

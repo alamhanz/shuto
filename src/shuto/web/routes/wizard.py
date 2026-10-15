@@ -5,10 +5,10 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
+from shuto.ollama import OLLAMA_DOWNLOAD_URL
 from shuto.settings import ui as settings_ui
 from shuto.web.routes.actions import apply_model, save_login, save_style
 from shuto.web.routes.model_support import (
-    OLLAMA_URL,
     current_model,
     helper_steps,
     model_context,
@@ -58,7 +58,7 @@ def welcome(request: Request, ctx: Ctx, step: int = 1):
         "welcome.html",
         step=step,
         wizard=WIZARD_STEPS,
-        ollama_url=OLLAMA_URL,
+        ollama_url=OLLAMA_DOWNLOAD_URL,
         **extra,
     )
 

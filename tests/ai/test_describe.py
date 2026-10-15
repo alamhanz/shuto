@@ -1,7 +1,8 @@
 import re
 from datetime import datetime
 
-from shuto.ai.describe import Style, build_prompt, describe_photo, editorial_caption, feedback_lines
+from shuto.ai.describe import describe_photo, editorial_caption
+from shuto.ai.prompts import Style, build_prompt, feedback_lines
 from shuto.ai.providers.fake import DEFAULT_RESPONSE, FakeProvider
 from shuto.metadata import guardrails
 from shuto.metadata.model import EDITORIAL_CAPTION_RE

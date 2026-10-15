@@ -8,11 +8,12 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse
 from starlette.datastructures import FormData
 
+from shuto.ai.providers import API_KEY_SECRETS
 from shuto.core import errors
 from shuto.core import secrets as shuto_secrets
 from shuto.core.jobs import JobContext
 from shuto.settings import ui as settings_ui
-from shuto.web.routes.actions import API_KEY_ENV, save_login
+from shuto.web.routes.actions import save_login
 from shuto.web.state import Ctx, PostForm
 from shuto.workflow import ftps_login
 
@@ -85,7 +86,7 @@ def settings_key(form: PostForm, ctx: Ctx):
             return ctx.go(here, None, str(exc))
         ctx.state.reload_settings()
         return ctx.go(here, "AWS profile saved." if name else "AWS profile cleared.", None)
-    env = API_KEY_ENV.get(prov)
+    env = API_KEY_SECRETS.get(prov)
     if env is None:
         raise HTTPException(status_code=404, detail="Unknown provider.")
     key = str(form.get("key") or "").strip()
@@ -108,7 +109,7 @@ def settings_key_forget(request: Request, form: PostForm, ctx: Ctx):
         settings_ui.set_ui_setting(ctx.store, "bedrock_profile", "")
         ctx.state.reload_settings()
         return ctx.go(here, "AWS profile cleared.", None, request)
-    env = API_KEY_ENV.get(prov)
+    env = API_KEY_SECRETS.get(prov)
     if env is None:
         raise HTTPException(status_code=404, detail="Unknown provider.")
     try:

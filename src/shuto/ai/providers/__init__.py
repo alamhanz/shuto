@@ -11,6 +11,7 @@ import importlib
 from dataclasses import dataclass
 
 from shuto.ai.providers.base import LLMError, LLMRequest, LLMResult, VisionLLM, describe_structured
+from shuto.core import secrets
 
 
 @dataclass(frozen=True)
@@ -31,7 +32,7 @@ REGISTRY: dict[str, ProviderInfo] = {
             "anthropic",
             "shuto.ai.providers.anthropic_api:AnthropicProvider",
             "Anthropic",
-            key_secret="ANTHROPIC_API_KEY",
+            key_secret=secrets.ANTHROPIC_API_KEY,
             sdk_module="anthropic",
             is_api=True,
         ),
@@ -39,7 +40,7 @@ REGISTRY: dict[str, ProviderInfo] = {
             "gemini",
             "shuto.ai.providers.gemini:GeminiProvider",
             "Gemini",
-            key_secret="GEMINI_API_KEY",
+            key_secret=secrets.GEMINI_API_KEY,
             sdk_module="google.genai",
             is_api=True,
         ),

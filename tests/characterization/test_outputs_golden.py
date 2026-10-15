@@ -170,7 +170,7 @@ def _run(cfg, store, tmp_path, monkeypatch, text, language) -> dict:
     if language:
         s["settings_ui"].set_ui_setting(store, "language", language)
     s["settings_ui"].set_ui_setting(store, "max_tries", 3)
-    run_cfg = s["effective"].apply_style_overrides(cfg, store)
+    run_cfg = s["effective"].effective_config(cfg, store)
     run_cfg.deliver.upload_enabled = True
 
     (batch,) = s["importing"].import_folder(run_cfg, store, photos_dir).batches

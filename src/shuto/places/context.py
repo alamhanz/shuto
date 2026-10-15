@@ -16,8 +16,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from shuto.core.validate import _PLACE_OK as PLACE_NAME_RE
-from shuto.core.validate import MAX_PLACE_CHARS
+from shuto.core.validate import MAX_PLACE_CHARS, PLACE_NAME_RE
 from shuto.ingest.photo_meta import PhotoMeta, read_photo_meta
 from shuto.metadata.rules import latin_words_only
 from shuto.places import geo

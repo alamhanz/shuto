@@ -10,7 +10,8 @@ import pytest
 from pydantic import ValidationError
 
 from shuto.ai import selection
-from shuto.ai.describe import Style, build_prompt, describe_photo
+from shuto.ai.describe import describe_photo
+from shuto.ai.prompts import Style, build_prompt
 from shuto.ai.providers.fake import DEFAULT_RESPONSE, FakeProvider
 from shuto.core import errors
 from shuto.core.config import Config, StyleConfig
@@ -148,10 +149,10 @@ def test_ui_setting_validation(store):
 
 def test_saved_language_applies_to_config(cfg, store):
     settings_ui.set_ui_setting(store, "language", {"english_only": False, "language": "Thai"})
-    out = effective.apply_style_overrides(cfg, store)
+    out = effective.effective_config(cfg, store)
     assert out.style.english_only is False and out.style.metadata_language == "Thai"
     settings_ui.set_ui_setting(store, "language", {"english_only": True})
-    assert effective.apply_style_overrides(cfg, store).style.english_only is True
+    assert effective.effective_config(cfg, store).style.english_only is True
 
 
 # ------------------------------------------------------- pipeline guards follow the setting

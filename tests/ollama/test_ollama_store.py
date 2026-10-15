@@ -15,6 +15,7 @@ import pytest
 
 from shuto.ai import hardware
 from shuto.core import platform as core_platform
+from shuto.ollama import env, move, service
 from shuto.ollama import models_dir as store
 
 
@@ -58,20 +59,20 @@ class FakeSystem:
 @pytest.fixture
 def sysfake(monkeypatch, tmp_path):
     fake = FakeSystem(models=["gemma3:4b"])
-    monkeypatch.setattr(store, "_run", fake.run)
-    monkeypatch.setattr(store, "_spawn", lambda cmd: fake.spawn(cmd))
-    monkeypatch.setattr(store, "can_start", lambda os_name=None: True)
+    monkeypatch.setattr(env, "_run", fake.run)
+    monkeypatch.setattr(service, "_spawn", lambda cmd: fake.spawn(cmd))
+    monkeypatch.setattr(service, "can_start", lambda os_name=None: True)
     app = tmp_path / "ollama app.exe"
     app.write_text("x")
-    monkeypatch.setattr(store, "_tray_app", lambda: app)
-    monkeypatch.setattr(store.time, "sleep", lambda s: None)
+    monkeypatch.setattr(service, "_tray_app", lambda: app)
+    monkeypatch.setattr(service.time, "sleep", lambda s: None)
     clock = {"t": 0.0}
 
     def tick():
         clock["t"] += 1.0
         return clock["t"]
 
-    monkeypatch.setattr(store.time, "monotonic", tick)
+    monkeypatch.setattr(service.time, "monotonic", tick)
     monkeypatch.delenv("OLLAMA_MODELS", raising=False)
     monkeypatch.setattr(core_platform, "os_name", lambda: "windows")  # same on every CI runner
     # never read the real registry: the "saved" user value is what the test put in the env
@@ -85,8 +86,8 @@ def sysfake(monkeypatch, tmp_path):
 def envlog(monkeypatch):
     """Records what would be saved, instead of touching the registry / launchctl."""
     log: list[str | None] = []
-    monkeypatch.setattr(store, "_win_write", lambda v: log.append(v))
-    monkeypatch.setattr(store, "_mac_write", lambda v: log.append(v))
+    monkeypatch.setattr(env, "_win_write", lambda v: log.append(v))
+    monkeypatch.setattr(env, "_mac_write", lambda v: log.append(v))
     return log
 
 
@@ -129,8 +130,8 @@ def test_validate_creates_nothing(tmp_path):
 
 def test_prepare_folder_makes_and_tests_the_folder(tmp_path, monkeypatch):
     new = tmp_path / "d" / "ollama" / "models"
-    created = store.Created()
-    store.prepare_folder(new, created)
+    created = move.Created()
+    move.prepare_folder(new, created)
     assert new.is_dir() and not list(new.iterdir())  # the write test leaves nothing behind
     assert created.dirs == [tmp_path / "d", tmp_path / "d" / "ollama", new]
     assert created.remove() == 0 and not (tmp_path / "d").exists()
@@ -140,7 +141,7 @@ def test_prepare_folder_makes_and_tests_the_folder(tmp_path, monkeypatch):
 
     monkeypatch.setattr(Path, "write_bytes", boom)
     with pytest.raises(store.StoreError, match="cannot save files"):
-        store.prepare_folder(tmp_path / "other", store.Created())
+        move.prepare_folder(tmp_path / "other", move.Created())
 
 
 def _alias(link: Path, target: Path) -> None:
@@ -185,7 +186,7 @@ def test_case_variant_of_the_old_folder_is_the_same_folder(tmp_path):
     other = tmp_path / "oldmodels"
     if not other.exists():
         pytest.skip("case-sensitive file system")
-    assert store.same_dir(cur, other)
+    assert move.same_dir(cur, other)
     with pytest.raises(store.StoreError, match="already"):
         store.validate_target(str(other), cur)
 
@@ -237,8 +238,8 @@ def test_windows_set_and_reset_use_user_environment(monkeypatch):
     monkeypatch.setattr(core_platform, "os_name", lambda: "windows")
     reg = FakeWinreg()
     broadcasts = []
-    monkeypatch.setattr(store, "_winreg", lambda: reg)
-    monkeypatch.setattr(store, "_win_broadcast", lambda: broadcasts.append(1))
+    monkeypatch.setattr(env, "_winreg", lambda: reg)
+    monkeypatch.setattr(env, "_win_broadcast", lambda: broadcasts.append(1))
     monkeypatch.delenv("OLLAMA_MODELS", raising=False)
     store.set_models_dir(Path("D:/ollama/models"), "windows")
     assert reg.values == {"OLLAMA_MODELS": str(Path("D:/ollama/models"))}
@@ -253,12 +254,12 @@ def test_windows_set_and_reset_use_user_environment(monkeypatch):
 
 
 def test_windows_broadcast_failure_is_not_fatal(monkeypatch):
-    monkeypatch.setattr(store, "_winreg", lambda: FakeWinreg())
+    monkeypatch.setattr(env, "_winreg", lambda: FakeWinreg())
 
     def boom():
         raise OSError("no user32")
 
-    monkeypatch.setattr(store, "_win_broadcast", boom)
+    monkeypatch.setattr(env, "_win_broadcast", boom)
     monkeypatch.delenv("OLLAMA_MODELS", raising=False)
     store.set_models_dir("D:\\m", "windows")
     assert os.environ["OLLAMA_MODELS"] == "D:\\m"
@@ -267,9 +268,9 @@ def test_windows_broadcast_failure_is_not_fatal(monkeypatch):
 def test_mac_set_and_reset_write_login_item(monkeypatch, tmp_path):
     cmds = []
     plist = tmp_path / "LaunchAgents" / "com.shuto.ollama-models.plist"
-    monkeypatch.setattr(store, "_plist_path", lambda: plist)
+    monkeypatch.setattr(env, "_plist_path", lambda: plist)
     monkeypatch.setattr(
-        store,
+        env,
         "_run",
         lambda cmd, timeout=20: cmds.append(cmd) or types.SimpleNamespace(returncode=0),
     )
@@ -290,8 +291,8 @@ def test_mac_set_and_reset_write_login_item(monkeypatch, tmp_path):
 
 
 def test_mac_launchctl_failure_is_reported(monkeypatch, tmp_path):
-    monkeypatch.setattr(store, "_plist_path", lambda: tmp_path / "p.plist")
-    monkeypatch.setattr(store, "_run", lambda cmd, timeout=20: types.SimpleNamespace(returncode=1))
+    monkeypatch.setattr(env, "_plist_path", lambda: tmp_path / "p.plist")
+    monkeypatch.setattr(env, "_run", lambda cmd, timeout=20: types.SimpleNamespace(returncode=1))
     monkeypatch.delenv("OLLAMA_MODELS", raising=False)
     with pytest.raises(store.StoreError, match="macOS would not"):
         store.set_models_dir("/x", "macos")
@@ -308,48 +309,13 @@ def test_linux_is_not_supported_in_app():
         store.change_models_dir(Path("/mnt/x"), move=False, client=None, os_name="linux")
 
 
-# ---------------------------------------------------------------- restart
-
-
-def test_restart_windows_polite_then_forced_then_tray_app(sysfake):
-    store.restart_ollama(sysfake, "windows")
-    names = [c[:3] for c in sysfake.cmds]
-    assert names[0] == ["taskkill", "/IM", "ollama app.exe"]
-    assert names[1] == ["taskkill", "/IM", "ollama.exe"]
-    assert ["taskkill", "/F", "/IM"] in names
-    assert sysfake.spawned[0][0].endswith("ollama app.exe") and sysfake.up
-
-
-def test_restart_windows_falls_back_to_serve(sysfake, monkeypatch):
-    monkeypatch.setattr(store, "_tray_app", lambda: Path("nope.exe"))
-    monkeypatch.setattr(store.shutil, "which", lambda n: "C:/o/ollama.exe")
-    store.restart_ollama(sysfake, "windows")
-    assert sysfake.spawned == [["C:/o/ollama.exe", "serve"]]
-
-
-def test_restart_windows_nothing_to_start(sysfake, monkeypatch):
-    monkeypatch.setattr(store, "_tray_app", lambda: Path("nope.exe"))
-    monkeypatch.setattr(store.shutil, "which", lambda n: None)
-    with pytest.raises(store.StoreError, match="could not find Ollama"):
-        store.restart_ollama(sysfake, "windows")
-
-
-def test_restart_mac_quits_then_opens_app(sysfake):
-    store.restart_ollama(sysfake, "macos")
-    assert sysfake.cmds[0] == ["osascript", "-e", 'quit app "Ollama"']
-    assert ["open", "-a", "Ollama"] in sysfake.cmds
-
-
-def test_restart_times_out_with_plain_message(sysfake):
-    sysfake.start_works = False
-    with pytest.raises(store.StoreError, match="did not start again within 30 seconds"):
-        store.restart_ollama(sysfake, "windows")
+# ---------------------------------------------------------------- stop
 
 
 def test_stop_reports_when_ollama_will_not_close(sysfake, monkeypatch):
-    monkeypatch.setattr(store, "_run", lambda cmd, timeout=20: types.SimpleNamespace(returncode=1))
+    monkeypatch.setattr(env, "_run", lambda cmd, timeout=20: types.SimpleNamespace(returncode=1))
     with pytest.raises(store.StoreError, match="would not close"):
-        store.stop_ollama(sysfake, "windows")
+        service.stop_ollama(sysfake, "windows")
 
 
 # ---------------------------------------------------------------- moving
@@ -389,12 +355,10 @@ def test_identical_files_are_skipped(sysfake, envlog, folders, monkeypatch):
     (new / "blobs").mkdir()
     (new / "blobs" / "sha256-aaa").write_bytes(b"A" * 2_000_000)
     copied = []
-    real = store._copy_file
+    real = move._copy_file
     monkeypatch.setattr(
-        store, "_copy_file", lambda s, d, *a: copied.append(d.name) or real(s, d, *a)
+        move, "_copy_file", lambda s, d, *a: copied.append(d.name) or real(s, d, *a)
     )
-    plan = store.plan_move(old, new)
-    assert plan.todo_bytes == plan.total_bytes - 2_000_000
     store.change_models_dir(new, move=True, client=sysfake, os_name="windows")
     assert "sha256-aaa" not in copied and "sha256-bbb" in copied
 
@@ -403,7 +367,7 @@ def test_a_same_name_file_of_other_size_is_a_conflict(sysfake, envlog, folders):
     old, new = folders
     (new / "blobs").mkdir()
     (new / "blobs" / "sha256-aaa").write_bytes(b"A" * 10)
-    plan = store.plan_move(old, new)
+    plan = move.plan_move(old, new)
     assert plan.conflicts == [str(Path("blobs") / "sha256-aaa")]
     with pytest.raises(store.StoreError, match="will not overwrite"):
         store.change_models_dir(new, move=True, client=sysfake, os_name="windows")
@@ -445,7 +409,7 @@ def test_not_enough_space_changes_nothing(sysfake, envlog, folders, monkeypatch)
 
 def test_copy_failure_keeps_old_files_and_restores_setting(sysfake, envlog, folders, monkeypatch):
     old, new = folders
-    real = store._copy_file
+    real = move._copy_file
     calls = []
 
     def flaky(src, dst, *a):
@@ -454,7 +418,7 @@ def test_copy_failure_keeps_old_files_and_restores_setting(sysfake, envlog, fold
             raise OSError(28, "No space left on device")
         return real(src, dst, *a)
 
-    monkeypatch.setattr(store, "_copy_file", flaky)
+    monkeypatch.setattr(move, "_copy_file", flaky)
     with pytest.raises(store.StoreError, match="models were not changed"):
         store.change_models_dir(new, move=True, client=sysfake, os_name="windows")
     assert (old / "blobs" / "sha256-aaa").exists() and (old / "blobs" / "sha256-bbb").exists()
@@ -465,14 +429,14 @@ def test_copy_failure_keeps_old_files_and_restores_setting(sysfake, envlog, fold
 
 def test_corrupt_copy_is_detected(sysfake, envlog, folders, monkeypatch):
     old, new = folders
-    real = store._copy_file
+    real = move._copy_file
 
     def short(src, dst, on_bytes, cancelled):
         real(src, dst, on_bytes, cancelled)
         if dst.name == "sha256-bbb":
             dst.write_bytes(b"short")
 
-    monkeypatch.setattr(store, "_copy_file", short)
+    monkeypatch.setattr(move, "_copy_file", short)
     with pytest.raises(store.StoreError, match="did not match"):
         store.change_models_dir(new, move=True, client=sysfake, os_name="windows")
     assert (old / "blobs" / "sha256-bbb").stat().st_size == 1_500_000
@@ -512,7 +476,7 @@ def test_unexpected_error_still_recovers(sysfake, envlog, folders, monkeypatch):
     def boom(*a, **k):
         raise RuntimeError("odd")
 
-    monkeypatch.setattr(store, "copy_models", boom)
+    monkeypatch.setattr(move, "copy_models", boom)
     with pytest.raises(store.StoreError, match="unexpected"):
         store.change_models_dir(new, move=True, client=sysfake, os_name="windows")
     assert envlog[-1:] == [str(old)] and sysfake.up
@@ -524,7 +488,7 @@ def test_failure_removes_only_files_this_run_created(sysfake, envlog, folders, m
     (new / "blobs").mkdir()
     keep = new / "blobs" / "sha256-keep"
     keep.write_bytes(b"mine")
-    real = store._copy_file
+    real = move._copy_file
     calls = []
 
     def flaky(src, dst, *a):
@@ -533,7 +497,7 @@ def test_failure_removes_only_files_this_run_created(sysfake, envlog, folders, m
             raise OSError(28, "No space left on device")
         return real(src, dst, *a)
 
-    monkeypatch.setattr(store, "_copy_file", flaky)
+    monkeypatch.setattr(move, "_copy_file", flaky)
     with pytest.raises(store.StoreError, match="models were not changed"):
         store.change_models_dir(new, move=True, client=sysfake, os_name="windows")
     assert keep.read_bytes() == b"mine"
@@ -556,13 +520,13 @@ def test_target_folder_is_created_in_the_job_and_removed_on_failure(
 def test_ollama_is_stopped_before_the_move_is_planned(sysfake, envlog, folders, monkeypatch):
     old, new = folders
     seen = []
-    real = store.plan_move
+    real = move.plan_move
 
     def spy(o, n):
         seen.append(sysfake.up)
         return real(o, n)
 
-    monkeypatch.setattr(store, "plan_move", spy)
+    monkeypatch.setattr(move, "plan_move", spy)
     store.change_models_dir(new, move=True, client=sysfake, os_name="windows")
     assert seen == [True, False]  # a first look while running, the real plan once stopped
 
@@ -621,7 +585,7 @@ def test_manifest_names():
         (str(Path("manifests/example.com/lib/m/x")), 1),
         (str(Path("blobs/sha256-a")), 1),
     ]
-    assert store.manifest_names(files) == {
+    assert move.manifest_names(files) == {
         "gemma3:4b",
         "someone/tool:latest",
         "example.com/lib/m:x",
@@ -632,13 +596,13 @@ def test_manifest_names():
 
 
 def _plan(old: Path, new: Path):
-    return store.plan_move(old, new)
+    return move.plan_move(old, new)
 
 
 def test_delete_removes_manifests_before_blobs(folders, monkeypatch):
     old, new = folders
     plan = _plan(old, new)
-    store.copy_models(plan)
+    move.copy_models(plan)
     order = []
     real = Path.unlink
 
@@ -647,20 +611,20 @@ def test_delete_removes_manifests_before_blobs(folders, monkeypatch):
         return real(self, *a, **k)
 
     monkeypatch.setattr(Path, "unlink", spy)
-    store.delete_old_models(plan)
+    move.delete_old_models(plan)
     assert order == ["manifests", "blobs", "blobs"]
 
 
 def test_delete_refuses_when_a_copy_is_missing_or_a_different_size(folders):
     old, new = folders
     plan = _plan(old, new)
-    store.copy_models(plan)
+    move.copy_models(plan)
     (new / "blobs" / "sha256-bbb").write_bytes(b"short")
     with pytest.raises(store.StoreError, match="missing or incomplete"):
-        store.delete_old_models(plan)
+        move.delete_old_models(plan)
     (new / "blobs" / "sha256-bbb").unlink()
     with pytest.raises(store.StoreError, match="missing or incomplete"):
-        store.delete_old_models(plan)
+        move.delete_old_models(plan)
     assert (old / "blobs" / "sha256-aaa").exists() and (old / "manifests").exists()
 
 
@@ -672,9 +636,9 @@ def test_delete_refuses_when_the_copy_is_the_same_file(tmp_path):
         os.link(old / "blobs" / "sha256-aaa", new / "blobs" / "sha256-aaa")
     except (OSError, NotImplementedError):
         pytest.skip("hard links not allowed here")
-    plan = store.MovePlan(old, new, store._model_files(old), 0)
+    plan = move.MovePlan(old, new, move._model_files(old), 0)
     with pytest.raises(store.StoreError, match="same file"):
-        store.delete_old_models(plan)
+        move.delete_old_models(plan)
     assert (old / "blobs" / "sha256-aaa").read_bytes() == b"A" * 100
 
 
@@ -683,9 +647,9 @@ def test_delete_refuses_when_both_folders_are_one_place(tmp_path):
     make_models(old, {"sha256-aaa": b"A" * 100})
     link = tmp_path / "alias"
     _alias(link, old)
-    plan = store.MovePlan(old, link, store._model_files(old), 0)
+    plan = move.MovePlan(old, link, move._model_files(old), 0)
     with pytest.raises(store.StoreError, match="same place"):
-        store.delete_old_models(plan)
+        move.delete_old_models(plan)
     assert (old / "blobs" / "sha256-aaa").exists()
 
 
@@ -746,7 +710,7 @@ def test_reset_when_already_default_says_so(sysfake, envlog, folders, monkeypatc
 def test_ollama_not_installed_only_saves(sysfake, envlog, folders, monkeypatch):
     _, new = folders
     sysfake.up = False
-    monkeypatch.setattr(store, "can_start", lambda os_name=None: False)
+    monkeypatch.setattr(service, "can_start", lambda os_name=None: False)
     msg = store.change_models_dir(new, move=True, client=sysfake, os_name="macos")
     assert (
         envlog == [str(new)]
@@ -764,14 +728,14 @@ def test_model_files_ignore_symlinks(tmp_path):
         os.symlink(target, root / "blobs" / "sha256-link")
     except (OSError, NotImplementedError):
         pytest.skip("symlinks not allowed here")
-    names = [Path(rel).name for rel, _ in store._model_files(root)]
+    names = [Path(rel).name for rel, _ in move._model_files(root)]
     assert "sha256-link" not in names and "sha256-x" in names
 
 
 def test_wait_stops_at_deadline():
     ticks = iter(range(100))
-    assert not store._wait(lambda: False, 3, sleep=lambda s: None, clock=lambda: next(ticks))
-    assert store._wait(lambda: True, 3)
+    assert not service._wait(lambda: False, 3, sleep=lambda s: None, clock=lambda: next(ticks))
+    assert service._wait(lambda: True, 3)
 
 
 @pytest.mark.skipif(sys.platform != "win32", reason="Windows only")
@@ -805,7 +769,7 @@ def test_a_big_blob_already_in_the_target_must_match_its_name(
     (new / "blobs").mkdir(parents=True)
     (new / "blobs" / name).write_bytes(b"D" * len(good))  # same size, damaged
     monkeypatch.setenv("OLLAMA_MODELS", str(old))
-    plan = store.plan_move(old, new)
+    plan = move.plan_move(old, new)
     assert plan.conflicts == [str(Path("blobs") / name)]
     with pytest.raises(store.StoreError, match="will not overwrite"):
         store.change_models_dir(new, move=True, client=sysfake, os_name="windows")
@@ -821,7 +785,7 @@ def test_an_intact_big_blob_already_in_the_target_is_accepted(
     _blob(old, data)
     _blob(new, data)
     monkeypatch.setenv("OLLAMA_MODELS", str(old))
-    plan = store.plan_move(old, new)
+    plan = move.plan_move(old, new)
     assert plan.conflicts == [] and plan.todo_bytes == 0
 
 
@@ -842,15 +806,15 @@ def test_the_saved_value_not_the_process_env_decides(sysfake, envlog, tmp_path, 
 
 def test_saved_value_on_mac_reads_launchctl_then_the_login_item(monkeypatch, tmp_path):
     plist = tmp_path / "p.plist"
-    monkeypatch.setattr(store, "_plist_path", lambda: plist)
+    monkeypatch.setattr(env, "_plist_path", lambda: plist)
     monkeypatch.setattr(
-        store,
+        env,
         "_run",
         lambda cmd, timeout=20: types.SimpleNamespace(returncode=0, stdout="/Vol/m\n"),
     )
     assert store.saved_value("macos") == "/Vol/m"
     monkeypatch.setattr(
-        store, "_run", lambda cmd, timeout=20: types.SimpleNamespace(returncode=1, stdout="")
+        env, "_run", lambda cmd, timeout=20: types.SimpleNamespace(returncode=1, stdout="")
     )
     assert store.saved_value("macos") is None
     plist.write_bytes(

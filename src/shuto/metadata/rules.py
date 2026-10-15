@@ -20,7 +20,8 @@ from itertools import islice
 
 from shuto.core.validate import MAX_LANGUAGE_CHARS, MAX_TRIES, clean_language  # noqa: F401 (re-exported)
 
-MIN_WORDS = 5
+MIN_COMMERCIAL_WORDS = 5  # the one "complete sentence" rule: model, guardrails, prepare, rules
+MIN_WORDS = MIN_COMMERCIAL_WORDS
 KEYWORD_FLOOR = 7  # Shutterstock's minimum; below it the photo cannot be sent
 DESC_JACCARD = 0.9
 KEYWORD_JACCARD = 0.85
@@ -160,13 +161,40 @@ def has_foreign_script(text: str | None) -> bool:
     return any(not c.isascii() and (c.isalpha() or c.isdecimal()) for c in ascii_fold(text))
 
 
-def english_only(text: str | None) -> str:
+def latin_words_only(text: str | None) -> str:
     """The text with accents folded and every word that has non-Latin letters left out."""
     words = [w for w in ascii_fold(text).split() if not has_foreign_script(w)]
     return re.sub(r"\s+", " ", " ".join(words)).strip()
 
 
+english_only = latin_words_only  # alias until T9 (same name as the language flag)
+
 ENGLISH = "English"
+
+
+@dataclass(frozen=True)
+class LanguagePolicy:
+    """Which language the metadata is written in: strict English, or the owner's language.
+
+    ``strict`` is the flag the guards take as ``strict=`` / ``english=``; ``name`` is the
+    configured language name (only used when ``strict`` is off).
+    """
+
+    strict: bool = True
+    name: str = ""
+
+    @property
+    def text_language(self) -> str:
+        """The language the description and keywords are written in."""
+        return ENGLISH if self.strict else self.name or ENGLISH
+
+
+def language_policy(style_cfg: object) -> LanguagePolicy:
+    """The policy of a ``config.StyleConfig`` (duck-typed; a missing flag means strict English)."""
+    return LanguagePolicy(
+        strict=bool(getattr(style_cfg, "english_only", True)),
+        name=str(getattr(style_cfg, "metadata_language", "") or ""),
+    )
 
 
 def check_english(description: str, keywords: Sequence[str]) -> list[Issue]:

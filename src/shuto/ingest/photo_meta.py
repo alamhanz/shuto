@@ -29,7 +29,7 @@ from shuto.core.exif_tags import (
     T_MODEL,
     T_ORIENTATION,
 )
-from shuto.ingest.imaging import _parse_exif_date, open_image
+from shuto.ingest.imaging import open_image, parse_exif_date
 
 _NS = {
     "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
@@ -180,7 +180,7 @@ def _exif_part(im: Image.Image, meta: PhotoMeta) -> None:
         sub = exif.get_ifd(EXIF_IFD)
     except Exception:
         sub = {}
-    captured = _parse_exif_date(sub.get(T_DT_ORIGINAL)) or _parse_exif_date(exif.get(T_DATETIME))
+    captured = parse_exif_date(sub.get(T_DT_ORIGINAL)) or parse_exif_date(exif.get(T_DATETIME))
     meta.captured = captured
     make, model = _clean(exif.get(T_MAKE)) or "", _clean(exif.get(T_MODEL)) or ""
     if make and model and model.lower().startswith(make.lower()):

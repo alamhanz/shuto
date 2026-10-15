@@ -6,14 +6,12 @@ import re
 from dataclasses import asdict, dataclass, field
 
 from shuto.metadata.categories import normalize_categories
+from shuto.metadata.rules import MIN_COMMERCIAL_WORDS
 
 MAX_KEYWORDS = 50
 MIN_KEYWORDS = 7  # Shutterstock requires at least 7
 MAX_DESCRIPTION_CHARS = 200
-MIN_MEGAPIXELS = 4.0  # Shutterstock minimum for photos
-PREVIEW_MAX_SIDE = 1568  # good quality/cost trade-off for Claude vision
 
-MIN_COMMERCIAL_WORDS = 5
 # Letters are matched Unicode-wide; is_editorial_caption() then requires them to be upper case.
 _CAPS = r"(?:[^\W\d_]|[ .'-])+"
 EDITORIAL_CAPTION_RE = re.compile(

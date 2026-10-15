@@ -3,10 +3,10 @@
 Order of trust for the place of a photo (highest first):
   1. GPS in the file, reverse-geocoded offline (source "gps")
   2. IPTC/XMP location fields written by the photographer or an app (source "file")
-  3. the AI's own guess, 4. the default place from settings (set by other code).
+  3. the AI's own guess, 4. the default place from settings (set by ``places.resolve``).
 A GPS fix that only resolves to region/country (no city nearby) keeps those and takes the
-city from a usable file location. Coordinates are never put in the context or the hints: only
-place names.
+city from a usable file location (``places.resolve.merge_known_place``). Coordinates are never
+put in the context or the hints: only place names.
 """
 
 from __future__ import annotations
@@ -16,9 +16,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+from shuto.core.validate import _PLACE_OK as PLACE_NAME_RE
+from shuto.core.validate import MAX_PLACE_CHARS
 from shuto.ingest.photo_meta import PhotoMeta, read_photo_meta
-from shuto.metadata.rules import english_only
+from shuto.metadata.rules import latin_words_only
 from shuto.places import geo
+from shuto.places.resolve import merge_known_place
 
 MAX_HINTS_CHARS = 300
 _MAX_KEYWORDS_IN_HINTS = 8
@@ -50,7 +53,7 @@ def _clean_text(value: object, limit: int, english: bool = True) -> str:
     asks for English only, so a Japanese title in the file must not leak into the answer).
     With ``english=False`` (another metadata language) the words are kept as they are."""
     text = re.sub(r"\s+", " ", str(value or "")).strip()
-    text = english_only(text) if english else text
+    text = latin_words_only(text) if english else text
     return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
 
 
@@ -70,17 +73,13 @@ def _place_from_gps(gp: dict | None) -> dict[str, Any] | None:
     }
 
 
-_PLACE_PART_OK = re.compile(r"[A-Za-z][A-Za-z .'-]*")
-_MAX_PLACE_PART = 60
-
-
 def _usable_place_part(value: object) -> str | None:
     """A place name from the photo file as plain English letters, else None.
 
     Words in other scripts are dropped; what is left must look like a name (letters, spaces,
     . ' -, at least two letters) or the part is not trusted at all."""
-    text = english_only(re.sub(r"\s+", " ", str(value or "")).strip())
-    if not text or len(text) > _MAX_PLACE_PART or not _PLACE_PART_OK.fullmatch(text):
+    text = latin_words_only(re.sub(r"\s+", " ", str(value or "")).strip())
+    if not text or len(text) > MAX_PLACE_CHARS or not PLACE_NAME_RE.fullmatch(text):
         return None
     return text if sum(c.isalpha() for c in text) >= 2 else None
 
@@ -122,14 +121,9 @@ def build_context(
     ``neighborhood=False`` (the GPS location is not kept in the upload) leaves the GPS
     neighbourhood out, so only the ward or city can reach the prompt, caption and keywords."""
     captured = meta.captured or captured_fallback
-    place = _place_from_gps(gps_place)
-    file_place = _place_from_file(meta.place_hint)
-    if place is None:
-        place = file_place
-    elif file_place and not place["city"] and file_place["city"]:
-        place["city"] = file_place["city"]  # keep the GPS region and country, add the city
-    if place is not None and not neighborhood:
-        place = {**place, "neighborhood": None}
+    place = merge_known_place(
+        _place_from_gps(gps_place), _place_from_file(meta.place_hint), neighborhood
+    )
     ctx: dict[str, Any] = {
         "captured": captured.isoformat() if captured else None,
         "place": place,

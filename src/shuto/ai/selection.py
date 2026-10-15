@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 from shuto.ai import catalog as local_models
 from shuto.ai import hardware, machine
-from shuto.ai.providers import get_provider
+from shuto.ai.providers import API_KEY_SECRETS, API_SDK_MODULES, get_provider, provider_class
 from shuto.ai.providers.base import VisionLLM
 from shuto.ai.providers.fake import FakeProvider
 from shuto.ai.providers.ollama import OllamaClient, OllamaProvider
@@ -20,14 +20,6 @@ from shuto.core.secrets import get_secret
 
 if TYPE_CHECKING:
     from shuto.store import Store
-
-API_KEY_SECRETS = {
-    "anthropic": "ANTHROPIC_API_KEY",
-    "gemini": "GEMINI_API_KEY",
-}
-
-
-API_SDK_MODULES = {"anthropic": "anthropic", "gemini": "google.genai", "bedrock": "boto3"}
 
 
 @dataclass
@@ -86,13 +78,16 @@ def ollama_client(cfg: Config) -> OllamaClient:
     return OllamaClient(cfg.llm.ollama.url, cfg.llm.timeout_s)
 
 
-def _num_ctx_for(model: str) -> int:
+def num_ctx_for(model: str) -> int:
     """The Ollama context size for `model` on this machine (see local_models)."""
     try:
         profile = machine.hardware_profile()
     except Exception:
         profile = None
     return local_models.effective_num_ctx(model, profile)
+
+
+_num_ctx_for = num_ctx_for  # alias until T9
 
 
 def resolve_llm(
@@ -109,7 +104,7 @@ def resolve_llm(
             url=cfg.llm.ollama.url,
             keep_alive=cfg.llm.ollama.keep_alive,
             timeout_s=cfg.llm.timeout_s,
-            num_ctx=_num_ctx_for(sel.model),
+            num_ctx=num_ctx_for(sel.model),
         )
     if sel.provider == "bedrock":
         return get_provider(
@@ -198,19 +193,7 @@ def describe_preflight(cfg: Config, sel: Selection, *, client: Any = None) -> li
 
 def get_provider_class(provider: str):
     """Provider class without instantiating it (for default_image_side / default_concurrency)."""
-
-    from shuto.ai.providers import PROVIDERS
-
-    mod_name, cls_name = PROVIDERS[provider].split(":")
-    try:
-        return getattr(importlib.import_module(mod_name), cls_name)
-    except ImportError:
-        return _Defaults
-
-
-class _Defaults:
-    default_image_side = 1024
-    default_concurrency = 1
+    return provider_class(provider)
 
 
 def use_condensed_prompt(llm: VisionLLM) -> bool:

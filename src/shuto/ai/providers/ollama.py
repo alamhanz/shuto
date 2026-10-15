@@ -10,10 +10,11 @@ import urllib.request
 from collections.abc import Callable
 from typing import Any
 
+from shuto.ai.catalog import NUM_CTX_TARGET
 from shuto.ai.providers.base import LLMError, LLMRequest
 
 DEFAULT_URL = "http://127.0.0.1:11434"
-DEFAULT_NUM_CTX = 8192  # Ollama's own default (2048/4096) cuts the start of a long prompt
+DEFAULT_NUM_CTX = NUM_CTX_TARGET  # Ollama's own default (2048/4096) cuts the start of a long prompt
 
 
 def _close(resp: Any) -> None:

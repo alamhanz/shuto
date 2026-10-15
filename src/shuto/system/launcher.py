@@ -42,7 +42,7 @@ def shuto_command() -> list[str]:
 
 def icon_path(suffix: str) -> Path | None:
     try:
-        path = Path(str(resources.files("shuto").joinpath("data", f"shuto.{suffix}")))
+        path = Path(str(resources.files("shuto.data").joinpath(f"shuto.{suffix}")))
     except (ModuleNotFoundError, TypeError):
         return None
     return path if path.is_file() else None

@@ -14,6 +14,7 @@ import pytest
 from shuto.core import errors
 from shuto.settings import ui as settings_ui
 from shuto.update import core as updates
+from shuto.update import download
 from shuto.update.core import Latest
 
 REAL_DIGEST = updates.fetch_wheel_digest
@@ -608,7 +609,7 @@ def test_download_wheel_network_errors_and_size_cap(tmp_path, monkeypatch):
     routes = {updates.wheel_url("0.3.0"): urllib.error.URLError("offline")}
     with pytest.raises(updates.UpdateError, match="could not download"):
         updates.download_wheel("0.3.0", WHEEL_HASH, tmp_path, opener=FakeOpener(routes))
-    monkeypatch.setattr(updates, "MAX_WHEEL_BYTES", 5)
+    monkeypatch.setattr(download, "MAX_WHEEL_BYTES", 5)
     with pytest.raises(updates.UpdateError, match="could not download"):
         updates.download_wheel("0.3.0", WHEEL_HASH, tmp_path, opener=wheel_opener())
     assert list(tmp_path.iterdir()) == []

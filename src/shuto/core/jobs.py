@@ -6,12 +6,20 @@ import queue
 import threading
 from collections.abc import Callable
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import Any, Protocol
 
 from shuto.core.models import Job
 
-if TYPE_CHECKING:
-    from shuto.store import Store
+
+class JobStore(Protocol):
+    """The job table calls the runner needs (the `Store` has them)."""
+
+    def create_job(self, kind: str, batch_id: str | None = None, total: int = 0) -> int: ...
+
+    def update_job(self, job_id: int, **fields: Any) -> None: ...
+
+    def get_job(self, job_id: int) -> Job | None: ...
+
 
 MAX_KEPT_RESULTS = 50  # finished-job return values kept in memory (oldest dropped first)
 JobFunc = Callable[["JobContext"], Any]
@@ -30,7 +38,7 @@ class JobContext:
 
     def __init__(
         self,
-        store: Store,
+        store: JobStore,
         job_id: int,
         cancel_event: threading.Event,
         texts: dict[int, str] | None = None,
@@ -42,7 +50,7 @@ class JobContext:
         self.completed = False
 
     def progress(self, done: int, total: int, message: str = "") -> None:
-        """Signature matches pipeline.Progress, so pass `ctx.progress` straight through."""
+        """Signature matches core.progress.Progress, so pass `ctx.progress` straight through."""
         self._store.update_job(self.job_id, done=done, total=total)
 
     def progress_text(self, done: int, total: int, message: str = "") -> None:
@@ -51,7 +59,7 @@ class JobContext:
         self._texts[self.job_id] = message
 
     def cancelled(self) -> bool:
-        """Signature matches pipeline.Cancel."""
+        """Signature matches core.progress.Cancel."""
         return self._cancel.is_set()
 
     def raise_if_cancelled(self) -> None:
@@ -70,7 +78,7 @@ class JobRunner:
     Jobs left `queued`/`running` by a crashed process are not recovered.
     """
 
-    def __init__(self, store: Store):
+    def __init__(self, store: JobStore):
         self.store = store
         self._queue: queue.Queue[tuple[int, JobFunc] | None] = queue.Queue()
         self._cancel: dict[int, threading.Event] = {}

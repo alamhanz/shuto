@@ -6,8 +6,8 @@ from typing import Any
 
 from shuto.ai import filters as filters_mod
 from shuto.core.config import Config, FilterRuleConfig
-from shuto.core.errors import PipelineError
-from shuto.metadata import rules as metadata_rules
+from shuto.core.errors import SettingsError
+from shuto.core.validate import MAX_TRIES
 from shuto.settings import ui as settings_ui
 from shuto.store import Store
 
@@ -32,49 +32,46 @@ def _apply_filter_overrides(cfg: Config, store: Store) -> Config:
     return cfg.model_copy(update={"filters": cfg.filters.model_copy(update=update)})
 
 
-def apply_style_overrides(cfg: Config, store: Store) -> Config:
-    """Config copy with the style and the theme/rules set in the web app (theme, tone,
-    always-include, extras, region focus, `ui.filters`). A key that is present wins over the
-    config file, even when empty."""
+def _apply_bedrock_profile(cfg: Config, store: Store) -> Config:
     profile = store.get_setting("ui.bedrock_profile")
-    if isinstance(profile, str):
-        cfg = cfg.model_copy(
-            update={
-                "llm": cfg.llm.model_copy(
-                    update={"bedrock": cfg.llm.bedrock.model_copy(update={"profile": profile})}
-                )
-            }
-        )
-    cfg = _apply_filter_overrides(cfg, store)
+    if not isinstance(profile, str):
+        return cfg
+    bedrock = cfg.llm.bedrock.model_copy(update={"profile": profile})
+    return cfg.model_copy(update={"llm": cfg.llm.model_copy(update={"bedrock": bedrock})})
+
+
+def _apply_include_gps(cfg: Config, store: Store) -> Config:
     gps = store.get_setting("ui.include_gps")
-    if isinstance(gps, bool):
-        cfg = cfg.model_copy(
-            update={"prepare": cfg.prepare.model_copy(update={"include_gps": gps})}
-        )
+    if not isinstance(gps, bool):
+        return cfg
+    return cfg.model_copy(update={"prepare": cfg.prepare.model_copy(update={"include_gps": gps})})
+
+
+def _apply_max_tries(cfg: Config, store: Store) -> Config:
     tries = store.get_setting("ui.max_tries")
-    if (
-        isinstance(tries, int)
-        and not isinstance(tries, bool)
-        and 1 <= tries <= metadata_rules.MAX_TRIES
-    ):
-        cfg = cfg.model_copy(update={"llm": cfg.llm.model_copy(update={"max_tries": tries})})
+    if isinstance(tries, bool) or not isinstance(tries, int) or not 1 <= tries <= MAX_TRIES:
+        return cfg
+    return cfg.model_copy(update={"llm": cfg.llm.model_copy(update={"max_tries": tries})})
+
+
+def _apply_language(cfg: Config, store: Store) -> Config:
     lang = store.get_setting("ui.language")
-    if isinstance(lang, dict) and isinstance(lang.get("english_only"), bool):
-        try:
-            saved = settings_ui._clean_language_setting(lang)
-        except PipelineError:  # a damaged saved value never stops the app; strict English stays
-            saved = {}
-        if saved:
-            cfg = cfg.model_copy(
-                update={
-                    "style": cfg.style.model_copy(
-                        update={
-                            "english_only": saved["english_only"],
-                            "metadata_language": saved.get("language", ""),
-                        }
-                    )
-                }
-            )
+    if not isinstance(lang, dict) or not isinstance(lang.get("english_only"), bool):
+        return cfg
+    try:
+        saved = settings_ui._clean_language_setting(lang)
+    except SettingsError:  # a damaged saved value never stops the app; strict English stays
+        return cfg
+    style = cfg.style.model_copy(
+        update={
+            "english_only": saved["english_only"],
+            "metadata_language": saved.get("language", ""),
+        }
+    )
+    return cfg.model_copy(update={"style": style})
+
+
+def _apply_style(cfg: Config, store: Store) -> Config:
     style = store.get_setting("ui.style") or {}
     if not style:
         return cfg
@@ -95,3 +92,22 @@ def apply_style_overrides(cfg: Config, store: Store) -> Config:
     if place:
         update["default_place"] = cfg.style.default_place.model_copy(update=place)
     return cfg.model_copy(update={"style": cfg.style.model_copy(update=update)})
+
+
+def effective_config(cfg: Config, store: Store) -> Config:
+    """Config copy with the style and the theme/rules set in the web app (theme, tone,
+    always-include, extras, region focus, `ui.filters`). A key that is present wins over the
+    config file, even when empty."""
+    for step in (
+        _apply_bedrock_profile,
+        _apply_filter_overrides,
+        _apply_include_gps,
+        _apply_max_tries,
+        _apply_language,
+        _apply_style,
+    ):
+        cfg = step(cfg, store)
+    return cfg
+
+
+apply_style_overrides = effective_config  # alias until T9

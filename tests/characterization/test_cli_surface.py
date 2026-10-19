@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import sys
 
 import pytest
 
@@ -70,6 +71,9 @@ def _names():
     return [p for p, _ in _all_parsers(_seam()())]
 
 
+# argparse help layout changes between Python versions; the goldens are recorded on 3.12.
+# The command structure itself is pinned on every version by test_cli_options_golden.
+@pytest.mark.skipif(sys.version_info[:2] != (3, 12), reason="help goldens are recorded on 3.12")
 @pytest.mark.parametrize("path", _names(), ids=lambda p: " ".join(p) or "shuto")
 def test_cli_help_golden(path, monkeypatch):
     parser = dict(_all_parsers(_seam()()))[path]

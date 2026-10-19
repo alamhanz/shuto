@@ -110,7 +110,21 @@ def test_readable_id_or_card_numbers_are_blocked_commercial_and_editorial(r, kin
 
 @pytest.mark.parametrize(
     "kind",
-    ["Account number", "bank-account", "IBAN", "ID card", "driver's license number"],
+    [
+        "Account number",
+        "bank-account",
+        "IBAN",
+        "ID card",
+        "driver's license number",
+        "my number card",
+        "id card number",
+        "social security number",
+        "passport no.",
+        "card no",
+        "residence card",
+        "card #",
+        "ID",
+    ],
 )
 def test_exact_id_kinds_in_free_text_still_block(r, kind):
     _, res = run(r, {"personal_data": [kind]})

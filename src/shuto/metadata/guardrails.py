@@ -60,31 +60,39 @@ DEFAULT_CREDENTIAL_EVENTS = (
     "air show",
     "reenactment",
 )
-# Exact normalized kinds that block. Matching whole kinds (not single words) keeps "license
-# plate", "business card" or "social media account" from blocking a photo.
-_ID_KINDS = frozenset(
-    {
-        "id",
-        "id number",
-        "id card",
-        "national id",
-        "card number",
-        "credit card",
-        "credit card number",
-        "bank card",
-        "bank card number",
-        "passport",
-        "passport number",
-        "account number",
-        "bank account",
-        "bank account number",
-        "iban",
-        "driver license number",
-        "drivers license number",
-        "driver s license number",
-        "driving licence number",
-    }
+# Phrases that block when they appear whole in a kind (after "no."/"#" become "number").
+# Whole phrases, not single words, keep "license plate", "business card", "name card" or
+# "social media account" from blocking a photo.
+_ID_PHRASES = (
+    "id number",
+    "id card",
+    "identity card",
+    "identification",
+    "national id",
+    "my number",
+    "card number",
+    "credit card",
+    "debit card",
+    "bank card",
+    "insurance card",
+    "residence card",
+    "resident card",
+    "residence permit",
+    "zairyu",
+    "passport",
+    "account number",
+    "bank account",
+    "iban",
+    "social security",
+    "driver license",
+    "drivers license",
+    "driver s license",
+    "driving licence",
+    "driving license",
+    "license number",
+    "licence number",
 )
+_NUMBER_WORDS = frozenset({"no", "num", "nr"})
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 # Phone-like: digit groups of 2 or more joined by space, dot, hyphen or brackets (8+ digits).
 _PHONE = re.compile(r"(?<![\w])(?:\+\d{1,3}[ -]?)?(?:\(?\d{2,5}\)?[ .-]){1,4}\d{2,5}(?![\w])")
@@ -533,7 +541,12 @@ def _text_pii_kinds(texts: Iterable[str]) -> list[str]:
 
 
 def _is_id_kind(value: str) -> bool:
-    return normalize(value) in _ID_KINDS
+    words = [
+        "number" if w in _NUMBER_WORDS else w
+        for w in normalize(value.replace("#", " number ")).split()
+    ]
+    text = " ".join(words)
+    return text == "id" or any(_contains(text, p) for p in _ID_PHRASES)
 
 
 def _is_credential_event(text: str, r: Restrictions) -> bool:

@@ -11,10 +11,10 @@
 <button class="btn {{ kind }}" type="{{ type }}"{% for k, v in attrs.items() %} {{ k }}="{{ v }}"{% endfor %}>{{ label }}</button>
 {%- endmacro %}
 
-{# bucket: ok | review | blocked | danger | neutral (also good=ok, attention=review, aside=blocked). #}
+{# bucket: ok | review | blocked | danger | sent | neutral (also good=ok, attention=review, aside=blocked). #}
 {% macro chip(bucket, label, count=None) -%}
 {%- set kind = {'good': 'ok', 'attention': 'review', 'aside': 'blocked'}.get(bucket, bucket) -%}
-{%- set ico = {'ok': 'check', 'review': 'alert', 'blocked': 'stop', 'danger': 'alert'}.get(kind) -%}
+{%- set ico = {'ok': 'check', 'review': 'alert', 'blocked': 'stop', 'danger': 'alert', 'sent': 'upload'}.get(kind) -%}
 <span class="chip {{ kind }}">{% if ico %}{{ icon(ico) }}{% endif %}{{ label }}{% if count is not none %} <span class="chip-count">{{ count }}</span>{% endif %}</span>
 {%- endmacro %}
 

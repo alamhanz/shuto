@@ -8,7 +8,8 @@
   {% if next_href %}<a id="next-link" href="{{ next_href }}">next (j) &rsaquo;</a>{% endif %}
 </p>
 <h1>{{ photo.orig_name }}</h1>
-<p>{{ chip(bucket(photo.status) if bucket(photo.status) in ('good', 'attention', 'aside') else 'neutral', label(photo.status)) }}{% if (meta.place or {}).default %} <span class="chip review" title="The place in the caption is your default place. Check that it is right for this photo.">Default place</span>{% endif %}</p>
+<p>{% if sent %}{{ chip('sent', label(photo.status)) }}{% else %}{{ chip(bucket(photo.status) if bucket(photo.status) in ('good', 'attention', 'aside') else 'neutral', label(photo.status)) }}{% endif %}{% if (meta.place or {}).default %} <span class="chip review" title="The place in the caption is your default place. Check that it is right for this photo.">Default place</span>{% endif %}</p>
+{% if sent %}<p class="hint">Shutterstock already has this photo{% if sent_when %} (sent {{ sent_when }}){% elif photo.batch_id %} (sent in batch {{ photo.batch_id }}){% endif %}.</p>{% endif %}
 
 {% if photo.has_gps and include_gps %}
 <p class="flash warn" role="alert">{{ icon('alert') }}<span>This photo contains the place where it was taken (GPS), and your settings send it with the photo. Turn off "Include GPS location in uploaded photos" in <a href="/settings#privacy">Settings</a> if you do not want to publish where this was taken.</span></p>

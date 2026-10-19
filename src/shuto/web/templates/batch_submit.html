@@ -16,17 +16,18 @@
     <p>Open <a href="https://submit.shutterstock.com" target="_blank" rel="noopener noreferrer">submit.shutterstock.com</a> and sign in.</p>
   </li>
   <li>
-    <p>Go to <strong>Portfolio &rarr; Not submitted</strong> (in the menu: Portfolio &rarr; Submit content). Your uploaded photos are there. It can take a few minutes after uploading for them to appear.</p>
-    <img class="shot" src="/static/img/submit-1.png" alt="Screenshot placeholder: the Not submitted tab on Shutterstock" width="480" height="270">
+    <p>In the left menu, open <strong>Portfolio &rarr; Submit content</strong>. Your uploaded photos are on the <strong>Not submitted</strong> tab; it can take a few minutes after uploading.</p>
+    <img class="shot" src="/static/img/submit-1.png" alt="Shutterstock menu: Portfolio opened, with Submit content at the top" width="834" height="406">
   </li>
   <li>
     <p>Click <strong>Upload CSV</strong> (top right) and choose {% if exports|length == 1 %}<strong>{{ exports[0] }}</strong>{% elif exports %}each of <strong>{{ exports|join('</strong>, <strong>'|safe) }}</strong>, one after the other{% else %}the info file{% endif %}. The same file{{ '' if exports|length == 1 else 's' }} {{ 'is' if exports|length == 1 else 'are' }} in the batch folder shown here.</p>
     {% include "_files_note.html" %}
-    <img class="shot" src="/static/img/submit-2.png" alt="Screenshot placeholder: the Upload CSV button on Shutterstock" width="480" height="270">
+    <img class="shot" src="/static/img/submit-2.png" alt="The Upload Metadata from CSV File window with the red Upload CSV button" width="878" height="597">
   </li>
   <li>
-    <p>Check the photos, then press <strong>Submit</strong>. They then move to <strong>Portfolio &rarr; Pending</strong>.</p>
-    <img class="shot" src="/static/img/submit-3.png" alt="Screenshot placeholder: the Submit button on Shutterstock" width="480" height="270">
+    <p>Check the photos, then press <strong>Submit</strong>. They then move to <strong>Portfolio &rarr; Pending content</strong>.</p>
+    <p class="hint">Editorial photos: keep Usage on Editorial (the info file sets it) and do not attach releases to them; Shutterstock does not allow releases on editorial photos.</p>
+    <img class="shot" src="/static/img/submit-3.png" alt="The Save and red Submit buttons under a photo's keywords" width="1032" height="314">
   </li>
 </ol>
 <section class="panel">

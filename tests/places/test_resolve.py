@@ -56,3 +56,16 @@ def test_geo_clear_forgets_the_index():
     geo._index = geo._Index("")
     geo.clear()
     assert geo._index is None
+
+
+def test_resolve_place_region_for_the_caption():
+    ai = {"city": "Kamakura", "region": "Kanagawa", "country": "Japan"}
+    assert resolve_place(ai)["region"] == "KANAGAWA"
+    known = {"city": "Shibuya", "region": "Tokyo", "country": "Japan", "source": "gps"}
+    assert resolve_place(ai, known=known)["region"] == "TOKYO"  # the photo's own wins
+    same = {"city": "Tokyo", "region": "Tokyo", "country": "Japan"}
+    assert resolve_place(same)["region"] == ""  # never a repeat of the city
+    assert resolve_place({"region": "Osaka"}, "Kyoto", "Japan")["region"] == ""  # default city
+    only_region = {"region": "Tokyo", "source": "file"}
+    got = resolve_place({}, known=only_region)
+    assert (got["city"], got["region"]) == ("TOKYO", "")  # the region stood in for the city

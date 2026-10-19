@@ -208,7 +208,7 @@ def test_bulk_edit_changes_keywords_and_categories(web, described):
     assert after.guardrail is not None  # rules ran again
 
 
-def test_bulk_edit_editorial_switch_flags_caption(web, described):
+def test_bulk_edit_editorial_switch_builds_caption(web, described):
     store = web.state.store
     p = _photos(web, described, Status.DESCRIBED)[0]
     r = web.post(
@@ -218,8 +218,7 @@ def test_bulk_edit_editorial_switch_flags_caption(web, described):
     assert r.status_code == 303
     after = store.get_photo(p.id)
     assert after.metadata["editorial"] is True
-    assert after.status in (Status.NEEDS_REVIEW, Status.BLOCKED)
-    assert after.guardrail["messages"]
+    assert after.metadata["description"].startswith("TOKYO, JAPAN - ")  # caption built, no AI
 
 
 def test_bulk_edit_validates(web, described):

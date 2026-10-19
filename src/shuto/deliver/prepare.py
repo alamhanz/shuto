@@ -5,13 +5,13 @@ from __future__ import annotations
 import os
 import re
 import unicodedata
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
 from shuto.ingest import imaging
 from shuto.metadata import embed
-from shuto.metadata.model import is_editorial_caption
+from shuto.metadata.editorial import FORMAT_HINT, caption_problems
 from shuto.metadata.rules import has_foreign_script
 
 MAX_NAME_CHARS = 80
@@ -58,10 +58,14 @@ def release_check(
     detected: dict[str, Any] | None,
     release_ids: list[str],
     strict: bool = True,
+    taken: date | None = None,
+    warnings: list[str] | None = None,
 ) -> list[str]:
     """Problems that block preparation (empty list = fine).
 
     Release ids starting with `property:` count as property releases, anything else as model.
+    ``taken`` is the capture date an editorial caption must show. Things worth knowing that do
+    not block (releases on an editorial photo) are appended to ``warnings`` when it is given.
     """
     detected = detected or {}
     problems: list[str] = []
@@ -82,10 +86,14 @@ def release_check(
     description = str(meta.get("description") or "").strip()
     if not description:
         problems.append("Description is empty.")
-    elif editorial and "UNKNOWN" in description.split(":", 1)[0].upper():
-        problems.append("Editorial caption has an UNKNOWN city, country or date; fill it in.")
-    elif editorial and not is_editorial_caption(description):
-        problems.append('Editorial caption must look like "CITY, COUNTRY - MONTH D, YYYY: text".')
+    elif editorial:
+        for found in caption_problems(description, taken)[:2]:
+            problems.append(f'Editorial caption must look like "{FORMAT_HINT}" ({found}).')
+    if editorial and release_ids and warnings is not None:
+        warnings.append(
+            "Editorial photo: Shutterstock does not accept releases on editorial photos. "
+            "shuto does not send them; do not attach them in the portal."
+        )
     if not meta.get("keywords"):
         problems.append("No keywords.")
     texts = [str(meta.get(k) or "") for k in ("title", "description")]

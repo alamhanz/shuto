@@ -39,16 +39,31 @@ class Detected(BaseModel):
     landmarks: list[str] = Field(default_factory=list)
     artworks_or_characters: list[str] = Field(default_factory=list)
     private_interior: bool = False
+    event: str = ""
+    personal_data: list[str] = Field(default_factory=list)
+    screen_content: bool = False
+    artwork_is_main_subject: bool = False
 
-    @field_validator("logos_or_brands", "landmarks", "artworks_or_characters", mode="before")
+    @field_validator(
+        "logos_or_brands", "landmarks", "artworks_or_characters", "personal_data", mode="before"
+    )
     @classmethod
     def _lists(cls, v: Any) -> Any:
         return _to_list(v)
 
-    @field_validator("private_interior", mode="before")
+    @field_validator("private_interior", "screen_content", "artwork_is_main_subject", mode="before")
     @classmethod
     def _bool(cls, v: Any) -> Any:
         return _to_bool(v)
+
+    @field_validator("event", mode="before")
+    @classmethod
+    def _event(cls, v: Any) -> Any:
+        if v is None or isinstance(v, bool):
+            return ""
+        if isinstance(v, (list, tuple)):
+            return ", ".join(str(x).strip() for x in v if str(x).strip())
+        return re.sub(r"\s+", " ", str(v)).strip()
 
     @field_validator("recognizable_people", mode="before")
     @classmethod

@@ -2,6 +2,7 @@
   "gps both": {
     "ok": {
       "city": "KYOTO",
+      "region": "",
       "country": "JAPAN",
       "source": "gps",
       "default": false
@@ -10,6 +11,7 @@
   "file both": {
     "ok": {
       "city": "KYOTO",
+      "region": "",
       "country": "JAPAN",
       "source": "file",
       "default": false
@@ -18,6 +20,7 @@
   "gps country only, AI city": {
     "ok": {
       "city": "OSAKA",
+      "region": "",
       "country": "JAPAN",
       "source": "gps + AI",
       "default": false
@@ -26,6 +29,7 @@
   "file country only, AI nothing": {
     "ok": {
       "city": "TOKYO",
+      "region": "",
       "country": "JAPAN",
       "source": "partly default",
       "default": true
@@ -34,6 +38,7 @@
   "ai only": {
     "ok": {
       "city": "OSAKA",
+      "region": "",
       "country": "JAPAN",
       "source": "ai",
       "default": false
@@ -42,6 +47,7 @@
   "ai city, default country": {
     "ok": {
       "city": "OSAKA",
+      "region": "",
       "country": "JAPAN",
       "source": "partly default",
       "default": true
@@ -50,6 +56,7 @@
   "default only": {
     "ok": {
       "city": "TOKYO",
+      "region": "",
       "country": "JAPAN",
       "source": "default",
       "default": true
@@ -58,6 +65,7 @@
   "default country only": {
     "ok": {
       "city": "",
+      "region": "",
       "country": "JAPAN",
       "source": "default",
       "default": true
@@ -66,6 +74,7 @@
   "unknown": {
     "ok": {
       "city": "",
+      "region": "",
       "country": "",
       "source": "unknown",
       "default": false
@@ -74,6 +83,7 @@
   "region used as city": {
     "ok": {
       "city": "KANAGAWA",
+      "region": "",
       "country": "JAPAN",
       "source": "gps",
       "default": false
@@ -82,6 +92,7 @@
   "prefecture used as city": {
     "ok": {
       "city": "CHIBA",
+      "region": "",
       "country": "JAPAN",
       "source": "file",
       "default": false
@@ -90,6 +101,7 @@
   "foreign known country skips default city": {
     "ok": {
       "city": "",
+      "region": "",
       "country": "FRANCE",
       "source": "gps",
       "default": false
@@ -98,6 +110,7 @@
   "foreign known country, AI city": {
     "ok": {
       "city": "LYON",
+      "region": "",
       "country": "FRANCE",
       "source": "gps + AI",
       "default": false
@@ -106,6 +119,7 @@
   "known country matches default": {
     "ok": {
       "city": "TOKYO",
+      "region": "",
       "country": "JAPAN",
       "source": "partly default",
       "default": true
@@ -114,6 +128,7 @@
   "region beats default city, AI empty": {
     "ok": {
       "city": "SAITAMA",
+      "region": "",
       "country": "JAPAN",
       "source": "partly default",
       "default": true
@@ -122,6 +137,7 @@
   "accents and case folded": {
     "ok": {
       "city": "KOLN",
+      "region": "",
       "country": "GERMANY",
       "source": "ai",
       "default": false
@@ -130,6 +146,7 @@
   "unknown source treated as file": {
     "ok": {
       "city": "NARA",
+      "region": "",
       "country": "",
       "source": "file",
       "default": false
@@ -138,6 +155,7 @@
   "location as object": {
     "ok": {
       "city": "TOKYO",
+      "region": "",
       "country": "JAPAN",
       "source": "default",
       "default": true

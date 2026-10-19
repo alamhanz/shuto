@@ -9,10 +9,12 @@ from shuto.ai import filters as filters_mod
 from shuto.core.config import Config
 from shuto.core.errors import PipelineError
 from shuto.core.models import Photo, Status
+from shuto.metadata import editorial as metadata_editorial
 from shuto.metadata import guardrails
 from shuto.metadata import rules as metadata_rules
 from shuto.metadata.model import PhotoMetadata, normalize
 from shuto.store import Store
+from shuto.workflow import editorial as editorial_text
 
 
 @lru_cache(maxsize=8)
@@ -122,18 +124,45 @@ def _status_for(
 def _evaluate(
     cfg: Config, store: Store, photo: Photo, data: dict[str, Any]
 ) -> tuple[PhotoMetadata, guardrails.GuardrailResult, Status]:
-    """Normalize hand-edited metadata and re-run the deterministic guardrails."""
+    """Normalize hand-edited metadata and re-run the deterministic guardrails.
+
+    When the guardrails make the photo editorial and its description is not a caption yet, the
+    caption is built (no AI call) and the check runs once more. ``data`` is updated in place
+    then, so the caller stores the new text.
+    """
     batch = store.get_batch(photo.batch_id) if photo.batch_id else None
     has_model, has_property = _release_flags(photo.release_ids)
-    meta = normalize(photo.orig_name, data)
-    meta, gr = guardrails.check(
-        meta,
-        photo.detected,
-        load_restrictions(cfg),
-        notes=batch.notes if batch else "",
-        has_model_release=has_model,
-        has_property_release=has_property,
-    )
+    restrictions = load_restrictions(cfg)
+
+    def run(d: dict[str, Any]) -> tuple[PhotoMetadata, guardrails.GuardrailResult]:
+        return guardrails.check(
+            normalize(photo.orig_name, d),
+            photo.detected,
+            restrictions,
+            notes=batch.notes if batch else "",
+            has_model_release=has_model,
+            has_property_release=has_property,
+        )
+
+    meta, gr = run(data)
+    if meta.editorial and metadata_editorial.caption_sentence_of(meta.description) is None:
+        place = cfg.style.default_place
+        data.update(
+            editorial_text.apply_editorial(
+                photo,
+                {**data, "editorial": True, "keywords": meta.keywords},
+                default_city=place.city,
+                default_country=place.country,
+                english=metadata_rules.language_policy(cfg.style).strict,
+                include_gps=cfg.prepare.include_gps,
+            )
+        )
+        first = gr
+        meta, gr = run(data)
+        gr.removed_keywords = list(dict.fromkeys(first.removed_keywords + gr.removed_keywords))
+        gr.messages = [m for m in first.messages if m.startswith("Removed trademarked")] + [
+            m for m in gr.messages if not m.startswith("Removed trademarked")
+        ]
     meta.warnings.extend(m for m in gr.messages if m not in meta.warnings)
     if not_english(data, metadata_rules.language_policy(cfg.style).strict):
         meta.warnings.append(NOT_ENGLISH_TEXT)

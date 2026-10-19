@@ -19,6 +19,7 @@ from shuto.deliver import send
 from shuto.deliver.prepare import prepare_file, release_check, safe_filename
 from shuto.metadata import embed
 from shuto.metadata import rules as metadata_rules
+from shuto.metadata.editorial import fix_caption
 from shuto.store import Store
 from shuto.workflow import check_batch, checks, exporting, importing, ledger_sync, reports
 from shuto.workflow.checks import NOT_ENGLISH_TEXT
@@ -87,11 +88,20 @@ def prepare_batch(
         progress(i, len(photos), photo.orig_name)
         meta = dict(photo.metadata or {})
         gr = (photo.guardrail or {}).get("action")
+        if meta.get("editorial"):  # CSV, IPTC and XMP all carry the fixed caption
+            fixed = fix_caption(str(meta.get("description") or ""))
+            if fixed != meta.get("description"):
+                meta["description"] = fixed
+                store.update_photo(pid, metadata={**(photo.metadata or {}), "description": fixed})
+        notes: list[str] = []
+        shot = core_text.parse_dt(photo.captured_at)
         problems = release_check(
             meta,
             photo.detected,
             photo.release_ids,
             strict=metadata_rules.language_policy(cfg.style).strict,
+            taken=shot.date() if shot else None,
+            warnings=notes,
         )
         if gr == "block":
             problems.append("Blocked by guardrails.")
@@ -123,7 +133,7 @@ def prepare_batch(
         store.update_photo(pid, prepared_path=str(dest), submit_name=name)
         store.set_status(pid, Status.PREPARED)
         summary.prepared.append(name)
-        if unfixed := _text_problems(meta):
+        if unfixed := [*_text_problems(meta), *notes]:
             summary.warnings[pid] = unfixed
     if summary.prepared:
         reports.refresh_report(cfg, store, batch_id)

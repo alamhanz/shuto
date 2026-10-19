@@ -59,8 +59,10 @@ def resolve_place(
     """
     if isinstance(location, dict):
         city, country = location.get("city"), location.get("country")
+        ai_region = location.get("region")
     else:
         city, country = getattr(location, "city", None), getattr(location, "country", None)
+        ai_region = getattr(location, "region", None)
     known = known or {}
     known_source = known.get("source") if known.get("source") in ("gps", "file") else "file"
     known_region = known.get("region") or known.get("prefecture")
@@ -99,9 +101,19 @@ def resolve_place(
         source = f"{known_source} + AI" if "ai" in wheres else known_source
     else:
         source = "ai"
+    city_text = parts.get("city", ("", ""))[0]
+    country_text = parts.get("country", ("", ""))[0]
+    # The prefecture/state for the editorial caption: the photo's own, else the AI's; never next
+    # to a default city (the default place does not know it) and never a repeat of city/country.
+    region_text = ""
+    if parts.get("city", ("", ""))[1] != "default":
+        region_text = _ascii_upper(known_region) or _ascii_upper(ai_region)
+        if region_text in (city_text, country_text):
+            region_text = ""
     return {
-        "city": parts.get("city", ("", ""))[0],
-        "country": parts.get("country", ("", ""))[0],
+        "city": city_text,
+        "region": region_text,
+        "country": country_text,
         "source": source,
         "default": "default" in wheres,
     }

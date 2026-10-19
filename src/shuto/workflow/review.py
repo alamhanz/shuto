@@ -18,6 +18,7 @@ from shuto.core.models import (
 from shuto.metadata import rules as metadata_rules
 from shuto.store import InvalidTransition, Store
 from shuto.workflow import checks, describing, reports
+from shuto.workflow import editorial as editorial_text
 from shuto.workflow.checks import NOT_ENGLISH_TEXT
 
 PRE_UPLOAD_EDITABLE = (
@@ -94,9 +95,26 @@ def update_metadata(
     ):
         if value is not None:
             data[key] = value
+    place = cfg.style.default_place
+    data = editorial_text.apply_editorial(
+        photo,
+        data,
+        default_city=place.city,
+        default_country=place.country,
+        english=metadata_rules.language_policy(cfg.style).strict,
+        include_gps=cfg.prepare.include_gps,
+    )
     meta, gr, status = checks._evaluate(cfg, store, photo, data)
     stored = meta.to_dict()
-    for extra in ("title", "location", "place", "language", *FILE_FACT_KEYS):
+    for extra in (
+        "title",
+        "location",
+        "place",
+        "language",
+        "caption_sentence",
+        "commercial_description",
+        *FILE_FACT_KEYS,
+    ):
         if extra in data:
             stored[extra] = data[extra]
     was = photo.status
@@ -157,7 +175,7 @@ def approve(
         ):
             summary.refused[pid] = NOT_ENGLISH_TEXT + ": edit it to English first"
             continue
-        meta, gr, _ = checks._evaluate(cfg, store, photo, photo.metadata or {})
+        meta, gr, _ = checks._evaluate(cfg, store, photo, dict(photo.metadata or {}))
         if gr.action == "block":
             store.update_photo(pid, guardrail=gr.to_dict())
             store.set_status(pid, Status.BLOCKED)

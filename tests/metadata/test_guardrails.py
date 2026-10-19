@@ -207,8 +207,11 @@ def test_sapporo_trademark_stays_strict(r):
     "caption,ok",
     [
         (CAPTION, True),
-        ("SÃO PAULO, BRAZIL - MARCH 3, 2026: Rush hour.", True),
-        ("ZÜRICH, SWITZERLAND - MAY 1, 2026: Tram stop.", True),
+        (
+            "SÃO PAULO, BRAZIL - MARCH 3, 2026: Commuters crowd the Paulista Avenue at rush hour.",
+            True,
+        ),
+        ("ZÜRICH, SWITZERLAND - MAY 1, 2026: A blue tram waits at the stop.", True),
         ("Kyoto, Japan - MARCH 3, 2026: Lanterns.", False),
         ("KYOTO, JAPAN - UNKNOWN: Lanterns.", False),
         ("UNKNOWN, UNKNOWN - UNKNOWN: Lanterns.", False),

@@ -29,7 +29,7 @@ def test_resolve_place_only_returns_known_sources():
     for loc, known, (city, country) in itertools.product(locations, KNOWNS, defaults):
         place = resolve_place(loc, city, country, known)
         assert place["source"] in PLACE_SOURCES
-        assert set(place) == {"city", "country", "source", "default"}
+        assert set(place) == {"city", "region", "country", "source", "default"}
 
 
 def test_short_place_text_and_default_flag():

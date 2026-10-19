@@ -96,14 +96,39 @@ Shutterstock sells photos under two kinds of licence, and each has its own rules
 
 - Logos, brands and recognizable people are fine.
 - The caption must be strict and factual, in the form
-  `CITY, COUNTRY - MONTH D, YYYY: Factual sentence.`
+  `CITY, PREFECTURE, COUNTRY - MONTH D, YYYY: Factual sentence.` (the prefecture is left out
+  only when it is unknown).
 - The image must not be manipulated.
+- Brand names are allowed in the caption and keywords (never in Commercial text).
 
 Many everyday street photos contain a sign or a face and can only be sold as Editorial. shuto
 handles this for you: when the rules check finds something that makes a photo unsuitable for
 Commercial, shuto switches the photo to Editorial and writes the caption in the Editorial
 format. You can see and change this in the review step. Photos Shutterstock does not accept
 at all are marked **Can't send as is**, with the reason.
+
+### How shuto decides a photo is Editorial
+
+The AI looks at each photo and reports what it sees: logos or brand names, recognizable people,
+events (concerts, sports), screens, artwork as the main subject, and readable personal data.
+Your own rules and the Shutterstock rules check turn these into a decision:
+
+- Logos, shop signs, recognizable people, events, screens and artwork make the photo Editorial.
+  People and logos always keep a photo Editorial, even if you switch it to Commercial: a
+  release is not enough in the Shutterstock portal, so shuto tells you why it stays Editorial.
+- Readable ID or card numbers block the photo (crop them out and send it back to the AI).
+  Names, addresses and phone numbers make it Editorial and ask for a look.
+- Releases can never be attached to Editorial photos, so you do not need one.
+
+shuto builds the caption prefix itself from the photo's date and place (GPS, then the file's own
+data, then the AI, then your Default place), and the AI writes only the sentence. If the date is
+unknown, the photo is stopped before upload. Before upload and export, every Editorial caption
+is checked: small slips such as an en dash or "July 31 2026" are fixed automatically, and a
+caption that is still wrong stops the export with a message naming the photo.
+
+**Switching one photo:** open it in Review and switch it between Editorial and Commercial.
+Switching to Editorial rebuilds the caption at once; switching back restores the normal
+description. No AI call is needed. The CSV marks editorial photos with `yes` and others with `no`.
 
 <details>
 <summary><strong>For developers</strong></summary>
@@ -249,7 +274,7 @@ section of [shuto.example.yaml](../shuto.example.yaml); rules saved in the web a
 
 ## Default place for Editorial captions
 
-An Editorial caption starts with the place: `CITY, COUNTRY - MONTH D, YYYY: ...`. The AI
+An Editorial caption starts with the place: `CITY, PREFECTURE, COUNTRY - MONTH D, YYYY: ...`. The AI
 works out the city and country from the picture. It never sees the place stored in the photo
 (GPS), so when it cannot tell where a photo was taken, that part is missing, and Shutterstock
 does not accept a caption that says `UNKNOWN`.
@@ -321,7 +346,7 @@ the workspace folder first if you may want to go back.
 
 ## Status and roadmap
 
-shuto is an early version (0.6.0). The pipeline, command line and local web app work end to end,
+shuto is an early version (0.6.1). The pipeline, command line and local web app work end to end,
 and the tests run on Linux, macOS and Windows.
 
 Known limits:

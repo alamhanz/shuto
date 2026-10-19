@@ -2,6 +2,50 @@
 
 Release notes are also published on the GitHub Releases page. Newest first.
 
+## 0.6.1
+
+### Added
+- **Editorial photos get a proper caption.** Captions now read
+  `CITY, PREFECTURE, COUNTRY - MONTH D, YYYY: Sentence`. shuto builds the place and date itself
+  and the AI writes only the sentence.
+- Switching a photo to editorial (or shuto making it editorial) rebuilds its description right
+  away, and switching back restores the normal description. No AI call is needed.
+- Editorial photos are checked before upload and export. Small slips (dashes, "July 31 2026") are
+  fixed automatically; a caption that is still wrong stops the export with a plain message naming
+  the photo.
+- The AI now also reports events, screen content, artwork as the main subject and readable
+  personal data. Concerts, sports and similar events remind you about press credentials;
+  readable ID or card numbers block the photo; names, addresses and phone numbers make it
+  editorial and ask for a look.
+- Brand names are allowed in editorial descriptions and keywords (still never in commercial
+  ones).
+- Phone numbers, email addresses and card numbers in a description or keywords are flagged.
+- A warning explains that releases cannot be attached to editorial photos in the Shutterstock
+  portal.
+- Photos Shutterstock already has (sent before, uploaded, submitted, accepted) show a navy
+  "Sent" chip with the upload icon and a "Sent" ribbon on the Review thumbnail; the photo page
+  says so too.
+- The Submit page shows real Shutterstock screenshots (Portfolio, Submit content, Upload CSV
+  window, Submit buttons). The steps say "Pending content" and note that editorial photos take
+  no releases.
+- Docs: new Releases, Intellectual property by type, Personal data and Sources sections in the
+  restrictions guide; `restrictions.yaml` is now version 2.
+
+### Fixed
+- **Send back to AI** now removes the photos from every Review list (including All). A note says
+  how many wait for the AI and links to Check. They return in their new group once the AI has
+  finished.
+- Keyword top-up also runs when a photo has 7-24 keywords and asks for enough new ones to reach
+  25 (never past the maximum tries or keyword limit; it stops when nothing new comes back).
+- Windows: a models folder stored as an expandable registry value (`%USERPROFILE%\...`) is now
+  read correctly.
+- Windows: restarting Ollama only closes the current user's Ollama, not another signed-in user's.
+- Ollama started by shuto no longer inherits shuto's virtual environment or API keys.
+
+### To check after your next upload
+- The CSV writes the editorial column as `yes`/`no`. After uploading, confirm in the Shutterstock
+  portal that **Usage** shows **Editorial** for those photos.
+
 ## 0.6.0
 
 ### Internal refactor, no behavior change

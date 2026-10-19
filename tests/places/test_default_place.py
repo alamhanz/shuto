@@ -42,7 +42,13 @@ def _describe(location, *, style=None, **over):
 def test_default_fills_a_missing_location():
     res = _describe(NO_LOC, style=TOKYO)
     assert res.metadata.description.startswith("TOKYO, JAPAN - UNKNOWN: ")
-    assert res.place == {"city": "TOKYO", "country": "JAPAN", "source": "default", "default": True}
+    assert res.place == {
+        "city": "TOKYO",
+        "region": "",
+        "country": "JAPAN",
+        "source": "default",
+        "default": True,
+    }
 
 
 def test_default_fills_only_the_missing_part():

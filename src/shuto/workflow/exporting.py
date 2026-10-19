@@ -10,8 +10,10 @@ from typing import Any
 from shuto.core import paths
 from shuto.core import text as core_text
 from shuto.core.config import Config
+from shuto.core.errors import PipelineError
 from shuto.core.models import Photo, Status
 from shuto.deliver import send
+from shuto.deliver.csv_export import EditorialCaptionError
 from shuto.metadata import rules as metadata_rules
 from shuto.store import Store
 from shuto.workflow import checks, reports
@@ -71,12 +73,15 @@ def export_batch(
     summary = ExportSummary(rows=rows, dry_run=dry_run, skipped=skipped)
     if dry_run or not rows:
         return summary
-    dest = send.write_csv(
-        batch_id,
-        rows,
-        paths.batch_dir(cfg, batch_id),
-        metadata_rules.language_policy(cfg.style).strict,
-    )
+    try:
+        dest = send.write_csv(
+            batch_id,
+            rows,
+            paths.batch_dir(cfg, batch_id),
+            metadata_rules.language_policy(cfg.style).strict,
+        )
+    except EditorialCaptionError as exc:  # no CSV is written; the message names the photo
+        raise PipelineError(f"{exc}. Fix it in Review, then export again.") from exc
     summary.files = [dest]
     for photo in photos:
         assert photo.id is not None

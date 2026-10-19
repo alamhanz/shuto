@@ -5,7 +5,7 @@ from shuto.ai.describe import describe_photo, editorial_caption
 from shuto.ai.prompts import Style, build_prompt, feedback_lines
 from shuto.ai.providers.fake import DEFAULT_RESPONSE, FakeProvider
 from shuto.metadata import guardrails
-from shuto.metadata.model import EDITORIAL_CAPTION_RE
+from shuto.metadata.editorial import parse_caption
 
 R = guardrails.load_restrictions()
 WHEN = datetime(2026, 10, 5, 9, 30)
@@ -39,7 +39,7 @@ def test_prompt_contents():
 def test_editorial_caption_format_and_unknown():
     cap = editorial_caption({"city": "Tōkyō", "country": "Japan"}, WHEN, "crowds cross.")
     assert cap == "TOKYO, JAPAN - OCTOBER 5, 2026: Crowds cross."
-    assert EDITORIAL_CAPTION_RE.match(cap)
+    assert parse_caption(cap) is not None
     unk = editorial_caption({}, None, "x")
     assert unk == "UNKNOWN, UNKNOWN - UNKNOWN: X"
 

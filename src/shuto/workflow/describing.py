@@ -235,6 +235,8 @@ class DescribeRun:
         meta["location"] = res.location
         meta["place"] = res.place
         meta["language"] = self.style.text_language  # what the text was written in, per photo
+        meta["caption_sentence"] = res.caption_sentence
+        meta["commercial_description"] = res.commercial_description
         meta.update(models._file_facts(photo.metadata))
         meta["ai_run"] = {"model": f"{use.name}/{use.model}", "max_tries": tries}
         if res.issues:

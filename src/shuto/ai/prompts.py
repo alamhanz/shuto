@@ -12,12 +12,10 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-from shuto.metadata import rules
+from shuto.metadata import editorial, rules
 from shuto.metadata.categories import SHUTTERSTOCK_CATEGORIES
 
-MONTHS = (
-    "JANUARY FEBRUARY MARCH APRIL MAY JUNE JULY AUGUST SEPTEMBER OCTOBER NOVEMBER DECEMBER"
-).split()
+MONTHS = editorial.MONTHS  # moved to metadata.editorial; kept here for old imports
 
 
 @dataclass
@@ -158,14 +156,17 @@ def _condensed_fields(style: Style, lim: rules.Limits) -> list[str]:
         "never over "
         f'{lim.desc_max}. Not a word list. Example: "Cyclists ride along a quiet river path '
         'at sunrise with mist over the water"',
-        '- "caption_sentence": same kind of sentence for a news caption, no date or place.',
+        '- "caption_sentence": one factual present-tense sentence of what happens (name the '
+        "event if any); no date, no place, no personal names or numbers.",
         '- "keywords": list of strings: ' + kw,
         '- "categories": 1 or 2 of: ' + ", ".join(SHUTTERSTOCK_CATEGORIES) + ".",
-        '- "editorial": true if recognizable people, logos/brands or a newsworthy event are '
-        "shown, else false.",
+        '- "editorial": true if recognizable people, logos/brands, artwork, statues, an '
+        "interior, real screen content, readable personal data or an organized event, else "
+        "false.",
         '- "mature": true only for nudity, violence or mature content.',
         '- "detected": {"recognizable_people": int, "logos_or_brands": [], "landmarks": [], '
-        '"artworks_or_characters": [], "private_interior": bool}',
+        '"artworks_or_characters": [], "private_interior": bool, "event": "", '
+        '"personal_data": [], "screen_content": bool, "artwork_is_main_subject": bool}',
         '- "location": {"city", "region", "country"} in English, null if unknown.',
     ]
 
@@ -231,19 +232,27 @@ def build_prompt(
         "no repeated words.",
         '  Good: "Cyclists ride along a quiet river path at sunrise with mist over the water"',
         '  Bad: "river, bicycle, sunrise, mist, path, nature"',
-        '- "caption_sentence": the same kind of sentence for a news caption, saying what is '
-        "happening, without any date or place (those are added). Used only if the photo "
-        "ends up editorial.",
+        '- "caption_sentence": one factual present-tense sentence of what happens; name the '
+        "event if there is one; no date, no place, no opinion words, no people's names, no ID "
+        "or phone numbers. Used only if the photo ends up editorial; shuto adds the date "
+        "and place.",
         '- "keywords": a list of strings. ' + " ".join(kw_rules),
         '- "categories": a list of 1 or 2 values chosen only from: '
         + ", ".join(SHUTTERSTOCK_CATEGORIES)
         + ".",
-        '- "editorial": true if recognizable people (assume no model release), visible '
-        "logos, brands or trademarks, or a newsworthy event are shown; otherwise false.",
+        '- "editorial": true if any of: recognizable people (assume no model release), '
+        "logos/brands/shop names, artwork, statues or characters, a building interior, real "
+        "content on a screen, readable personal data (names, numbers, addresses), or an "
+        "organized event; otherwise false.",
         '- "mature": true only for nudity, violence or other mature content.',
         '- "detected": an object with "recognizable_people" (integer count), '
         '"logos_or_brands" (list of names, empty if none), "landmarks" (list), '
-        '"artworks_or_characters" (list) and "private_interior" (true or false).',
+        '"artworks_or_characters" (list), "private_interior" (true or false), "event" '
+        '(name or kind of an organized event, empty if none), "personal_data" (list of '
+        "readable kinds: id_number, card_number, name, address, phone, email, signature; "
+        'empty if none), "screen_content" (true if real TV, film, game or app content is '
+        'shown) and "artwork_is_main_subject" (true if a painting, mural or sculpture is '
+        "the main subject).",
         '- "location": an object with "city", "region" and "country" in English, '
         "or null for each one that is not clearly identifiable.",
     ]

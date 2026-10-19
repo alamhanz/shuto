@@ -12,6 +12,7 @@ visible text, location, ...) is matched against the rules.
 from __future__ import annotations
 
 import copy
+import re
 import unicodedata
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -21,13 +22,50 @@ from typing import Any
 
 import yaml
 
-from shuto.metadata.model import is_editorial_caption
+from shuto.metadata.editorial import FORMAT_HINT, caption_problems
 from shuto.metadata.rules import MIN_COMMERCIAL_WORDS
 
 SEVERITY = {"ok": 0, "force_editorial": 1, "review": 2, "block": 3}
 LEVEL_ACTIONS = {"restricted": "force_editorial", "prohibited": "block", "no_upload": "block"}
 _PEOPLE_KEYS = ("recognizable_people", "people")
 _LOGO_KEYS = ("logos_or_brands", "logos", "has_logos")
+
+# What a v1 restrictions file (no detected_actions / credential_events keys) falls back to.
+DEFAULT_DETECTED_ACTIONS = {
+    "artworks_or_characters": "force_editorial",
+    "artwork_is_main_subject": "review",
+    "private_interior": "force_editorial",
+    "screen_content": "force_editorial",
+    "credential_event": "review",
+    "id_or_card_number": "block",
+    "personal_data_other": "review",
+}
+DEFAULT_CREDENTIAL_EVENTS = (
+    "concert",
+    "sports",
+    "match",
+    "game",
+    "race",
+    "rally",
+    "election",
+    "press conference",
+    "panel",
+    "red carpet",
+    "runway",
+    "fashion show",
+    "theatre",
+    "theater",
+    "stage play",
+    "airshow",
+    "air show",
+    "reenactment",
+)
+_ID_WORDS = frozenset({"id", "card", "passport", "licence", "license", "account", "iban"})
+_EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+# Phone-like: digit groups of 2 or more joined by space, dot, hyphen or brackets (8+ digits).
+_PHONE = re.compile(r"(?<![\w])(?:\+\d{1,3}[ -]?)?(?:\(?\d{2,5}\)?[ .-]){1,4}\d{2,5}(?![\w])")
+_CARD = re.compile(r"(?<!\d)(?:\d[ -]?){11,18}\d(?!\d)")
+_DATE_LIKE = re.compile(r"^\d{4}[-./]\d{1,2}[-./]\d{1,2}$|^\d{1,2}[-./]\d{1,2}[-./]\d{2,4}$")
 
 
 HOUSE_RULE_PREFIX = "shuto-"
@@ -56,14 +94,18 @@ class Restrictions:
     levels: dict[str, str]
     trademark_terms: list[str]
     rules: list[Rule]
+    detected_actions: dict[str, str] = field(default_factory=lambda: dict(DEFAULT_DETECTED_ACTIONS))
+    credential_events: tuple[str, ...] = DEFAULT_CREDENTIAL_EVENTS
     _index: list[tuple[Rule, tuple[str, ...]]] = field(default_factory=list, repr=False)
     _trademarks: list[tuple[str, str]] = field(default_factory=list, repr=False)
+    _events: list[str] = field(default_factory=list, repr=False)
 
     def __post_init__(self) -> None:
         self._index = [
             (r, tuple(normalize(p) for p in r.phrases if normalize(p))) for r in self.rules
         ]
         self._trademarks = [(t, normalize(t)) for t in self.trademark_terms if normalize(t)]
+        self._events = [n for n in (normalize(e) for e in self.credential_events) if n]
 
 
 @dataclass
@@ -156,6 +198,8 @@ def load_restrictions(
     terms: list[str] = []
     levels = dict(LEVEL_ACTIONS)
     version, compiled = 1, ""
+    actions = dict(DEFAULT_DETECTED_ACTIONS)
+    events: list[str] = list(DEFAULT_CREDENTIAL_EVENTS)
     sources: list[tuple[str, str]] = []
     if builtin:
         text = (
@@ -177,6 +221,16 @@ def load_restrictions(
         if source == "builtin restrictions":
             version = int(data.get("version", 1))
             compiled = str(data.get("compiled", ""))
+            if "credential_events" in data:
+                events = [str(e) for e in data.get("credential_events") or []]
+        else:
+            events += [str(e) for e in data.get("credential_events") or [] if str(e) not in events]
+        for signal, action in (data.get("detected_actions") or {}).items():
+            if str(action) not in SEVERITY:
+                raise ValueError(
+                    f"{source}: detected action {signal} has unknown action {action!r}"
+                )
+            actions[str(signal)] = str(action)
     off = set(disabled)
     if not house_rules:
         off |= {i for i in merged if i.startswith(HOUSE_RULE_PREFIX)}
@@ -186,6 +240,8 @@ def load_restrictions(
         levels=levels,
         trademark_terms=terms,
         rules=[r for r in merged.values() if r.id not in off],
+        detected_actions=actions,
+        credential_events=tuple(events),
     )
 
 
@@ -221,12 +277,12 @@ def prompt_summary(
     lines = ["Shutterstock restrictions (non-exhaustive):"]
     if not short:
         lines += [
-            "- Never put brand names, business names or trademarked terms in the title or "
-            "keywords.",
+            "- Never put brand names, business names or trademarked terms in a commercial "
+            "title or keywords (editorial captions may name them).",
             "- Visible logos, shop signs and recognizable people without releases mean editorial "
             "only.",
             f"- Commercial titles: complete English sentences, {MIN_COMMERCIAL_WORDS}+ words.",
-            "- Editorial captions: CITY, COUNTRY - MONTH DAY, YEAR: Factual sentence.",
+            "- Editorial captions are built by shuto; write only caption_sentence.",
         ]
     if groups["force_editorial"]:
         lines.append(
@@ -291,6 +347,7 @@ def check(
     description = str(getattr(out, "description", "") or "")
     keywords = [str(k) for k in (getattr(out, "keywords", None) or [])]
     was_editorial = bool(getattr(out, "editorial", False))
+    forced = False
 
     fields: list[tuple[str, str]] = [(f"keyword:{k}", normalize(k)) for k in keywords]
     fields.append(("description", normalize(description)))
@@ -344,13 +401,18 @@ def check(
                 result.messages.append(f"{rule.name}: {why}.")
             elif action == "force_editorial":
                 result.messages.append(f"{rule.name}: editorial only.")
+                forced = True
             _bump(result, action)
             break
 
-    # Trademark terms: stripped from keywords, flagged elsewhere.
+    # Trademark terms: brand names are fine in an editorial photo (documentary editorial may show
+    # them), so they are stripped from keywords and flagged in the description only for a
+    # commercial one.
     kept: list[str] = []
     for kw, (_, text) in zip(keywords, fields[: len(keywords)], strict=True):
-        term = next((t for t, n in r._trademarks if _contains(text, n)), None)
+        term = None
+        if not was_editorial:
+            term = next((t for t, n in r._trademarks if _contains(text, n)), None)
         if term is None:
             kept.append(kw)
             continue
@@ -362,13 +424,7 @@ def check(
         )
         out.keywords = kept
     desc_text = normalize(description)
-    for term, n in r._trademarks:
-        if _contains(desc_text, n):
-            result.hits.append(
-                GuardrailHit("trademark_term", "review", "description", name=term, matched=term)
-            )
-            result.messages.append(f"Trademarked term {term!r} in the description; reword it.")
-            _bump(result, "review")
+    desc_terms = [t for t, n in r._trademarks if _contains(desc_text, n)]
     for _, text in fields[len(keywords) + 2 :]:
         term = next((t for t, n in r._trademarks if _contains(text, n)), None)
         if term:
@@ -379,6 +435,7 @@ def check(
             )
             result.messages.append(f"Visible brand {term!r}: editorial only.")
             _bump(result, "force_editorial")
+            forced = True
             break
 
     # People and logos.
@@ -386,23 +443,43 @@ def check(
         result.hits.append(GuardrailHit("people", "force_editorial", "detected"))
         result.messages.append("Recognizable people without a model release: editorial only.")
         _bump(result, "force_editorial")
+        forced = True
     if _flag(detected, _LOGO_KEYS):
         result.hits.append(GuardrailHit("logo", "force_editorial", "detected"))
         result.messages.append("Visible logos: editorial only.")
         _bump(result, "force_editorial")
+        forced = True
 
-    if result.action == "force_editorial":
+    forced = _detected_signals(result, detected, r, has_property_release) or forced
+    if forced:
         out.editorial = True
         if not was_editorial:
             result.messages.append("Forced editorial: the description needs an editorial caption.")
+    _event_notes(result, detected, r, description, bool(out.editorial))
+
+    if not out.editorial:
+        for term in desc_terms:
+            result.hits.append(
+                GuardrailHit("trademark_term", "review", "description", name=term, matched=term)
+            )
+            result.messages.append(f"Trademarked term {term!r} in the description; reword it.")
+            _bump(result, "review")
+
+    # Personal data in the text (title, description, keywords), for every photo. Kinds only.
+    for kind in _text_pii_kinds([description, *keywords]):
+        result.hits.append(GuardrailHit("pii", "review", "description", name=kind))
+        result.messages.append("Personal data in the text: remove it.")
+        _bump(result, "review")
+        break
 
     # Metadata format checks, against the final editorial flag (a newly forced editorial photo
     # still carrying a commercial sentence goes to review).
     if out.editorial:
-        if not is_editorial_caption(description):
+        problems = caption_problems(description)
+        if problems:
             result.hits.append(GuardrailHit("caption", "review", "description"))
             result.messages.append(
-                "Editorial caption must look like 'CITY, COUNTRY - MONTH DAY, YEAR: Sentence.'"
+                f"Editorial caption must look like '{FORMAT_HINT}' ({problems[0]})."
             )
             _bump(result, "review")
     elif len(description.split()) < MIN_COMMERCIAL_WORDS:
@@ -413,3 +490,104 @@ def check(
         _bump(result, "review")
 
     return out, result
+
+
+def _text_pii_kinds(texts: Iterable[str]) -> list[str]:
+    """Kinds of personal data found in the texts (never the values): email, phone, card."""
+    kinds: list[str] = []
+    for text in texts:
+        if _EMAIL.search(text) and "email" not in kinds:
+            kinds.append("email")
+        if _CARD.search(text) and "card number" not in kinds:
+            kinds.append("card number")
+        for m in _PHONE.finditer(text):
+            run = m.group()
+            if sum(c.isdigit() for c in run) >= 8 and not _DATE_LIKE.match(run):
+                if "phone number" not in kinds:
+                    kinds.append("phone number")
+    return kinds
+
+
+def _kind_words(value: str) -> set[str]:
+    return set(normalize(value).split())
+
+
+def _is_credential_event(text: str, r: Restrictions) -> bool:
+    return any(_contains(text, e) for e in r._events)
+
+
+def _detected_signals(
+    result: GuardrailResult, detected: dict, r: Restrictions, has_property_release: bool
+) -> bool:
+    """The editorial signals the model reports (artwork, interiors, screens, events, personal
+    data), acted on as ``Restrictions.detected_actions`` says.
+
+    Returns True when one of them makes the photo editorial-only."""
+    forced = False
+
+    def hit(signal: str, kind: str, message: str, makes_editorial: bool = False) -> None:
+        nonlocal forced
+        action = r.detected_actions.get(signal, DEFAULT_DETECTED_ACTIONS[signal])
+        result.hits.append(GuardrailHit(kind, action, "detected", name=signal))
+        result.messages.append(message)
+        _bump(result, action)
+        forced = forced or action == "force_editorial" or makes_editorial
+
+    works = [w for w in detected.get("artworks_or_characters") or [] if str(w).strip()]
+    if works and not has_property_release:
+        hit("artworks_or_characters", "artwork", "Artwork, statues or characters: editorial only.")
+    if _truthy(detected.get("artwork_is_main_subject")):
+        hit(
+            "artwork_is_main_subject",
+            "artwork",
+            "Artwork fills the frame: Shutterstock rejects this even as editorial.",
+        )
+    if _truthy(detected.get("private_interior")) and not has_property_release:
+        hit(
+            "private_interior",
+            "interior",
+            "Building interior without a property release: editorial only.",
+        )
+    if _truthy(detected.get("screen_content")):
+        hit("screen_content", "screen", "Real content on a screen: editorial only.")
+    event = str(detected.get("event") or "").strip()
+    if event and _is_credential_event(normalize(event), r):
+        hit(
+            "credential_event",
+            "event",
+            f"Looks like a {event}: Shutterstock needs press credentials and a case number. "
+            "Name the event in the caption.",
+        )
+    kinds = [str(k) for k in detected.get("personal_data") or [] if str(k).strip()]
+    if any(_kind_words(k) & _ID_WORDS for k in kinds):
+        hit(
+            "id_or_card_number",
+            "pii",
+            "Readable ID, card or account number: Shutterstock does not accept it. "
+            "Crop or blur it.",
+        )
+    if any(not (_kind_words(k) & _ID_WORDS) for k in kinds):
+        hit(
+            "personal_data_other",
+            "pii",
+            "Readable personal data (names, addresses, phone numbers): editorial only; check it.",
+            makes_editorial=True,
+        )
+    return forced
+
+
+def _event_notes(
+    result: GuardrailResult, detected: dict, r: Restrictions, description: str, editorial: bool
+) -> None:
+    """A soft note when an editorial photo shows an event its caption does not name."""
+    event = str(detected.get("event") or "").strip()
+    if not event or not editorial:
+        return
+    text = normalize(event)
+    if _is_credential_event(text, r):
+        return
+    said = normalize(description).split()
+    if any(w in said for w in text.split() if len(w) > 3):
+        return
+    result.hits.append(GuardrailHit("event", "ok", "description", name=event))
+    result.messages.append(f"Name the event in the caption: {event}.")

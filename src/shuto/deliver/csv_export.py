@@ -18,6 +18,7 @@ import io
 from collections.abc import Iterable
 
 from shuto.core.text import yes_no
+from shuto.metadata.editorial import FORMAT_HINT, caption_problems, fix_caption
 from shuto.metadata.rules import has_foreign_script
 
 HEADERS = [
@@ -35,6 +36,10 @@ class NotEnglishError(ValueError):
     """A CSV cell has non-Latin text. Shutterstock needs English; the file is not written."""
 
 
+class EditorialCaptionError(ValueError):
+    """An editorial row has no valid caption. Shutterstock rejects it; the file is not written."""
+
+
 def build_csv(items: Iterable[dict], strict: bool = True) -> str:
     """The Shutterstock CSV text. ``strict`` (English only) refuses non-Latin cells; with
     strict off (another metadata language) the cells are written as they are, in UTF-8."""
@@ -42,9 +47,17 @@ def build_csv(items: Iterable[dict], strict: bool = True) -> str:
     writer = csv.writer(buf, quoting=csv.QUOTE_MINIMAL, lineterminator="\n")
     writer.writerow(HEADERS)
     for it in items:
+        description = it["description"]
+        if it.get("editorial"):
+            description = fix_caption(description)
+            if problems := caption_problems(description):
+                raise EditorialCaptionError(
+                    f"{it['filename']}: the editorial description must look like "
+                    f"'{FORMAT_HINT}' ({problems[0]})"
+                )
         row = [
             it["filename"],
-            it["description"],
+            description,
             ",".join(it["keywords"]),
             ",".join(it["categories"]),
             yes_no(it.get("editorial")),

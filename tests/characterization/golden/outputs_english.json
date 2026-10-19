@@ -358,11 +358,14 @@
         },
         "place": {
           "city": "TOKYO",
+          "region": "",
           "country": "JAPAN",
           "source": "ai",
           "default": false
         },
         "language": "English",
+        "caption_sentence": "A quiet residential street with parked bicycles.",
+        "commercial_description": "A quiet residential street in Tokyo with parked bicycles and utility poles on March 4, 2025",
         "file_meta": {
           "captured": "2025-03-04T10:00:00"
         },
@@ -384,7 +387,11 @@
         "logos_or_brands": [],
         "landmarks": [],
         "artworks_or_characters": [],
-        "private_interior": false
+        "private_interior": false,
+        "event": "",
+        "personal_data": [],
+        "screen_content": false,
+        "artwork_is_main_subject": false
       },
       "submit_name": "20250304-a-quiet-residential-street-in-001.jpg"
     },
@@ -436,11 +443,14 @@
         },
         "place": {
           "city": "TOKYO",
+          "region": "",
           "country": "JAPAN",
           "source": "ai",
           "default": false
         },
         "language": "English",
+        "caption_sentence": "A quiet residential street with parked bicycles.",
+        "commercial_description": "A quiet residential street in Tokyo with parked bicycles and utility poles on March 5, 2025",
         "file_meta": {
           "captured": "2025-03-05T10:00:00"
         },
@@ -462,7 +472,11 @@
         "logos_or_brands": [],
         "landmarks": [],
         "artworks_or_characters": [],
-        "private_interior": false
+        "private_interior": false,
+        "event": "",
+        "personal_data": [],
+        "screen_content": false,
+        "artwork_is_main_subject": false
       },
       "submit_name": "20250305-a-quiet-residential-street-in-002.jpg"
     },
@@ -527,11 +541,14 @@
         },
         "place": {
           "city": "TOKYO",
+          "region": "",
           "country": "JAPAN",
           "source": "ai",
           "default": false
         },
         "language": "English",
+        "caption_sentence": "A quiet residential street with parked bicycles.",
+        "commercial_description": "A quiet residential street in Tokyo with parked bicycles and utility poles on March 6, 2025",
         "file_meta": {
           "captured": "2025-03-06T10:00:00"
         },
@@ -553,7 +570,11 @@
         "logos_or_brands": [],
         "landmarks": [],
         "artworks_or_characters": [],
-        "private_interior": false
+        "private_interior": false,
+        "event": "",
+        "personal_data": [],
+        "screen_content": false,
+        "artwork_is_main_subject": false
       },
       "submit_name": "20250306-a-quiet-residential-street-in-003.jpg"
     },

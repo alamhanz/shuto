@@ -43,7 +43,7 @@ def ev(sp, theme=None, checks=None):
 def test_base_schema_is_byte_identical_to_before():
     assert PHOTO_OUTPUT_SCHEMA["title"] == "PhotoOutput"
     digest = hashlib.sha256(json.dumps(PHOTO_OUTPUT_SCHEMA).encode()).hexdigest()
-    assert digest == "d079c6a59f7693e92f31ece917a6415544f7f929cd1971d335926bcbe556e11b"
+    assert digest == "a447d124c953604fa12313bf197e6727d0891aa3ec5c65a85a16c49be732e931"
     assert "theme_fit" not in PHOTO_OUTPUT_SCHEMA["properties"]
 
 

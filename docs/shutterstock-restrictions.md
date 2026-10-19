@@ -4,8 +4,11 @@ Source of truth for shuto's guardrails. The pipeline should check every photo ag
 rules (in the prompt and in a deterministic post-check) before it is uploaded.
 
 Compiled 2026-10-12 from Shutterstock's contributor help center ("Known Image Restrictions",
-page dated 2026-03-25). The lists are **non-exhaustive** and Shutterstock reviews case by case;
-re-check the sources below every few months.
+page dated 2026-03-25); the editorial, releases, intellectual-property and PII sections were
+added 2026-10-16 from the five articles listed under [Sources](#sources). The lists are
+**non-exhaustive** and Shutterstock reviews case by case; re-check the sources below every few
+months. The machine-readable copy is `src/shuto/data/restrictions.yaml` (version 2): keep both in
+sync.
 
 Note: this file is the first of shuto's three filter layers (Shutterstock rules, theme fit,
 your own rules; see [details.md](details.md#theme-and-your-own-rules)). Only this layer
@@ -26,8 +29,12 @@ can always approve it anyway.
 - Commercial content cannot contain visible trademarks: brand names and logos, shop signs and
   business names, logos on clothing, posters and ads, symbols (Red Cross), distinctive designs
   (three-stripe shoes). Fix: edit it out, or submit as editorial.
-- **Never** put brand names, business names or trademarked terms in titles or keywords,
-  commercial or editorial.
+- Brand names, business names and trademarked terms must **not** appear in a commercial title or
+  keywords; shuto strips them from commercial keywords.
+- **Editorial** is different: the IP article says trademarks are generally acceptable in
+  documentary editorial, in the image and in titles and keywords. shuto therefore keeps brand
+  names in an editorial caption and keywords (owner decision 2026-10-16; the earlier "never" was
+  stricter than Shutterstock). Items on the restricted lists below are always rejected.
 
 **Architecture and private land** ([source](https://submit.shutterstock.com/help/en/articles/10617431-known-restrictions-architectural-designs-and-private-land))
 - Restricted buildings, commercial: exterior rejected if it fills a large part of the frame
@@ -41,11 +48,104 @@ can always approve it anyway.
 - Commercial title: English, a complete descriptive sentence of at least 5 words.
 - Keywords: no repeats, nothing irrelevant or incomplete.
 
-**Editorial captions** ([source](https://submit.shutterstock.com/help/en/articles/10617417-how-do-i-submit-editorial-content), [metadata standards](https://submit.shutterstock.com/help/en/articles/10617427-content-publishing-standards-contextual-metadata))
-- Format: `CITY, STATE/COUNTRY - MONTH DAY, YEAR: Factual sentence describing the subject.`
-  e.g. `TOKYO, JAPAN - OCTOBER 5, 2026: Commuters wait on the platform at Shinjuku Station.`
-- Date (day, month, year) and location are required; missing or wrong ones cause rejection.
-- Name the event in the caption if it needed credentials.
+**Editorial captions** ([how to submit editorial](https://submit.shutterstock.com/help/en/articles/10617417-how-do-i-submit-editorial-content), [contextual metadata](https://submit.shutterstock.com/help/en/articles/10617427-content-publishing-standards-contextual-metadata))
+- shuto only makes *documentary* editorial (real photos of real places), so the date and place
+  prefix always applies.
+- Shutterstock's format: `CITY, STATE/COUNTRY - MONTH DAY, YEAR: Factual sentence that describes
+  the content's subject matter.` The portal's own error text reads `City, State / Country - Month
+  Day Year: Description`.
+- shuto writes `CITY, PREFECTURE, COUNTRY - MONTH D, YYYY: Sentence.`, in English, for example
+  `SHIBUYA, TOKYO, JAPAN - OCTOBER 5, 2026: Commuters wait on the platform at Shinjuku Station.`
+  The prefecture or state slot is left out only when it is unknown (owner decision 2026-10-16).
+- shuto builds the prefix itself from photo facts (GPS place, file location, then the AI's
+  guess, then your default place; the capture date from EXIF). The AI writes only the sentence.
+  Before the CSV is written shuto repairs small slips in a hand-edited caption (en dash, `July
+  31 2026`, `31st`, lower case) and refuses a caption that still fails.
+- Day, month and year taken, plus the location, are required. A wrong or missing year or place
+  means rejection for "Metadata - Editorial Requirements". Before 2000 the year (or decade)
+  alone is enough.
+- The date must be a real calendar date, not in the future, and the same as the photo's capture
+  date when shuto knows it. The city may repeat the country only for city-states (Singapore,
+  Monaco).
+- Events: put the event's name in the caption (and title), above all when it needs credentials.
+- The description is English, at most 2048 characters, no emoji, no case numbers, no sensitive
+  personal data. Approved editorial is labelled "Editorial Use Only" and cannot advertise or
+  promote a product or service.
+- Select the "Editorial" usage in the portal; shuto's CSV writes `yes` in the Editorial column
+  (kept as `yes`/`no`, the values in Shutterstock's own sample file).
+
+## Releases ([legal documentation](https://submit.shutterstock.com/help/en/articles/10617411-content-publishing-standards-legal-documentation))
+
+- **Editorial: no releases.** Model releases are not required for recognizable people in
+  editorial content and property releases are not required for editorial content. The portal
+  says "Releases cannot be attached to Editorial assets". shuto never sends releases (the CSV and
+  FTPS have no release field), so this happens in the portal: do not attach them to editorial
+  photos. shuto warns when an editorial photo still has release ids saved.
+- **Commercial needs a model release** for a recognizable person, a tattoo on an unrecognizable
+  model, nude or suggestive models, and illustrations of real people.
+- **Commercial needs a property release** for artwork (paintings, murals, graffiti, drawings,
+  prints, tattoos, blueprints), sculptures, statues and monuments, stained glass, sheet music,
+  literary works, lyrics, restricted exterior architecture, building interiors and private land.
+- **Press credentials.** Editorial from these events needs press credentials and a case number
+  from credentials@shutterstock.com *before* submitting: ticketed concerts in private venues,
+  historical reenactments, political events, press conferences and panels, red carpets, runway
+  shows, select airshows, sporting events (also school and amateur) and ticketed theatre. shuto
+  cannot see credentials: when the model reports such an event, the photo goes to "Needs a look"
+  with a reminder to name the event in the caption.
+
+## Intellectual property by type ([IP article](https://submit.shutterstock.com/help/en/articles/10617446-content-publishing-standards-intellectual-property))
+
+| Subject | Commercial | Documentary editorial |
+|---|---|---|
+| Trademarks, brand names, logos | rejected (image, title, keywords) | generally OK, also in titles and keywords; restricted-list trademarks always rejected |
+| Artwork (paintings, murals, prints), statues, characters | needs a property release | OK when not the only subject |
+| Artwork as the main subject (isolated or filling the frame) | needs a property release | rejected as Non-Licensable (photographic prints are the exception) |
+| Temporary art (sand or ice sculpture, face paint, nail or food art) | OK | OK |
+| Stained glass | needs a property release | OK |
+| Sculptures, statues, monuments | needs a property release | OK unless on the restricted list |
+| Postage stamps | - | only with a postmark |
+| Currency | OK unless restricted | OK unless restricted |
+| Exterior architecture | OK unless on the restricted list and large in the frame | OK unless prohibited |
+| Building interiors, private land | needs a property release | OK |
+| Fictional characters, media franchises | rejected (also names in title/keywords) | OK unless restricted |
+| Content on screens (TV, film, games, apps) | rejected | OK unless it is the primary subject |
+| Public figures (alive, or died after 1930) | rejected, names too | OK |
+
+## Personal data (PII) ([PII article](https://submit.shutterstock.com/help/en/articles/10594677-content-publishing-standards-personally-identifiable-information-pii))
+
+The article covers what is visible in the content and in the title and keywords, not file
+metadata.
+- Real-looking financial account numbers, card numbers and government ID numbers are rejected,
+  **commercial and editorial**. shuto **blocks** a photo when the model reports one as readable
+  ("Can't send as is"): crop or blur it, then send the photo back to the AI.
+- Names, addresses, emails and handles, phone numbers and signatures: commercial needs
+  placeholders and is rejected on official-looking documents; editorial is generally
+  acceptable. shuto makes such a photo editorial and puts it in "Needs a look".
+- Sensitive personal data never belongs in a title or keywords. shuto checks the description and
+  keywords for an email address, a phone-like number and a card-like number and sends the photo
+  to "Needs a look"; it logs the kind, never the value.
+- GPS and EXIF are not mentioned by Shutterstock's PII or metadata articles. shuto strips the GPS
+  location from uploaded copies by default (Settings, Privacy) as the owner's own privacy
+  choice, which is stricter than Shutterstock asks. EXIF owner and serial-number fields are not
+  stripped.
+
+## What shuto does with the signals the model reports
+
+The model fills `detected` for every photo; shuto acts on it deterministically. The same mapping
+is `detected_actions` in `restrictions.yaml` (and the press-credential events are
+`credential_events`).
+
+| Signal | Commercial | Editorial | shuto action |
+|---|---|---|---|
+| `artworks_or_characters`, no property release | rejected | OK unless restricted | `force_editorial` |
+| `artwork_is_main_subject` | needs a release | Non-Licensable | `review`: "Artwork fills the frame" |
+| `private_interior`, no property release | needs a release | OK | `force_editorial` |
+| `screen_content` | rejected | OK unless the primary subject | `force_editorial` |
+| `event` that needs credentials (concert, sports, rally, press conference, panel, red carpet, runway, theatre, airshow, reenactment) | - | needs press credentials | `review`: "Looks like a ...: Shutterstock needs press credentials and a case number" |
+| `event`, other (festival, parade, matsuri) | - | OK | soft note when the caption does not name the event |
+| `personal_data`: ID, card or account number | rejected | rejected | `block` |
+| `personal_data`: name, address, phone, email, signature | needs placeholders | OK | `review`, and editorial |
+| email, phone or card number in the description or keywords | - | - | `review`: "Personal data in the text" |
 
 ## Japan and Asia
 
@@ -132,3 +232,13 @@ The full restricted (editorial-only) lists for other regions are on the source p
 [trademarks and IP](https://submit.shutterstock.com/help/en/articles/10617432-known-restrictions-trademarks-and-other-intellectual-property),
 [artwork](https://submit.shutterstock.com/help/en/articles/10617418-known-restrictions-artwork),
 [events](https://submit.shutterstock.com/help/en/articles/10617434-known-restrictions-events).
+
+## Sources
+
+Fetched 2026-10-16:
+- [How do I submit editorial content?](https://submit.shutterstock.com/help/en/articles/10617417-how-do-i-submit-editorial-content) (Feb 18, 2026)
+- [Content publishing standards: contextual metadata](https://submit.shutterstock.com/help/en/articles/10617427-content-publishing-standards-contextual-metadata) (Feb 26, 2026)
+- [Content publishing standards: legal documentation](https://submit.shutterstock.com/help/en/articles/10617411-content-publishing-standards-legal-documentation)
+- [Content publishing standards: intellectual property](https://submit.shutterstock.com/help/en/articles/10617446-content-publishing-standards-intellectual-property)
+- [Content publishing standards: personally identifiable information](https://submit.shutterstock.com/help/en/articles/10594677-content-publishing-standards-personally-identifiable-information-pii)
+- Known image restrictions (2026-03-25): the four "known restrictions" pages linked above.

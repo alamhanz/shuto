@@ -9,7 +9,7 @@ def test_build_csv_quotes_and_flags():
         [
             {
                 "filename": "IMG_0001.jpg",
-                "description": "Mount Fuji at sunrise, Japan",
+                "description": "TOKYO, JAPAN - OCTOBER 5, 2026: Commuters wait on the platform",
                 "keywords": ["mount fuji", "sunrise", "japan"],
                 "categories": ["Nature", "Parks/Outdoor"],
                 "editorial": True,
@@ -20,7 +20,7 @@ def test_build_csv_quotes_and_flags():
     assert rows[0] == HEADERS
     assert rows[1] == [
         "IMG_0001.jpg",
-        "Mount Fuji at sunrise, Japan",
+        "TOKYO, JAPAN - OCTOBER 5, 2026: Commuters wait on the platform",
         "mount fuji,sunrise,japan",
         "Nature,Parks/Outdoor",
         "yes",
@@ -41,7 +41,7 @@ def test_editorial_and_commercial_rows_share_one_file():
             {"filename": "a.jpg", "description": "d", "keywords": ["k"], "categories": []},
             {
                 "filename": "b.jpg",
-                "description": "d",
+                "description": "TOKYO, JAPAN - OCTOBER 5, 2026: Commuters wait on the platform",
                 "keywords": ["k, with comma"],
                 "categories": [],
                 "editorial": True,

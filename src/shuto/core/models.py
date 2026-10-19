@@ -196,6 +196,7 @@ class StoredPlace(TypedDict, total=False):
     """`metadata["place"]`: the place used for the text and which source decided it."""
 
     city: str
+    region: str  # prefecture or state; empty when unknown
     country: str
     source: str  # gps, file, ai, "gps + AI", default, "partly default" or unknown
     default: bool
@@ -227,6 +228,8 @@ class StoredMetadata(TypedDict, total=False):
     ai_run: AiRun
     language: str
     metadata_issues: list[dict[str, Any]]
+    caption_sentence: str  # the factual sentence an editorial caption is built from
+    commercial_description: str  # the commercial headline, restored when editorial is switched off
 
 
 class StoredFilters(TypedDict, total=False):

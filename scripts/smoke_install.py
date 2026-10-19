@@ -46,11 +46,18 @@ PAGES = ("/healthz", "/", "/settings")
 STATE_SCRIPT = textwrap.dedent(
     """
     import json, sys
-    from shuto import pipeline
-    from shuto.config import load_config
+    try:  # 0.6.0 and later: layered packages
+        from shuto.core.config import load_config
+        from shuto.settings import ui as pipeline
+        from shuto.store import open_store
+    except ImportError:  # 0.5.x and earlier: one flat pipeline module
+        from shuto import pipeline
+        from shuto.config import load_config
+
+        open_store = pipeline.open_store
 
     cfg = load_config(sys.argv[1])
-    store = pipeline.open_store(cfg)
+    store = open_store(cfg)
     wanted = {"onboarded": True, **json.loads(sys.argv[2])}
     saved, skipped = {}, []
     for key, value in wanted.items():

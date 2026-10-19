@@ -42,10 +42,14 @@ def _win_read(machine: bool) -> str | None:
     )
     try:
         with reg.OpenKey(root, sub, 0, reg.KEY_READ) as key:
-            value, _kind = reg.QueryValueEx(key, ENV_NAME)
+            value, kind = reg.QueryValueEx(key, ENV_NAME)
     except OSError:
         return None
-    return str(value) if value else None
+    if not value:
+        return None
+    if kind == getattr(reg, "REG_EXPAND_SZ", 2):
+        value = os.path.expandvars(str(value))  # e.g. %USERPROFILE%/models
+    return str(value)
 
 
 def _run(cmd: list[str], timeout: float = 20) -> subprocess.CompletedProcess:

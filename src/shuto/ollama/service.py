@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import getpass
 import os
 import shutil
 import subprocess
@@ -59,15 +60,34 @@ def can_start(os_name: str | None = None) -> bool:
     return _tray_app().is_file() if os_ == "windows" else _mac_app().exists()
 
 
+def _current_user() -> str | None:
+    """The Windows account name for taskkill's USERNAME filter; None if unknown."""
+    user = os.environ.get("USERNAME") or ""
+    if not user:
+        try:
+            user = getpass.getuser()
+        except Exception:
+            return None
+    domain = os.environ.get("USERDOMAIN") or ""
+    return "\\".join([domain, user]) if domain else user
+
+
+def _taskkill(image: str, user: str, force: bool) -> None:
+    cmd = ["taskkill"] + (["/F"] if force else []) + ["/IM", image]
+    env._run(cmd + ["/FI", f"USERNAME eq {user}"])
+
+
 def stop_ollama(client: Any, os_name: str | None = None, timeout: float = STOP_TIMEOUT_S) -> None:
     """Close Ollama politely first, then by force if it is still running. No-op if not running."""
     os_ = os_name or core_platform.os_name()
     if os_ == "windows":
-        env._run(["taskkill", "/IM", "ollama app.exe"])
-        env._run(["taskkill", "/IM", "ollama.exe"])
-        _wait(lambda: not _is_up(client), timeout)
-        env._run(["taskkill", "/F", "/IM", "ollama app.exe"])
-        env._run(["taskkill", "/F", "/IM", "ollama.exe"])
+        user = _current_user()  # only this user's Ollama, never another signed-in user's
+        if user:
+            for force in (False, True):
+                for image in ("ollama app.exe", "ollama.exe"):
+                    _taskkill(image, user, force)
+                if not force:
+                    _wait(lambda: not _is_up(client), timeout)
     elif os_ == "macos":
         env._run(["osascript", "-e", 'quit app "Ollama"'])
         if not _wait(lambda: not _is_up(client), timeout):
@@ -76,6 +96,42 @@ def stop_ollama(client: Any, os_name: str | None = None, timeout: float = STOP_T
         raise StoreUnsupported(env.LINUX_TEXT)
     if not _wait(lambda: not _is_up(client), 5):
         raise StoreError("Ollama would not close. Quit Ollama yourself, then try again.")
+
+
+_ENV_KEEP = frozenset(
+    """SYSTEMROOT WINDIR SYSTEMDRIVE COMSPEC PATHEXT PATH USERPROFILE LOCALAPPDATA APPDATA
+    PROGRAMDATA PROGRAMFILES PROGRAMFILES(X86) PROGRAMW6432 TEMP TMP TMPDIR HOMEDRIVE HOMEPATH
+    HOME USER USERNAME USERDOMAIN LOGNAME SHELL LANG LC_ALL NUMBER_OF_PROCESSORS
+    PROCESSOR_ARCHITECTURE""".split()
+)
+_ENV_KEEP_PREFIX = ("OLLAMA_", "XDG_", "CUDA_", "HIP_", "ROCR_", "HSA_", "LC_")
+
+
+def _venv_dirs() -> list[str]:
+    dirs = [os.environ.get("VIRTUAL_ENV", "")]
+    if sys.prefix != sys.base_prefix:
+        dirs.append(sys.prefix)
+    return [os.path.normcase(os.path.abspath(d)) for d in dirs if d]
+
+
+def _clean_env() -> dict[str, str]:
+    """A trimmed copy of os.environ for the Ollama that shuto starts: an allow-list, PATH
+    without shuto's virtual environment, and no API keys or VIRTUAL_ENV."""
+    venvs = _venv_dirs()
+    out: dict[str, str] = {}
+    for key, value in os.environ.items():
+        up = key.upper()
+        if up not in _ENV_KEEP and not up.startswith(_ENV_KEEP_PREFIX):
+            continue
+        if up == "PATH":
+            keep = []
+            for part in value.split(os.pathsep):
+                norm = os.path.normcase(os.path.abspath(part)) if part else ""
+                if part and not any(norm == v or norm.startswith(v + os.sep) for v in venvs):
+                    keep.append(part)
+            value = os.pathsep.join(keep)
+        out[key] = value
+    return out
 
 
 def _spawn(cmd: list[str]) -> None:
@@ -91,6 +147,7 @@ def _spawn(cmd: list[str]) -> None:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             close_fds=True,
+            env=_clean_env(),
             **kw,
         )
     except OSError:

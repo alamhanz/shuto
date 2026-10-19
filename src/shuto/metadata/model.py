@@ -6,30 +6,14 @@ import re
 from dataclasses import asdict, dataclass, field
 
 from shuto.metadata.categories import normalize_categories
+from shuto.metadata.editorial import FORMAT_HINT, is_editorial_caption
 from shuto.metadata.rules import MIN_COMMERCIAL_WORDS
 
 MAX_KEYWORDS = 50
 MIN_KEYWORDS = 7  # Shutterstock requires at least 7
 MAX_DESCRIPTION_CHARS = 200
 
-# Letters are matched Unicode-wide; is_editorial_caption() then requires them to be upper case.
-_CAPS = r"(?:[^\W\d_]|[ .'-])+"
-EDITORIAL_CAPTION_RE = re.compile(
-    rf"^(?P<city>{_CAPS}), (?P<country>(?:[^\W\d_]|[ .'/-])+) - (?P<month>[^\W\d_]+) "
-    r"\d{1,2}, \d{4}: \S.*"
-)
-
-
-def is_editorial_caption(text: str) -> bool:
-    """True for 'CITY, COUNTRY - MONTH D, YYYY: text' (upper-case city, country and month).
-
-    The single caption rule shared by metadata warnings, guardrails and prepare. A caption with
-    UNKNOWN in place of the date does not match.
-    """
-    m = EDITORIAL_CAPTION_RE.match(text or "")
-    if not m:
-        return False
-    return all(m.group(g).isupper() for g in ("city", "country", "month"))
+__all__ = ["PhotoMetadata", "is_editorial_caption", "normalize"]
 
 
 @dataclass
@@ -85,7 +69,7 @@ def normalize(filename: str, data: dict) -> PhotoMetadata:
     if editorial and "UNKNOWN" in description:
         warnings.append("editorial caption missing city/date")
     if editorial and description and not is_editorial_caption(description):
-        warnings.append("editorial caption format should be 'CITY, COUNTRY - MONTH D, YYYY: text'")
+        warnings.append(f"editorial caption format should be '{FORMAT_HINT}'")
     if not editorial and description and len(description.split()) < MIN_COMMERCIAL_WORDS:
         warnings.append(f"commercial title under {MIN_COMMERCIAL_WORDS} words")
 

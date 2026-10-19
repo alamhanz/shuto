@@ -19,6 +19,9 @@
   {% endfor %}
 </nav>
 {% endif %}
+{% if waiting %}
+<p class="flash warn" role="status">{{ icon('alert') }}<span>{{ waiting }} photo{{ ' is' if waiting == 1 else 's are' }} waiting for the AI. <a href="{{ check_href }}">Go to Check</a> to run it. {{ 'It comes' if waiting == 1 else 'They come' }} back here when it is done.</span></p>
+{% endif %}
 <p class="hint">{{ HELP[show] if show in HELP else 'Every photo in this batch.' }}</p>
 {% include "_report_bar.html" %}
 

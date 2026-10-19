@@ -33,22 +33,46 @@ def _to_list(v: Any) -> Any:
     return v
 
 
+_NOTHING = _FALSE | {"n/a", "na", "-", "no event", "nothing", "not applicable", "unknown"}
+
+
+def _is_nothing(v: Any) -> bool:
+    return str(v).strip().lower().strip(".") in _NOTHING
+
+
 class Detected(BaseModel):
     recognizable_people: int = 0
     logos_or_brands: list[str] = Field(default_factory=list)
     landmarks: list[str] = Field(default_factory=list)
     artworks_or_characters: list[str] = Field(default_factory=list)
     private_interior: bool = False
+    event: str = ""
+    personal_data: list[str] = Field(default_factory=list)
+    screen_content: bool = False
+    artwork_is_main_subject: bool = False
 
-    @field_validator("logos_or_brands", "landmarks", "artworks_or_characters", mode="before")
+    @field_validator(
+        "logos_or_brands", "landmarks", "artworks_or_characters", "personal_data", mode="before"
+    )
     @classmethod
     def _lists(cls, v: Any) -> Any:
-        return _to_list(v)
+        v = _to_list(v)
+        return [x for x in v if not _is_nothing(x)] if isinstance(v, list) else v
 
-    @field_validator("private_interior", mode="before")
+    @field_validator("private_interior", "screen_content", "artwork_is_main_subject", mode="before")
     @classmethod
     def _bool(cls, v: Any) -> Any:
         return _to_bool(v)
+
+    @field_validator("event", mode="before")
+    @classmethod
+    def _event(cls, v: Any) -> Any:
+        if v is None or isinstance(v, bool):
+            return ""
+        if isinstance(v, (list, tuple)):
+            v = ", ".join(str(x).strip() for x in v if str(x).strip() and not _is_nothing(x))
+        text = re.sub(r"\s+", " ", str(v)).strip()
+        return "" if _is_nothing(text) else text
 
     @field_validator("recognizable_people", mode="before")
     @classmethod

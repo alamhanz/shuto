@@ -36,6 +36,7 @@ HARD = frozenset(
         "dup_description",
         "dup_keywords",
         "non_english",
+        "caption",
     }
 )
 

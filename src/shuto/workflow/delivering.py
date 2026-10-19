@@ -19,6 +19,7 @@ from shuto.deliver import send
 from shuto.deliver.prepare import prepare_file, release_check, safe_filename
 from shuto.metadata import embed
 from shuto.metadata import rules as metadata_rules
+from shuto.metadata.editorial import fix_caption
 from shuto.store import Store
 from shuto.workflow import check_batch, checks, exporting, importing, ledger_sync, reports
 from shuto.workflow.checks import NOT_ENGLISH_TEXT
@@ -31,6 +32,15 @@ class PrepareSummary:
     problems: dict[int, list[str]] = field(default_factory=dict)
     # prepared anyway (the owner approved them) although Shutterstock would reject the text
     warnings: dict[int, list[str]] = field(default_factory=dict)
+    # things worth knowing that are not problems (releases on an editorial photo)
+    notes: dict[int, list[str]] = field(default_factory=dict)
+
+    def note_text(self) -> str:
+        """One plain sentence for the notes (empty when there are none)."""
+        if not self.notes:
+            return ""
+        first = next(iter(self.notes.values()))[0]
+        return f"Note for {len(self.notes)} photo(s): {first}"
 
     def warning_text(self) -> str:
         """One plain sentence naming those photos (empty when there are none)."""
@@ -87,11 +97,20 @@ def prepare_batch(
         progress(i, len(photos), photo.orig_name)
         meta = dict(photo.metadata or {})
         gr = (photo.guardrail or {}).get("action")
+        if meta.get("editorial"):  # CSV, IPTC and XMP all carry the fixed caption
+            fixed = fix_caption(str(meta.get("description") or ""))
+            if fixed != meta.get("description"):
+                meta["description"] = fixed
+                store.update_photo(pid, metadata={**(photo.metadata or {}), "description": fixed})
+        notes: list[str] = []
+        shot = core_text.parse_dt(photo.captured_at)
         problems = release_check(
             meta,
             photo.detected,
             photo.release_ids,
             strict=metadata_rules.language_policy(cfg.style).strict,
+            taken=shot.date() if shot else None,
+            warnings=notes,
         )
         if gr == "block":
             problems.append("Blocked by guardrails.")
@@ -125,6 +144,8 @@ def prepare_batch(
         summary.prepared.append(name)
         if unfixed := _text_problems(meta):
             summary.warnings[pid] = unfixed
+        if notes:
+            summary.notes[pid] = notes
     if summary.prepared:
         reports.refresh_report(cfg, store, batch_id)
     return summary

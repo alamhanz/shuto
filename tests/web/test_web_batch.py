@@ -208,7 +208,7 @@ def test_bulk_edit_changes_keywords_and_categories(web, described):
     assert after.guardrail is not None  # rules ran again
 
 
-def test_bulk_edit_editorial_switch_flags_caption(web, described):
+def test_bulk_edit_editorial_switch_builds_caption(web, described):
     store = web.state.store
     p = _photos(web, described, Status.DESCRIBED)[0]
     r = web.post(
@@ -218,8 +218,7 @@ def test_bulk_edit_editorial_switch_flags_caption(web, described):
     assert r.status_code == 303
     after = store.get_photo(p.id)
     assert after.metadata["editorial"] is True
-    assert after.status in (Status.NEEDS_REVIEW, Status.BLOCKED)
-    assert after.guardrail["messages"]
+    assert after.metadata["description"].startswith("TOKYO, JAPAN - ")  # caption built, no AI
 
 
 def test_bulk_edit_validates(web, described):
@@ -401,10 +400,10 @@ def test_submit_page_and_marking(web, described, tmp_path):
     store.set_status(photo.id, Status.EXPORTED, force=True)
     page = web.get(f"/batch/{described}/submit").text
     assert "submit.shutterstock.com" in page and "I submitted this batch" in page
-    assert "Download commercial.csv" in page and 'alt="Screenshot placeholder' in page
+    assert "Download commercial.csv" in page and 'alt="Screenshot placeholder' not in page
     text = html.unescape(re.sub(r"<[^>]+>", " ", page))
-    assert "Portfolio → Not submitted" in text and "Upload CSV" in text
-    assert "Portfolio → Pending" in text and "Submit content" in text
+    assert "Portfolio → Submit content" in text and "Not submitted" in text and "Upload CSV" in text
+    assert "Portfolio → Pending content" in text and "Submit content" in text
     assert "commercial.csv" in text and str(web.state.cfg.workspace_path("batches")) in text
     assert 'rel="noopener noreferrer"' in page and "waiting there" not in text
     assert not any(word in visible(page) for word in JARGON)

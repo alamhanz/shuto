@@ -43,6 +43,8 @@ def cmd_prepare(ctx: Ctx) -> int:
             f"  WARNING photo {pid} prepared with a problem Shutterstock will reject: "
             + "; ".join(problems)
         )
+    for pid, notes in summary.notes.items():
+        out(f"  note photo {pid}: " + "; ".join(notes))
     return 0
 
 
@@ -107,13 +109,13 @@ def cmd_export(ctx: Ctx) -> int:
     for f in summary.files:
         out(f"Wrote {f}")
     if summary.skipped:
-        out(f"{len(summary.skipped)} photo(s) left out: the text is not in English.")
+        out(summary.skipped_text())
     if not summary.files:
         out("Nothing to export (photos must be uploaded first).")
         return 0
     out(f"Batch folder: {core_paths.batch_dir(ctx.cfg, a.batch)}")
-    out("Final step is manual: on submit.shutterstock.com open Portfolio > Not submitted,")
-    out("press Upload CSV and choose this file, check the photos and press Submit.")
+    out("Final step is manual: on submit.shutterstock.com open Portfolio > Submit content,")
+    out("(Not submitted tab), press Upload CSV and choose this file, check the photos and Submit.")
     out(f"Afterwards: shuto submitted {a.batch}")
     return 0
 

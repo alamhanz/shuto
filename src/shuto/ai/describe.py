@@ -8,7 +8,6 @@ short "photo facts" text (place names, photographer keywords) do. The prompt tex
 
 from __future__ import annotations
 
-import re
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field, replace
 from datetime import datetime
@@ -17,7 +16,6 @@ from typing import Any
 from shuto.ai import filters as filters_mod
 from shuto.ai.filters import FilterResult, FilterSpec
 from shuto.ai.prompts import (
-    MONTHS,
     Style,
     build_prompt,
     repair_prompt,
@@ -25,7 +23,7 @@ from shuto.ai.prompts import (
 )
 from shuto.ai.providers.base import LLMError, LLMRequest, LLMResult, VisionLLM, describe_structured
 from shuto.ai.providers.schema import PhotoOutput, photo_schema
-from shuto.metadata import guardrails, rules
+from shuto.metadata import editorial, guardrails, rules
 from shuto.metadata.model import PhotoMetadata, normalize
 from shuto.places.resolve import (
     NO_PLACE_WARNING,
@@ -43,6 +41,8 @@ class DescribeResult:
     filters: FilterResult | None = None
     place: dict = field(default_factory=dict)
     issues: list[rules.Issue] = field(default_factory=list)
+    caption_sentence: str = ""  # the clean sentence an editorial caption is built from
+    commercial_description: str = ""  # the commercial headline, for a later switch back
 
 
 def editorial_caption(
@@ -53,23 +53,21 @@ def editorial_caption(
     default_country: str = "",
     known: dict | None = None,
 ) -> str:
-    """`CITY, COUNTRY - MONTH D, YYYY: sentence`; UNKNOWN stands in for missing parts that
-    the default place (when set) cannot fill.
+    """`CITY, PREFECTURE, COUNTRY - MONTH D, YYYY: sentence`; UNKNOWN stands in for a missing
+    city, country or date that the default place (when set) cannot fill. The prefecture is left
+    out when unknown.
 
     ``location`` is a dict or an object with ``city`` and ``country`` attributes; ``known`` is
     the place read from the photo file, which wins over the AI's answer.
     """
     place = resolve_place(location, default_city, default_country, known)
-    city_s = place["city"] or "UNKNOWN"
-    country_s = place["country"] or "UNKNOWN"
-    if captured:
-        date_s = f"{MONTHS[captured.month - 1]} {captured.day}, {captured.year}"
-    else:
-        date_s = "UNKNOWN"
-    text = re.sub(r"\s+", " ", sentence or "").strip()
-    if text:
-        text = text[0].upper() + text[1:]
-    return f"{city_s}, {country_s} - {date_s}: {text}"
+    return editorial.build_caption(
+        place["city"],
+        place["country"],
+        captured.date() if captured else None,
+        sentence,
+        place["region"],
+    )
 
 
 # Retry temperature: +step per model call so far, never above the cap (or the owner's own value).
@@ -173,6 +171,14 @@ def _assess(o: PhotoOutput, check: _Checker) -> _Answer:
         style.always_include,
     )
     active = cap if o.editorial else desc
+    caption_issues = (
+        [
+            rules.Issue("caption", f"Caption sentence: {p}")
+            for p in editorial.sentence_problems(editorial.capitalise(cap), min_words=0)
+        ]
+        if o.editorial
+        else []
+    )
     found = [
         *(rules.check_english(f"{desc} {cap}", kws) if style.english_only else []),
         *rules.check_description(
@@ -180,6 +186,7 @@ def _assess(o: PhotoOutput, check: _Checker) -> _Answer:
         ),
         *rules.check_keywords(kws, limits),
         *rules.check_unique(check.seen, active, kws),
+        *caption_issues,
     ]
     return _Answer(o, desc, cap, kws, found)
 
@@ -200,16 +207,18 @@ def _repair_loop(
     same_in_a_row = 0
     while calls < max_tries:
         hard = [i for i in answer.issues if i.hard]
-        if not hard:
+        light = not hard and len(answer.kws) < min(limits.kw_min, limits.kw_max)
+        if not hard and not light:
             break
         active = answer.cap if answer.out.editorial else answer.desc
         # every retry is a little warmer, so a small model does not repeat itself
         warmer = min(max(temperature, TEMPERATURE_CAP), temperature + TEMPERATURE_STEP * calls)
         if any(i.code.startswith("dup_") for i in hard):
             warmer = max(warmer, 0.5)
-        topup = all(i.code == "few_keywords" for i in hard)
+        topup = light or all(i.code == "few_keywords" for i in hard)
         if topup:
-            missing = max(limits.kw_min, rules.KEYWORD_FLOOR) - len(answer.kws)
+            wanted = min(max(limits.kw_min, rules.KEYWORD_FLOOR), limits.kw_max)
+            missing = wanted - len(answer.kws)
             retry_prompt = topup_prompt(
                 asked.prompt, active, answer.kws, max(1, missing), check.style, asked.condensed
             )
@@ -244,10 +253,12 @@ def _repair_loop(
         same_in_a_row = same_in_a_row + 1 if latest == previous else 0
         previous = latest
         hard2 = len([i for i in found.issues if i.hard])
+        if light and len(found.kws) <= len(answer.kws):
+            break  # a soft top-up that adds nothing new: stop asking
         if hard2 < len(hard) or (topup and hard2 <= len(hard)):  # keep the best answer
             answer = found
-        if not hard2:
-            break
+        if not hard2 and len(found.kws) >= min(limits.kw_min, limits.kw_max):
+            break  # nothing hard left and enough keywords
         if same_in_a_row >= 2:
             break  # the same answer twice in a row, even when asked warmer: give up
     return answer, calls
@@ -365,7 +376,18 @@ def _finish(
             model=f"{llm.name}/{llm.model}",
             at=at,
         )
-    return DescribeResult(meta, detected, location, gr, asked.result, checked, place, issues)
+    return DescribeResult(
+        meta,
+        detected,
+        location,
+        gr,
+        asked.result,
+        checked,
+        place,
+        issues,
+        answer.cap,
+        answer.desc,
+    )
 
 
 def describe_photo(

@@ -110,6 +110,8 @@ def deliver(request: Request, batch_id: str, form: PostForm, ctx: Ctx):
                 f"{len(s.upload.failed)} photo(s) did not upload. {fe['what']} {fe['todo']}"
             )
         warn = " " + s.prepare.warning_text() if s.prepare.warnings else ""
+        if s.prepare.notes:
+            warn += " " + s.prepare.note_text()
         fixes = len(s.prepare.problems) + len(s.upload.failed) - len(lost)
         if fixes or lost:
             # Partial success: keep what was sent and still write its CSV.
@@ -130,9 +132,10 @@ def deliver(request: Request, batch_id: str, form: PostForm, ctx: Ctx):
             return (
                 f"Uploaded {len(s.upload.uploaded)} photo(s). Stopped before the info file.{warn}"
             )
+        left_out = " " + s.export.skipped_text() if s.export.skipped else ""
         return (
             f"Uploaded {len(s.upload.uploaded)} photo(s) and wrote the Shutterstock info file."
-            f"{warn}"
+            f"{left_out}{warn}"
         )
 
     return ctx.start_job(request, "deliver", batch_id, run, total=2 * n + 1)

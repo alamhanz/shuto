@@ -51,7 +51,7 @@ def test_release_check():
     assert any("UNKNOWN" in p for p in prepare.release_check(ed, {}, []))
     ed["description"] = "Tokyo, Japan - April 1, 2026: Crowd at a crossing"
     assert prepare.release_check(ed, {}, [])
-    ed["description"] = "ZÜRICH, SWITZERLAND - MAY 1, 2026: Tram stop"
+    ed["description"] = "ZÜRICH, SWITZERLAND - MAY 1, 2026: A blue tram waits at the stop"
     assert prepare.release_check(ed, {}, []) == []
     # G10: a property release does not clear logos (they are trademarks).
     assert prepare.release_check(ok, {"logos": True}, ["property:p1"])
@@ -190,7 +190,7 @@ def test_write_csv_is_one_file_per_batch(tmp_path):
         },
         {
             "filename": "b-002.jpg",
-            "description": "d",
+            "description": "TOKYO, JAPAN - OCTOBER 5, 2026: Commuters wait on the platform",
             "keywords": ["y", "z w"],
             "categories": ["Nature", "Travel"],
             "editorial": True,
@@ -207,7 +207,15 @@ def test_write_csv_is_one_file_per_batch(tmp_path):
     )
     parsed = list(csv.reader(io.StringIO(raw.decode("utf-8"), newline="")))
     assert parsed[1] == ["a-001.jpg", "Nihon, café", "x", "", "no", "no", "no"]
-    assert parsed[2] == ["b-002.jpg", "d", "y,z w", "Nature,Travel", "yes", "no", "no"]
+    assert parsed[2] == [
+        "b-002.jpg",
+        "TOKYO, JAPAN - OCTOBER 5, 2026: Commuters wait on the platform",
+        "y,z w",
+        "Nature,Travel",
+        "yes",
+        "no",
+        "no",
+    ]
     assert '"y,z w"' in raw.decode("utf-8")  # keywords stay one quoted cell
     again = send.write_csv("2026-W14/x", rows[:1], tmp_path / "csv")
     assert again == path and len(path.read_text(encoding="utf-8").splitlines()) == 2

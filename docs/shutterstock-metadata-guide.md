@@ -15,7 +15,10 @@ Shutterstock has no separate title field. The Description column is both title a
 | Description | Factual English sentence, at least 5 words, max 2048 characters |
 | Description | Accurately covers what is in the image; no special characters, emojis, spelling errors or spam |
 | Description | Not a comma-separated word list (rejected as a keyword list) |
-| Description (editorial) | Must include day, month, year taken and geographic location |
+| Description (editorial) | Exactly `CITY, STATE/COUNTRY - MONTH DAY, YEAR: Factual sentence that describes the content's subject matter.` The day, month and year taken and the geographic location are required (before 2000 only the year or decade); a wrong or missing one is rejected for "Metadata - Editorial Requirements". shuto writes `CITY, PREFECTURE, COUNTRY - MONTH D, YYYY: Sentence.` |
+| Description (editorial) | Name the event in the caption (and title) when the photo is from an event, above all one that needs credentials |
+| Editorial | No releases: model and property releases are not required for editorial and cannot be attached to editorial assets |
+| Title, description, keywords | No sensitive personal data (ID, card or account numbers, phone numbers, emails, case numbers); commercial titles and keywords also no trademarks, while documentary editorial may name brands |
 | Keywords | Minimum 7, maximum 50, all relevant, in English |
 | Keywords | No repeated words or phrases; no irrelevant terms |
 | Keywords | Avoid restricted combinations (e.g. "teen" with "sexy"); Shutterstock audits for spam |
@@ -52,6 +55,8 @@ Shutterstock has no separate title field. The Description column is both title a
 
 - [ ] Description is English, at least 5 words, 200 characters or fewer
 - [ ] Description is a sentence, not a comma list, with no repeated words
+- [ ] Editorial caption passes the format check: upper-case `CITY, PREFECTURE, COUNTRY`, a real `MONTH D, YYYY` date that matches the capture date, no UNKNOWN part, a sentence of 3 or more words
+- [ ] No email, phone or card number in the description or keywords
 - [ ] 7–50 keywords, deduplicated including singular/plural twins
 - [ ] 1–2 categories from the official list
 - [ ] Location filled in when known (Japan shots are a niche-search strength)

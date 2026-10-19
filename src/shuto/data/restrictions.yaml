@@ -5,10 +5,18 @@
 # Rule fields: id, name, aliases (default []), level, category, region (default global),
 # condition (default null; a rule with a condition sends the photo to review instead of acting
 # on the level, because shuto cannot verify it), note (default "").
-version: 1
-compiled: 2026-10-12
+version: 2
+compiled: 2026-10-16
 source_doc: docs/shutterstock-restrictions.md
 source_page_date: 2026-03-25
+# Version 2 adds sources, credential_events and detected_actions. A version 1 file (these keys
+# missing) still loads; shuto then uses the same defaults.
+sources:
+  - https://submit.shutterstock.com/help/en/articles/10617417-how-do-i-submit-editorial-content
+  - https://submit.shutterstock.com/help/en/articles/10617427-content-publishing-standards-contextual-metadata
+  - https://submit.shutterstock.com/help/en/articles/10617411-content-publishing-standards-legal-documentation
+  - https://submit.shutterstock.com/help/en/articles/10617446-content-publishing-standards-intellectual-property
+  - https://submit.shutterstock.com/help/en/articles/10594677-content-publishing-standards-personally-identifiable-information-pii
 
 # restricted: commercial rejected, editorial OK -> force editorial
 # prohibited: rejected everywhere -> block
@@ -18,8 +26,9 @@ levels:
   prohibited: block
   no_upload: block
 
-# Brand and trademarked names. Never allowed in titles or keywords (commercial or editorial);
-# shuto strips them from keywords and flags them in the description.
+# Brand and trademarked names. Not allowed in commercial titles or keywords: shuto strips them
+# from keywords and flags them in the description. Documentary editorial may name them (IP
+# article), so an editorial photo keeps them. Restricted-list items below are always rejected.
 trademark_terms:
   - 7-Eleven
   - Seven Eleven
@@ -68,6 +77,39 @@ trademark_terms:
   - Yakult
   - Nike
   - Adidas
+
+# Events where Shutterstock wants press credentials and a case number before editorial
+# submission (Legal Documentation). The model reports an event; a match goes to review.
+credential_events:
+  - concert
+  - sports
+  - match
+  - game
+  - race
+  - rally
+  - election
+  - press conference
+  - panel
+  - red carpet
+  - runway
+  - fashion show
+  - theatre
+  - theater
+  - stage play
+  - airshow
+  - air show
+  - reenactment
+
+# What shuto does with the signals the model reports in "detected"
+# (actions: force_editorial, review, block; same words as the Outcomes table in the doc).
+detected_actions:
+  artworks_or_characters: force_editorial   # no property release: editorial only
+  artwork_is_main_subject: review           # isolated artwork is rejected even as editorial
+  private_interior: force_editorial         # no property release: editorial only
+  screen_content: force_editorial           # editorial only (not as the primary subject)
+  credential_event: review                  # press credentials + case number needed
+  id_or_card_number: block                  # financial/government ID numbers: not accepted
+  personal_data_other: review               # names, addresses, phones: editorial, check it
 
 rules:
   # General rules (people without release, logos, short titles, caption format) are code-level

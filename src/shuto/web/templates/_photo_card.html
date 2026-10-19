@@ -1,9 +1,10 @@
-{% from "_ui.html" import chip with context %}
-<article class="card {{ c.status }}{% if c.group is not none %} similar{% endif %}">
+{% from "_ui.html" import chip, icon with context %}
+<article class="card {{ c.status }}{% if c.sent %} sent{% endif %}{% if c.group is not none %} similar{% endif %}">
   <label class="pick"><input type="checkbox" name="ids" value="{{ c.id }}" form="bulk-form" aria-label="Select {{ c.name }}"></label>
   <a href="/photo/{{ c.id }}?back={{ show }}"><img loading="lazy" src="/thumb/{{ c.id }}" alt="{{ c.name }}"></a>
+  {% if c.sent %}<span class="ribbon" aria-hidden="true">{{ icon('upload') }}Sent</span>{% endif %}
   <div class="meta">
-    {{ chip(c.bucket if c.bucket in ('good', 'attention', 'aside') else 'neutral', label(c.status)) }}
+    {% if c.sent %}{{ chip('sent', label(c.status)) }}{% else %}{{ chip(c.bucket if c.bucket in ('good', 'attention', 'aside') else 'neutral', label(c.status)) }}{% endif %}
     {% if c.group is not none %}<span class="chip neutral">Similar photos</span>{% endif %}
     {% if c.editorial %}<span class="chip neutral">Editorial</span>{% endif %}
     {% if c.default_place %}<span class="chip review" title="The place in the caption is your default place. Check that it is right for this photo.">Default place</span>{% endif %}

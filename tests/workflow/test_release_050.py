@@ -102,6 +102,7 @@ def test_resolve_place_order_file_then_ai_then_default():
     assert resolve_place(NO_LOC, "Kyoto", "Japan")["source"] == "default"
     assert resolve_place(NO_LOC, "Kyoto", "Japan", {"country": "Japan", "source": "gps"}) == {
         "city": "KYOTO",
+        "region": "",
         "country": "JAPAN",
         "source": "partly default",
         "default": True,
@@ -113,7 +114,7 @@ def test_gps_wins_end_to_end_including_report(cfg, store, tmp_path):
     style = {"default_city": "Kyoto", "default_country": "Japan"}
     bid, photo, fake = _run(cfg, store, folder, OSAKA, style=style)
     assert "Taken 2026-07-31. Place from GPS:" in fake.calls[0].prompt
-    assert photo.metadata["description"].startswith("SHIBUYA, JAPAN - JULY 31, 2026: ")
+    assert photo.metadata["description"].startswith("SHIBUYA, TOKYO, JAPAN - JULY 31, 2026: ")
     assert photo.metadata["place"]["source"] == "gps"
     assert photo.metadata["place"]["default"] is False
     path = reports.write_report(cfg, store, bid)

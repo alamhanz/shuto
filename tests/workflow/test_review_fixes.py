@@ -31,7 +31,7 @@ BASE = "http://127.0.0.1:8765"
 
 
 # ---- Y1: forced editorial through the manual edit path
-def test_unticking_editorial_on_logo_photo_goes_to_review(cfg, store, photos_dir):
+def test_unticking_editorial_on_logo_photo_builds_the_caption(cfg, store, photos_dir):
     batch = _setup(cfg, store, photos_dir)
     describing.describe_batch(cfg, store, batch, llm=FakeProvider("fake"))
     photo = store.list_photos(batch, [Status.DESCRIBED])[0]
@@ -44,7 +44,11 @@ def test_unticking_editorial_on_logo_photo_goes_to_review(cfg, store, photos_dir
         editorial=False,
     )
     assert edited.metadata["editorial"] is True
-    assert edited.status == Status.NEEDS_REVIEW
+    # the guardrails force editorial and the caption is built from the owner's sentence
+    assert edited.metadata["description"] == (
+        "TOKYO, JAPAN - MARCH 4, 2025: A quiet street with a parked bicycle at dusk"
+    )
+    assert edited.status == Status.DESCRIBED
 
 
 # ---- Y4: a saved choice beats an explicit config model

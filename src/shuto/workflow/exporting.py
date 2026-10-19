@@ -10,8 +10,10 @@ from typing import Any
 from shuto.core import paths
 from shuto.core import text as core_text
 from shuto.core.config import Config
+from shuto.core.errors import PipelineError
 from shuto.core.models import Photo, Status
-from shuto.deliver import send
+from shuto.deliver import csv_export, send
+from shuto.deliver.csv_export import EditorialCaptionError
 from shuto.metadata import rules as metadata_rules
 from shuto.store import Store
 from shuto.workflow import checks, reports
@@ -24,6 +26,13 @@ class ExportSummary:
     rows: list[dict[str, Any]] = field(default_factory=list)
     dry_run: bool = False
     skipped: dict[int, str] = field(default_factory=dict)  # photo id -> why it is not in the CSV
+
+    def skipped_text(self) -> str:
+        """One plain sentence for the user about the photos left out of the CSV ('' if none)."""
+        if not self.skipped:
+            return ""
+        reasons = list(dict.fromkeys(self.skipped.values()))
+        return f"{len(self.skipped)} photo(s) left out of the CSV: " + "; ".join(reasons) + "."
 
 
 def export_rows(photos: Iterable[Photo]) -> list[dict[str, Any]]:
@@ -63,6 +72,16 @@ def export_batch(
         if checks.not_english(p.metadata or {}, metadata_rules.language_policy(cfg.style).strict):
             assert p.id is not None
             skipped[p.id] = NOT_ENGLISH_TEXT
+            continue
+        m = p.metadata or {}
+        if m.get("editorial"):  # sent photos cannot be edited: leave this one out, write the rest
+            problem = csv_export.editorial_problem(str(m.get("description") or ""))
+            if problem:
+                assert p.id is not None
+                skipped[p.id] = (
+                    f"{p.orig_name}: the editorial caption is wrong ({problem}); upload the "
+                    "photo again after fixing the caption in Review"
+                )
     if skipped and not dry_run:
         for pid, why in skipped.items():
             store.log_event("export_skipped", photo_id=pid, batch_id=batch_id, detail={"why": why})
@@ -71,12 +90,15 @@ def export_batch(
     summary = ExportSummary(rows=rows, dry_run=dry_run, skipped=skipped)
     if dry_run or not rows:
         return summary
-    dest = send.write_csv(
-        batch_id,
-        rows,
-        paths.batch_dir(cfg, batch_id),
-        metadata_rules.language_policy(cfg.style).strict,
-    )
+    try:
+        dest = send.write_csv(
+            batch_id,
+            rows,
+            paths.batch_dir(cfg, batch_id),
+            metadata_rules.language_policy(cfg.style).strict,
+        )
+    except EditorialCaptionError as exc:  # backstop: the rows were checked above
+        raise PipelineError(str(exc)) from exc
     summary.files = [dest]
     for photo in photos:
         assert photo.id is not None

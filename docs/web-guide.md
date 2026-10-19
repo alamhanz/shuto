@@ -1,6 +1,6 @@
 # shuto web guide
 
-This guide matches shuto version 0.6.0. Screens may differ slightly in other versions.
+This guide matches shuto version 0.6.1. Screens may differ slightly in other versions.
 
 shuto is a web page that runs on your own computer. Open it by double-clicking the **shuto**
 icon (or go to <http://127.0.0.1:8765>). The menu at the top has **Home**, **Add photos**,
@@ -78,7 +78,7 @@ Here you decide what goes to Shutterstock. Each photo has a label:
 | Needs a look | shuto noticed something, such as a logo or a missing release |
 | Can't send as is | The photo breaks a rule and needs a change |
 | Set aside | Too low quality, an exact copy, looks like another photo, or does not fit your theme or rules |
-| Sent before | You already sent this photo |
+| Sent before | You already sent this photo; it carries a navy **Sent** chip and a **Sent** ribbon on its thumbnail |
 
 <!-- screenshot: the review grid with labels (images/web-review.png) -->
 
@@ -88,7 +88,9 @@ Here you decide what goes to Shutterstock. Each photo has a label:
 - **Approve all that look good** approves the good ones in one click.
 - Click a photo to read and edit its title, description and keywords. The page also explains
   what shuto noticed. **Approve** saves your edits first and then approves the photo, so you do not need to save
-  separately. You can also use **Ask AI again** for a new text.
+  separately. You can also use **Ask AI again** for a new text. **Send back to AI** removes the
+  photos from every list; a note shows how many wait for the AI and links to Check, and they
+  return in their new group when the AI has finished.
   <!-- screenshot: editing one photo (images/web-photo.png) -->
 - Photos with visible logos or recognizable people can usually only be sold as **Editorial**.
   shuto suggests this and writes the caption in the editorial style.
@@ -108,11 +110,12 @@ If something fails, a message says what happened and a **Try again** button appe
 shuto never submits for you. The **Submit** page lists the steps:
 
 1. Open submit.shutterstock.com and sign in.
-2. Go to **Portfolio, Not submitted** (in the menu: Portfolio, Submit content). Your uploaded
-   photos are there; it can take a few minutes after uploading for them to appear.
+2. In the left menu, open **Portfolio, Submit content**. Your uploaded photos are on the
+   **Not submitted** tab; it can take a few minutes after uploading for them to appear.
 3. Click **Upload CSV** (top right) and choose the batch's info file
    (`<batch>-shutterstock.csv`, also in the batch folder shown on the page).
-4. Check the photos, then press **Submit**. They move to **Portfolio, Pending**.
+4. Check the photos, then press **Submit**. They move to **Portfolio, Pending content**.
+   Editorial photos take no releases, and Usage must stay on Editorial (the info file sets it).
 5. Back in shuto, click **I submitted this batch**.
 
 <!-- screenshot: the submit step (images/web-submit.png) -->

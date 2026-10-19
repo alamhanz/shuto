@@ -358,11 +358,14 @@
         },
         "place": {
           "city": "TOKYO",
+          "region": "",
           "country": "JAPAN",
           "source": "ai",
           "default": false
         },
         "language": "Japanese",
+        "caption_sentence": "自転車が並ぶ静かな住宅街",
+        "commercial_description": "東京の 静かな 住宅街の 通りに 駐輪された 自転車と 電柱 on March 4, 2025",
         "file_meta": {
           "captured": "2025-03-04T10:00:00"
         },
@@ -391,7 +394,11 @@
         "logos_or_brands": [],
         "landmarks": [],
         "artworks_or_characters": [],
-        "private_interior": false
+        "private_interior": false,
+        "event": "",
+        "personal_data": [],
+        "screen_content": false,
+        "artwork_is_main_subject": false
       },
       "submit_name": "20250304-on-march-4-2025-001.jpg"
     },
@@ -443,11 +450,14 @@
         },
         "place": {
           "city": "TOKYO",
+          "region": "",
           "country": "JAPAN",
           "source": "ai",
           "default": false
         },
         "language": "Japanese",
+        "caption_sentence": "自転車が並ぶ静かな住宅街",
+        "commercial_description": "東京の 静かな 住宅街の 通りに 駐輪された 自転車と 電柱 on March 5, 2025",
         "file_meta": {
           "captured": "2025-03-05T10:00:00"
         },
@@ -476,7 +486,11 @@
         "logos_or_brands": [],
         "landmarks": [],
         "artworks_or_characters": [],
-        "private_interior": false
+        "private_interior": false,
+        "event": "",
+        "personal_data": [],
+        "screen_content": false,
+        "artwork_is_main_subject": false
       },
       "submit_name": "20250305-on-march-5-2025-002.jpg"
     },
@@ -541,11 +555,14 @@
         },
         "place": {
           "city": "TOKYO",
+          "region": "",
           "country": "JAPAN",
           "source": "ai",
           "default": false
         },
         "language": "Japanese",
+        "caption_sentence": "自転車が並ぶ静かな住宅街",
+        "commercial_description": "東京の 静かな 住宅街の 通りに 駐輪された 自転車と 電柱 on March 6, 2025",
         "file_meta": {
           "captured": "2025-03-06T10:00:00"
         },
@@ -574,7 +591,11 @@
         "logos_or_brands": [],
         "landmarks": [],
         "artworks_or_characters": [],
-        "private_interior": false
+        "private_interior": false,
+        "event": "",
+        "personal_data": [],
+        "screen_content": false,
+        "artwork_is_main_subject": false
       },
       "submit_name": "20250306-on-march-6-2025-003.jpg"
     },

@@ -60,17 +60,11 @@ def make_live_run(
     if llm is not None:
         provider, model = llm.name, llm.model
     else:
-        try:
-            sel = selection.resolve_selection(cfg, store)
-        except Exception:
-            return None
+        sel = selection.resolve_selection(cfg, store)
         provider, model = sel.provider, sel.model
     if provider != "ollama":
         return None
-    try:
-        expected = expected_seconds_per_photo(cfg, model)
-    except Exception:
-        return None
+    expected = expected_seconds_per_photo(cfg, model)
     if not expected:
         return None
     return speedcheck.LiveRun(

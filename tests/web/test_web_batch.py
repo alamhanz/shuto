@@ -426,6 +426,58 @@ def test_legacy_routes_still_work(web, described):
     assert "Tick the box" in web.post(f"/batch/{described}/upload").text
 
 
+def _warned():
+    return delivering.PrepareSummary(prepared=["a"], warnings={7: ["Only 2 keywords (x)"]})
+
+
+def test_prepare_message_warns_only_when_a_photo_will_be_rejected(web, described, monkeypatch):
+    monkeypatch.setattr(delivering, "prepare_batch", lambda *a, **k: _warned())
+    job = web.run_job(f"/batch/{described}/prepare")
+    assert "will reject" in web.state.runner.result(job.id)
+    monkeypatch.setattr(
+        delivering, "prepare_batch", lambda *a, **k: delivering.PrepareSummary(prepared=["a"])
+    )
+    job = web.run_job(f"/batch/{described}/prepare")
+    assert "will reject" not in web.state.runner.result(job.id)
+
+
+def test_deliver_message_warns_only_when_a_photo_will_be_rejected(web, described, monkeypatch):
+    review.approve(web.state.cfg, web.state.store, batch_id=described)
+    monkeypatch.setattr(exporting, "export_batch", lambda *a, **k: exporting.ExportSummary())
+    results = {}
+    for name, prepare in (
+        ("warned", _warned()),
+        ("clean", delivering.PrepareSummary(prepared=["a"])),
+    ):
+        summary = delivering.DeliverSummary(
+            prepare, delivering.UploadSummary(uploaded=["a"]), exporting.ExportSummary()
+        )
+        monkeypatch.setattr(delivering, "deliver_batch", lambda *a, s=summary, **k: s)
+        job = web.run_job(f"/batch/{described}/deliver", {"confirm": "yes"})
+        assert job.state == "done", job.error
+        results[name] = web.state.runner.result(job.id)
+    assert "will reject" in results["warned"]
+    assert "will reject" not in results["clean"]
+
+
+def test_every_unsafe_route_requires_the_csrf_dependency(web):
+    from fastapi.routing import APIRoute
+
+    from shuto.web.state import post_form
+
+    def depends_on_post_form(dep):
+        return dep.call is post_form or any(depends_on_post_form(d) for d in dep.dependencies)
+
+    unsafe = [
+        r
+        for r in web.app.routes
+        if isinstance(r, APIRoute) and r.methods - {"GET", "HEAD", "OPTIONS"}
+    ]
+    assert unsafe
+    missing = [r.path for r in unsafe if not depends_on_post_form(r.dependant)]
+    assert missing == []
+
+
 def test_deliver_cancel_is_truthful(web, described, monkeypatch):
     review.approve(web.state.cfg, web.state.store, batch_id=described)
     seen = {}

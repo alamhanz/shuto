@@ -8,7 +8,7 @@ import threading
 
 import pytest
 
-from shuto.ai import hardware, speedcheck
+from shuto.ai import hardware, selection, speedcheck
 from shuto.ai.providers.fake import DEFAULT_RESPONSE, FakeProvider, vary
 from shuto.ai.speedcheck import LiveRun, ModelOption
 from shuto.core import errors
@@ -293,6 +293,18 @@ def test_local_run_gets_a_live_check_with_the_estimate_shown_before(cfg, store):
 
 def test_unknown_model_has_no_expected_time_so_no_check(cfg, store):
     assert speed.make_live_run(_local(cfg, "mystery:1b"), store) is None
+
+
+def test_live_run_errors_are_not_swallowed(cfg, store, monkeypatch):
+    def broken(*a, **k):
+        raise RuntimeError("hardware detection failed")
+
+    monkeypatch.setattr(speed, "expected_seconds_per_photo", broken)
+    with pytest.raises(RuntimeError, match="hardware detection failed"):
+        speed.make_live_run(_local(cfg, "gemma3:4b"), store)
+    monkeypatch.setattr(selection, "resolve_selection", broken)
+    with pytest.raises(RuntimeError, match="hardware detection failed"):
+        speed.make_live_run(cfg, store)
 
 
 def test_faster_options_fit_and_installed_first(cfg, monkeypatch):

@@ -6,56 +6,10 @@ Nothing in this module touches the database or the network.
 
 from __future__ import annotations
 
-from typing import Any
+import re
 from urllib.parse import quote
 
-LABELS: dict[str, str] = {
-    "imported": "New",
-    "ready": "Waiting for AI",
-    "culled": "Set aside: quality",
-    "set_aside": "Set aside: doesn't fit",
-    "duplicate": "Exact copy",
-    "near_duplicate": "Looks like another photo",
-    "already_uploaded": "Sent before",
-    "described": "Looks good",
-    "needs_review": "Needs a look",
-    "blocked": "Can't send as is",
-    "approved": "Approved",
-    "prepared": "Ready to upload",
-    "uploaded": "Uploaded",
-    "exported": "Uploaded",
-    "submitted": "Submitted",
-    "accepted": "Accepted",
-    "rejected": "Rejected",
-}
-
-# Review filters: attention / good / aside. "stage" and "done" statuses are not shown as filters.
-BUCKETS: dict[str, str] = {
-    "imported": "stage",
-    "ready": "stage",
-    "culled": "aside",
-    "set_aside": "aside",
-    "duplicate": "aside",
-    "near_duplicate": "aside",
-    "already_uploaded": "aside",
-    "described": "good",
-    "needs_review": "attention",
-    "blocked": "attention",
-    "approved": "good",
-    "prepared": "stage",
-    "uploaded": "stage",
-    "exported": "stage",
-    "submitted": "done",
-    "accepted": "done",
-    "rejected": "done",
-}
-
-BUCKET_LABELS: dict[str, str] = {
-    "attention": "Needs a look",
-    "good": "Looks good",
-    "aside": "Set aside",
-    "all": "All",
-}
+from shuto.core.status_text import BUCKET_LABELS, BUCKETS, LABELS, bucket, label  # noqa: F401 (re-exported)
 
 STEP_LABELS: dict[str, str] = {
     "add": "Add",
@@ -102,16 +56,6 @@ _STAGE_STEP = {
     "upload": "upload",
     "submit": "submit",
 }
-
-
-def label(status: Any) -> str:
-    key = getattr(status, "value", status)
-    return LABELS.get(str(key), str(key))
-
-
-def bucket(status: Any) -> str:
-    key = getattr(status, "value", status)
-    return BUCKETS.get(str(key), "stage")
 
 
 def ai_time_text(seconds: float) -> str:
@@ -290,3 +234,13 @@ def friendly_error(exc: BaseException | str, context: str = "ai") -> dict[str, s
             if any(n in low for n in needles if n not in ("timed out", "timeout")):
                 return {"what": what, "todo": todo}
     return {"what": raw or "Something went wrong.", "todo": _FALLBACK_TODO}
+
+
+ERROR_PREFIX_RE = re.compile(r"^[A-Za-z_.]*(?:Error|Exception|Busy|Refused): ")
+UPLOAD_JOB_KINDS = ("deliver", "ftps_test", "upload")
+
+
+def friendly(error: str | None, kind: str = "") -> dict[str, str]:
+    """Plain-words error; upload-type jobs get upload advice instead of AI advice."""
+    context = "upload" if kind in UPLOAD_JOB_KINDS else "ai"
+    return friendly_error(ERROR_PREFIX_RE.sub("", error or ""), context=context)

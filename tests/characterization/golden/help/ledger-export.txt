@@ -1,0 +1,9 @@
+usage: shuto ledger export [-h] [--config CONFIG] [-v] [path]
+
+positional arguments:
+  path             default: <workspace>/uploaded.csv
+
+options:
+  -h, --help       show this help message and exit
+  --config CONFIG  path to shuto.yaml
+  -v, --verbose

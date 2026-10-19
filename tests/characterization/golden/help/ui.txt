@@ -1,0 +1,11 @@
+usage: shuto ui [-h] [--config CONFIG] [-v] [--host HOST] [--port PORT] [--no-browser]
+
+start the local web UI
+
+options:
+  -h, --help       show this help message and exit
+  --config CONFIG  path to shuto.yaml
+  -v, --verbose
+  --host HOST
+  --port PORT
+  --no-browser

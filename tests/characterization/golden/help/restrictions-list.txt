@@ -1,0 +1,7 @@
+usage: shuto restrictions list [-h] [--config CONFIG] [-v] [--level LEVEL]
+
+options:
+  -h, --help       show this help message and exit
+  --config CONFIG  path to shuto.yaml
+  -v, --verbose
+  --level LEVEL

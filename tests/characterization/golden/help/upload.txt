@@ -1,0 +1,13 @@
+usage: shuto upload [-h] [--config CONFIG] [-v] [--ids IDS [IDS ...]] [--yes] batch
+
+FTPS upload of prepared photos (needs deliver.upload_enabled or --yes)
+
+positional arguments:
+  batch
+
+options:
+  -h, --help           show this help message and exit
+  --config CONFIG      path to shuto.yaml
+  -v, --verbose
+  --ids IDS [IDS ...]
+  --yes                confirm this upload

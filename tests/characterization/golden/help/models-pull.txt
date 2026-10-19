@@ -1,0 +1,10 @@
+usage: shuto models pull [-h] [--config CONFIG] [-v] [--yes] tag
+
+positional arguments:
+  tag
+
+options:
+  -h, --help       show this help message and exit
+  --config CONFIG  path to shuto.yaml
+  -v, --verbose
+  --yes            skip the confirmation

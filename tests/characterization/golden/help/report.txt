@@ -1,0 +1,12 @@
+usage: shuto report [-h] [--config CONFIG] [-v] [--out PATH] batch
+
+write the report CSV of a batch (every check and its reason)
+
+positional arguments:
+  batch
+
+options:
+  -h, --help       show this help message and exit
+  --config CONFIG  path to shuto.yaml
+  -v, --verbose
+  --out PATH       write it here instead of the workspace

@@ -1,0 +1,13 @@
+usage: shuto restrictions [-h] [--config CONFIG] [-v] {list,check} ...
+
+inspect the content restriction rules
+
+positional arguments:
+  {list,check}
+    list           list rules
+    check          check a piece of text
+
+options:
+  -h, --help       show this help message and exit
+  --config CONFIG  path to shuto.yaml
+  -v, --verbose

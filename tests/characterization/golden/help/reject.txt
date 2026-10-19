@@ -1,0 +1,16 @@
+usage: shuto reject [-h] [--config CONFIG] [-v] --reason
+                    {focus,noise,lighting,composition,trademark,property_release,model_release,title,keywords,editorial_caption,similar,limited_value,ip,other}
+                    [--note NOTE]
+                    file
+
+record a rejection and its reason
+
+positional arguments:
+  file                  photo id, original file name or prepared name
+
+options:
+  -h, --help            show this help message and exit
+  --config CONFIG       path to shuto.yaml
+  -v, --verbose
+  --reason {focus,noise,lighting,composition,trademark,property_release,model_release,title,keywords,editorial_caption,similar,limited_value,ip,other}
+  --note NOTE

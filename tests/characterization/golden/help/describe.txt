@@ -1,0 +1,17 @@
+usage: shuto describe [-h] [--config CONFIG] [-v] [--ids IDS [IDS ...]] [--yes]
+                      [--provider PROVIDER] [--model MODEL]
+                      batch
+
+generate title, description and keywords (shows an estimate first)
+
+positional arguments:
+  batch
+
+options:
+  -h, --help           show this help message and exit
+  --config CONFIG      path to shuto.yaml
+  -v, --verbose
+  --ids IDS [IDS ...]
+  --yes                skip the estimate confirmation
+  --provider PROVIDER
+  --model MODEL

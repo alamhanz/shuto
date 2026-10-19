@@ -1,0 +1,12 @@
+usage: shuto prepare [-h] [--config CONFIG] [-v] [--ids IDS [IDS ...]] batch
+
+write upload-ready JPEG copies with embedded metadata
+
+positional arguments:
+  batch
+
+options:
+  -h, --help           show this help message and exit
+  --config CONFIG      path to shuto.yaml
+  -v, --verbose
+  --ids IDS [IDS ...]

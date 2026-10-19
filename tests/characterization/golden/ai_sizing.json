@@ -1,0 +1,534 @@
+{
+  "constants": {
+    "small": 4096,
+    "target": 8192
+  },
+  "tags": [
+    "moondream",
+    "llava-phi3",
+    "granite3.2-vision",
+    "qwen2.5vl:3b",
+    "gemma3:4b",
+    "qwen3-vl:4b",
+    "qwen2.5vl:7b",
+    "minicpm-v:8b",
+    "qwen3-vl:8b",
+    "llama3.2-vision:11b",
+    "gemma3:12b",
+    "gemma3:27b",
+    "mistral-small3.2:24b",
+    "qwen3-vl:32b"
+  ],
+  "num_ctx": {
+    "gpu 24 GB": {
+      "moondream": 2048,
+      "llava-phi3": 4096,
+      "granite3.2-vision": 8192,
+      "qwen2.5vl:3b": 8192,
+      "gemma3:4b": 8192,
+      "qwen3-vl:4b": 8192,
+      "qwen2.5vl:7b": 8192,
+      "minicpm-v:8b": 8192,
+      "qwen3-vl:8b": 8192,
+      "llama3.2-vision:11b": 8192,
+      "gemma3:12b": 8192,
+      "gemma3:27b": 8192,
+      "mistral-small3.2:24b": 8192,
+      "qwen3-vl:32b": 8192,
+      "not-a-listed-model:1b": 8192,
+      "QWEN2.5VL:7B": 8192
+    },
+    "gpu 6 GB": {
+      "moondream": 2048,
+      "llava-phi3": 4096,
+      "granite3.2-vision": 8192,
+      "qwen2.5vl:3b": 8192,
+      "gemma3:4b": 8192,
+      "qwen3-vl:4b": 8192,
+      "qwen2.5vl:7b": 4096,
+      "minicpm-v:8b": 4096,
+      "qwen3-vl:8b": 4096,
+      "llama3.2-vision:11b": 4096,
+      "gemma3:12b": 4096,
+      "gemma3:27b": 4096,
+      "mistral-small3.2:24b": 4096,
+      "qwen3-vl:32b": 4096,
+      "not-a-listed-model:1b": 8192,
+      "QWEN2.5VL:7B": 8192
+    },
+    "cpu 32 GB": {
+      "moondream": 2048,
+      "llava-phi3": 4096,
+      "granite3.2-vision": 8192,
+      "qwen2.5vl:3b": 8192,
+      "gemma3:4b": 8192,
+      "qwen3-vl:4b": 8192,
+      "qwen2.5vl:7b": 8192,
+      "minicpm-v:8b": 8192,
+      "qwen3-vl:8b": 8192,
+      "llama3.2-vision:11b": 8192,
+      "gemma3:12b": 8192,
+      "gemma3:27b": 4096,
+      "mistral-small3.2:24b": 4096,
+      "qwen3-vl:32b": 4096,
+      "not-a-listed-model:1b": 8192,
+      "QWEN2.5VL:7B": 8192
+    },
+    "tight 8 GB": {
+      "moondream": 2048,
+      "llava-phi3": 4096,
+      "granite3.2-vision": 4096,
+      "qwen2.5vl:3b": 4096,
+      "gemma3:4b": 4096,
+      "qwen3-vl:4b": 4096,
+      "qwen2.5vl:7b": 4096,
+      "minicpm-v:8b": 4096,
+      "qwen3-vl:8b": 4096,
+      "llama3.2-vision:11b": 4096,
+      "gemma3:12b": 4096,
+      "gemma3:27b": 4096,
+      "mistral-small3.2:24b": 4096,
+      "qwen3-vl:32b": 4096,
+      "not-a-listed-model:1b": 8192,
+      "QWEN2.5VL:7B": 8192
+    },
+    "no profile": {
+      "moondream": 2048,
+      "llava-phi3": 4096,
+      "granite3.2-vision": 8192,
+      "qwen2.5vl:3b": 8192,
+      "gemma3:4b": 8192,
+      "qwen3-vl:4b": 8192,
+      "qwen2.5vl:7b": 8192,
+      "minicpm-v:8b": 8192,
+      "qwen3-vl:8b": 8192,
+      "llama3.2-vision:11b": 8192,
+      "gemma3:12b": 8192,
+      "gemma3:27b": 8192,
+      "mistral-small3.2:24b": 8192,
+      "qwen3-vl:32b": 8192,
+      "not-a-listed-model:1b": 8192,
+      "QWEN2.5VL:7B": 8192
+    }
+  },
+  "assess": {
+    "gpu 24 GB": {
+      "moondream": [
+        true,
+        "gpu",
+        "fits in 24 GB GPU memory",
+        1.875,
+        "heuristic"
+      ],
+      "llava-phi3": [
+        true,
+        "gpu",
+        "fits in 24 GB GPU memory",
+        5.0,
+        "heuristic"
+      ],
+      "granite3.2-vision": [
+        true,
+        "gpu",
+        "fits in 24 GB GPU memory",
+        5.0,
+        "heuristic"
+      ],
+      "qwen2.5vl:3b": [
+        true,
+        "gpu",
+        "fits in 24 GB GPU memory",
+        6.875,
+        "heuristic"
+      ],
+      "gemma3:4b": [
+        true,
+        "gpu",
+        "fits in 24 GB GPU memory",
+        7.5,
+        "heuristic"
+      ],
+      "qwen3-vl:4b": [
+        true,
+        "gpu",
+        "fits in 24 GB GPU memory",
+        8.75,
+        "heuristic"
+      ],
+      "qwen2.5vl:7b": [
+        true,
+        "gpu",
+        "fits in 24 GB GPU memory",
+        21.25,
+        "heuristic"
+      ],
+      "minicpm-v:8b": [
+        true,
+        "gpu",
+        "fits in 24 GB GPU memory",
+        20.0,
+        "heuristic"
+      ],
+      "qwen3-vl:8b": [
+        true,
+        "gpu",
+        "fits in 24 GB GPU memory",
+        23.75,
+        "heuristic"
+      ],
+      "llama3.2-vision:11b": [
+        true,
+        "gpu",
+        "fits in 24 GB GPU memory",
+        32.5,
+        "heuristic"
+      ],
+      "gemma3:12b": [
+        true,
+        "gpu",
+        "fits in 24 GB GPU memory",
+        35.0,
+        "heuristic"
+      ],
+      "gemma3:27b": [
+        true,
+        "gpu",
+        "fits in 24 GB GPU memory",
+        87.5,
+        "heuristic"
+      ],
+      "mistral-small3.2:24b": [
+        true,
+        "gpu",
+        "fits in 24 GB GPU memory",
+        81.25,
+        "heuristic"
+      ],
+      "qwen3-vl:32b": [
+        true,
+        "gpu",
+        "fits in 24 GB GPU memory",
+        112.5,
+        "heuristic"
+      ]
+    },
+    "gpu 6 GB": {
+      "moondream": [
+        true,
+        "gpu",
+        "fits in 6 GB GPU memory",
+        1.875,
+        "heuristic"
+      ],
+      "llava-phi3": [
+        true,
+        "gpu",
+        "fits in 6 GB GPU memory",
+        5.0,
+        "heuristic"
+      ],
+      "granite3.2-vision": [
+        true,
+        "gpu",
+        "fits in 6 GB GPU memory",
+        5.0,
+        "heuristic"
+      ],
+      "qwen2.5vl:3b": [
+        true,
+        "gpu",
+        "fits in 6 GB GPU memory",
+        6.875,
+        "heuristic"
+      ],
+      "gemma3:4b": [
+        true,
+        "gpu",
+        "fits in 6 GB GPU memory",
+        7.5,
+        "heuristic"
+      ],
+      "qwen3-vl:4b": [
+        true,
+        "gpu",
+        "fits in 6 GB GPU memory",
+        8.75,
+        "heuristic"
+      ],
+      "qwen2.5vl:7b": [
+        true,
+        "cpu",
+        "runs on CPU (16 GB RAM)",
+        170.0,
+        "heuristic"
+      ],
+      "minicpm-v:8b": [
+        true,
+        "cpu",
+        "runs on CPU (16 GB RAM)",
+        160.0,
+        "heuristic"
+      ],
+      "qwen3-vl:8b": [
+        true,
+        "cpu",
+        "runs on CPU (16 GB RAM)",
+        190.0,
+        "heuristic"
+      ],
+      "llama3.2-vision:11b": [
+        false,
+        "cpu",
+        "needs 9 GB GPU memory or 20 GB RAM",
+        260.0,
+        "heuristic"
+      ],
+      "gemma3:12b": [
+        false,
+        "cpu",
+        "needs 10 GB GPU memory or 20 GB RAM",
+        280.0,
+        "heuristic"
+      ],
+      "gemma3:27b": [
+        false,
+        "cpu",
+        "needs 20 GB GPU memory or 36 GB RAM",
+        700.0,
+        "heuristic"
+      ],
+      "mistral-small3.2:24b": [
+        false,
+        "cpu",
+        "needs 18 GB GPU memory or 36 GB RAM",
+        650.0,
+        "heuristic"
+      ],
+      "qwen3-vl:32b": [
+        false,
+        "cpu",
+        "needs 24 GB GPU memory or 44 GB RAM",
+        900.0,
+        "heuristic"
+      ]
+    },
+    "cpu 32 GB": {
+      "moondream": [
+        true,
+        "cpu",
+        "runs on CPU (32 GB RAM)",
+        15.0,
+        "heuristic"
+      ],
+      "llava-phi3": [
+        true,
+        "cpu",
+        "runs on CPU (32 GB RAM)",
+        40.0,
+        "heuristic"
+      ],
+      "granite3.2-vision": [
+        true,
+        "cpu",
+        "runs on CPU (32 GB RAM)",
+        40.0,
+        "heuristic"
+      ],
+      "qwen2.5vl:3b": [
+        true,
+        "cpu",
+        "runs on CPU (32 GB RAM)",
+        55.0,
+        "heuristic"
+      ],
+      "gemma3:4b": [
+        true,
+        "cpu",
+        "runs on CPU (32 GB RAM)",
+        60.0,
+        "heuristic"
+      ],
+      "qwen3-vl:4b": [
+        true,
+        "cpu",
+        "runs on CPU (32 GB RAM)",
+        70.0,
+        "heuristic"
+      ],
+      "qwen2.5vl:7b": [
+        true,
+        "cpu",
+        "runs on CPU (32 GB RAM)",
+        170.0,
+        "heuristic"
+      ],
+      "minicpm-v:8b": [
+        true,
+        "cpu",
+        "runs on CPU (32 GB RAM)",
+        160.0,
+        "heuristic"
+      ],
+      "qwen3-vl:8b": [
+        true,
+        "cpu",
+        "runs on CPU (32 GB RAM)",
+        190.0,
+        "heuristic"
+      ],
+      "llama3.2-vision:11b": [
+        true,
+        "cpu",
+        "runs on CPU (32 GB RAM)",
+        260.0,
+        "heuristic"
+      ],
+      "gemma3:12b": [
+        true,
+        "cpu",
+        "runs on CPU (32 GB RAM)",
+        280.0,
+        "heuristic"
+      ],
+      "gemma3:27b": [
+        false,
+        "cpu",
+        "needs about 36 GB RAM (have 32 GB)",
+        700.0,
+        "heuristic"
+      ],
+      "mistral-small3.2:24b": [
+        false,
+        "cpu",
+        "needs about 36 GB RAM (have 32 GB)",
+        650.0,
+        "heuristic"
+      ],
+      "qwen3-vl:32b": [
+        false,
+        "cpu",
+        "needs about 44 GB RAM (have 32 GB)",
+        900.0,
+        "heuristic"
+      ]
+    },
+    "tight 8 GB": {
+      "moondream": [
+        true,
+        "cpu",
+        "runs on CPU (8 GB RAM)",
+        15.0,
+        "heuristic"
+      ],
+      "llava-phi3": [
+        false,
+        "cpu",
+        "needs about 10 GB RAM (have 8 GB)",
+        40.0,
+        "heuristic"
+      ],
+      "granite3.2-vision": [
+        false,
+        "cpu",
+        "needs about 10 GB RAM (have 8 GB)",
+        40.0,
+        "heuristic"
+      ],
+      "qwen2.5vl:3b": [
+        false,
+        "cpu",
+        "needs about 12 GB RAM (have 8 GB)",
+        55.0,
+        "heuristic"
+      ],
+      "gemma3:4b": [
+        false,
+        "cpu",
+        "needs about 12 GB RAM (have 8 GB)",
+        60.0,
+        "heuristic"
+      ],
+      "qwen3-vl:4b": [
+        false,
+        "cpu",
+        "needs about 12 GB RAM (have 8 GB)",
+        70.0,
+        "heuristic"
+      ],
+      "qwen2.5vl:7b": [
+        false,
+        "cpu",
+        "needs about 16 GB RAM (have 8 GB)",
+        170.0,
+        "heuristic"
+      ],
+      "minicpm-v:8b": [
+        false,
+        "cpu",
+        "needs about 16 GB RAM (have 8 GB)",
+        160.0,
+        "heuristic"
+      ],
+      "qwen3-vl:8b": [
+        false,
+        "cpu",
+        "needs about 16 GB RAM (have 8 GB)",
+        190.0,
+        "heuristic"
+      ],
+      "llama3.2-vision:11b": [
+        false,
+        "cpu",
+        "needs about 20 GB RAM (have 8 GB)",
+        260.0,
+        "heuristic"
+      ],
+      "gemma3:12b": [
+        false,
+        "cpu",
+        "needs about 20 GB RAM (have 8 GB)",
+        280.0,
+        "heuristic"
+      ],
+      "gemma3:27b": [
+        false,
+        "cpu",
+        "needs about 36 GB RAM (have 8 GB)",
+        700.0,
+        "heuristic"
+      ],
+      "mistral-small3.2:24b": [
+        false,
+        "cpu",
+        "needs about 36 GB RAM (have 8 GB)",
+        650.0,
+        "heuristic"
+      ],
+      "qwen3-vl:32b": [
+        false,
+        "cpu",
+        "needs about 44 GB RAM (have 8 GB)",
+        900.0,
+        "heuristic"
+      ]
+    }
+  },
+  "is_small_context": {
+    "moondream": true,
+    "llava-phi3": true,
+    "granite3.2-vision": false,
+    "qwen2.5vl:3b": false,
+    "gemma3:4b": false,
+    "qwen3-vl:4b": false,
+    "qwen2.5vl:7b": false,
+    "minicpm-v:8b": false,
+    "qwen3-vl:8b": false,
+    "llama3.2-vision:11b": false,
+    "gemma3:12b": false,
+    "gemma3:27b": false,
+    "mistral-small3.2:24b": false,
+    "qwen3-vl:32b": false,
+    "not-a-listed-model:1b": false,
+    "QWEN2.5VL:7B": false
+  }
+}

@@ -1,0 +1,9 @@
+usage: shuto models use [-h] [--config CONFIG] [-v] spec
+
+positional arguments:
+  spec
+
+options:
+  -h, --help       show this help message and exit
+  --config CONFIG  path to shuto.yaml
+  -v, --verbose

@@ -1,0 +1,9 @@
+usage: shuto rules theme [-h] [--config CONFIG] [-v] {on,off}
+
+positional arguments:
+  {on,off}
+
+options:
+  -h, --help       show this help message and exit
+  --config CONFIG  path to shuto.yaml
+  -v, --verbose

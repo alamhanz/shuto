@@ -1,10 +1,10 @@
-"""Local web app: FastAPI + Jinja2 + htmx. Calls only the service layer (pipeline, jobs).
+"""Local web app: FastAPI + Jinja2 + htmx. Calls only the service layer (workflow, jobs).
 
 Security model: loopback bind by default, Host header allow-list (DNS rebinding), Origin check on
 every state-changing request, a per-process CSRF token, autoescaped templates, files served by
 photo id only (paths come from the database), no secret values ever rendered.
 
-Routes live in `routes_setup` and `routes_batch`; shared helpers in `common`.
+Routes live in the `routes` package (one router per page group); shared state in `state`.
 """
 
 from __future__ import annotations
@@ -18,12 +18,50 @@ from fastapi import FastAPI, Request
 from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
-from ..config import Config
-from .common import HERE, LOOPBACK_HOSTS, WebCtx, WebState, hostname
-from .routes_batch import register_batch_routes
-from .routes_setup import register_setup_routes
-from .ux import BUSY_WHAT, friendly_error
+from shuto.core.config import Config
+from shuto.web.routes import (
+    accounts,
+    batch,
+    files,
+    folders,
+    help,
+    home,
+    imports,
+    jobs,
+    legacy,
+    models,
+    photo,
+    preferences,
+    review,
+    settings,
+    updates,
+    upload,
+    wizard,
+)
+from shuto.web.state import HERE, LOOPBACK_HOSTS, WebCtx, WebState, hostname
+from shuto.web.ux import BUSY_WHAT, friendly_error
 
+# Order is part of the route table: the legacy `/batch/{id}/{action}` catch-all must come after
+# every specific `/batch/{id}/x` POST.
+ROUTERS = (
+    home,
+    wizard,
+    imports,
+    jobs,
+    folders,
+    updates,
+    settings,
+    models,
+    accounts,
+    preferences,
+    help,
+    batch,
+    review,
+    upload,
+    legacy,
+    files,
+    photo,
+)
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 CSP = (
     "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; "
@@ -74,9 +112,11 @@ def create_app(
             raise exc
         return PlainTextResponse(f"{found['what']} {found['todo']}", status_code=503)
 
-    ctx = WebCtx(state)
-    register_setup_routes(app, ctx)
-    register_batch_routes(app, ctx)
+    app.state.ctx = WebCtx(state)
+    for module in ROUTERS:
+        # Added one by one (not `include_router`) so `app.routes` stays one flat, ordered table.
+        for route in module.router.routes:
+            app.router.routes.append(route)
     return app
 
 

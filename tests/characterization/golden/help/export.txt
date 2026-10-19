@@ -1,0 +1,12 @@
+usage: shuto export [-h] [--config CONFIG] [-v] [--dry-run] batch
+
+write the batch's Shutterstock CSV
+
+positional arguments:
+  batch
+
+options:
+  -h, --help       show this help message and exit
+  --config CONFIG  path to shuto.yaml
+  -v, --verbose
+  --dry-run

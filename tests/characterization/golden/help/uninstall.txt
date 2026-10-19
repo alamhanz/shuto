@@ -1,0 +1,11 @@
+usage: shuto uninstall [-h] [--config CONFIG] [-v] [--yes] [--delete-data] [--keep-login]
+
+remove shortcuts and saved login (asks first); optionally shuto's data
+
+options:
+  -h, --help       show this help message and exit
+  --config CONFIG  path to shuto.yaml
+  -v, --verbose
+  --yes            do not ask for confirmation
+  --delete-data    also delete shuto's database and settings
+  --keep-login     keep the saved Shutterstock login

@@ -1,0 +1,9 @@
+usage: shuto restrictions check [-h] [--config CONFIG] [-v] text
+
+positional arguments:
+  text
+
+options:
+  -h, --help       show this help message and exit
+  --config CONFIG  path to shuto.yaml
+  -v, --verbose

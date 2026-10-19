@@ -1,0 +1,46 @@
+{
+  "latin_words_only (english_only)": {
+    "Tokyo street": "Tokyo street",
+    "Tokyo 渋谷 street": "Tokyo street",
+    "渋谷": "",
+    "Café": "Cafe",
+    "": "",
+    "Ｔｏｋｙｏ": "Tokyo",
+    "ñandú, 東京": "nandu,"
+  },
+  "has_foreign_script": {
+    "Tokyo street": false,
+    "Tokyo 渋谷 street": true,
+    "渋谷": true,
+    "Café": false,
+    "": false,
+    "Ｔｏｋｙｏ": false,
+    "ñandú, 東京": true
+  },
+  "clean_language": {
+    "'Japanese'": {
+      "ok": "Japanese"
+    },
+    "' french '": {
+      "ok": "french"
+    },
+    "'Jap@nese'": {
+      "error": "ValueError: Use only letters, spaces and hyphens in the language name."
+    },
+    "''": {
+      "error": "ValueError: Type the language to write in, for example Japanese."
+    },
+    "None": {
+      "error": "ValueError: Type the language to write in, for example Japanese."
+    },
+    "'LLLLLLLLLLLLLLLLLLLLLLLLLLLLLL'": {
+      "ok": "LLLLLLLLLLLLLLLLLLLLLLLLLLLLLL"
+    },
+    "'LLLLLLLLLLLLLLLLLLLLLLLLLLLLLLL'": {
+      "error": "ValueError: Keep the language name under 30 characters."
+    },
+    "5": {
+      "error": "ValueError: Use only letters, spaces and hyphens in the language name."
+    }
+  }
+}

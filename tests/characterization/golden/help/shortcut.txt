@@ -1,0 +1,11 @@
+usage: shuto shortcut [-h] [--config CONFIG] [-v] [--remove] [--no-desktop] [--no-menu]
+
+create (or remove) the desktop and menu launchers
+
+options:
+  -h, --help       show this help message and exit
+  --config CONFIG  path to shuto.yaml
+  -v, --verbose
+  --remove         delete the launchers
+  --no-desktop     skip the Desktop launcher
+  --no-menu        skip the Start menu / app menu launcher

@@ -142,15 +142,15 @@ For how the check looks in the web app, see [web-guide.md](web-guide.md).
   on the model's output (for example, brand names in keywords). Both run again after any edit.
 - Titles, descriptions and keywords follow the owner's
   [metadata guide](shutterstock-metadata-guide.md): the prompt is built from it and the checks
-  in `metadata_rules.py` enforce it. When a hard rule fails (too few words, a word list, too
+  in `src/shuto/metadata/rules.py` enforce it. When a hard rule fails (too few words, a word list, too
   few keywords, a near-duplicate of another photo in the batch, text that is not English) the
   same model is asked again with the problems listed, up to 8 model calls per photo in total
   (`llm.max_tries`, default 8). It stops early when the answer is valid or when the model
   repeats itself. The best answer is kept; if it is still not valid the photo goes to
   "Needs a look" with the reason. Tries, tokens and seconds show in the batch report.
-- Live speed check (local models only; `speedcheck.py`): after every 5 photos described
+- Live speed check (local models only; `src/shuto/ai/speedcheck.py`): after every 5 photos described
   (`CHECK_EVERY`) the average seconds per photo is compared with the expected seconds per photo
-  shown before the run (`estimate.py` / `local_models.py`, your hardware tier or benchmark).
+  shown before the run (`src/shuto/ai/estimate.py` / `src/shuto/ai/recommend.py`, your hardware tier or benchmark).
   At 1.3 times that or more (`SLOW_FACTOR`) the job panel offers: fewer tries (3), a faster
   model that fits this machine and is already installed, or keep going (asked again only when
   the next check is slower than the one dismissed). The choices are held in one lock-protected
@@ -190,11 +190,11 @@ For how the check looks in the web app, see [web-guide.md](web-guide.md).
   ASCII names.
 - Metadata language (Settings -> Metadata language; config `style.english_only` and
   `style.metadata_language`, web app setting `ui.language`): strict English is the default. With
-  it off, `describe.language_rule` puts "Write the description and keywords in <language>" in
+  it off, `ai.prompts.language_rule` puts "Write the description and keywords in <language>" in
   both prompts, photo-file hints keep their scripts, `ascii_fold`, the `non_english` check,
-  `pipeline.not_english` (approve, prepare, export) and the CSV guard are skipped, and the word
+  `workflow.checks.not_english` (approve, prepare, export) and the CSV guard are skipped, and the word
   count ignores text in scripts written without spaces (Japanese, Thai). The CSV stays UTF-8
-  without a BOM as before. The name is validated by `metadata_rules.clean_language` (letters,
+  without a BOM as before. The name is validated by `core.validate.clean_language` (letters,
   spaces, hyphens, 30 characters) because it goes into the prompt. Each photo stores
   `metadata.language` and the report has a `metadata_language` column. Location fields stay in
   English letters (the editorial caption prefix is a fixed English format). Cautions: local
@@ -321,7 +321,7 @@ the workspace folder first if you may want to go back.
 
 ## Status and roadmap
 
-shuto is an early version (0.5.0). The pipeline, command line and local web app work end to end,
+shuto is an early version (0.6.0). The pipeline, command line and local web app work end to end,
 and the tests run on Linux, macOS and Windows.
 
 Known limits:

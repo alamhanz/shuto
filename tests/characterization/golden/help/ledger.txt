@@ -1,0 +1,13 @@
+usage: shuto ledger [-h] [--config CONFIG] [-v] {export,import} ...
+
+export or import the list of already uploaded photos (uploaded.csv)
+
+positional arguments:
+  {export,import}
+    export         write the ledger CSV from the database
+    import         merge a ledger CSV into the database
+
+options:
+  -h, --help       show this help message and exit
+  --config CONFIG  path to shuto.yaml
+  -v, --verbose

@@ -1,0 +1,17 @@
+usage: shuto reupload [-h] [--config CONFIG] [-v] [--ids IDS [IDS ...]] [--all]
+                      [--include-submitted] [--yes]
+                      batch
+
+send photos again that you deleted on Shutterstock (needs --yes)
+
+positional arguments:
+  batch
+
+options:
+  -h, --help           show this help message and exit
+  --config CONFIG      path to shuto.yaml
+  -v, --verbose
+  --ids IDS [IDS ...]  photo ids (see `shuto review`)
+  --all                every uploaded photo of the batch
+  --include-submitted  with --all: also photos noted as submitted
+  --yes                confirm they are gone from Shutterstock

@@ -1,0 +1,41 @@
+usage: shuto [-h] [--config CONFIG] [-v] [--version]
+             {ui,shortcut,uninstall,init,doctor,models,import,ledger,cull,describe,run,review,edit,approve,prepare,upload,reupload,export,submitted,status,rules,report,reject,accept,secrets,check-ftps,restrictions}
+             ...
+
+Local-first pipeline for Shutterstock contributors. With no command, starts the web UI.
+
+positional arguments:
+  {ui,shortcut,uninstall,init,doctor,models,import,ledger,cull,describe,run,review,edit,approve,prepare,upload,reupload,export,submitted,status,rules,report,reject,accept,secrets,check-ftps,restrictions}
+    ui                  start the local web UI
+    shortcut            create (or remove) the desktop and menu launchers
+    uninstall           remove shortcuts and saved login (asks first); optionally shuto's data
+    init                create the workspace and choose a model (asks before any download)
+    doctor              show hardware, Ollama and model status
+    models              list, choose, download and benchmark local models
+    import              register photos from a folder
+    ledger              export or import the list of already uploaded photos (uploaded.csv)
+    cull                technical check: size, sharpness, exposure
+    describe            generate title, description and keywords (shows an estimate first)
+    run                 import, cull and describe in one go
+    review              list described photos
+    edit                edit metadata of one photo (guardrails re-run)
+    approve             approve reviewed photos
+    prepare             write upload-ready JPEG copies with embedded metadata
+    upload              FTPS upload of prepared photos (needs deliver.upload_enabled or --yes)
+    reupload            send photos again that you deleted on Shutterstock (needs --yes)
+    export              write the batch's Shutterstock CSV
+    submitted           mark an exported batch as submitted on the portal
+    status              batches and photo counts
+    rules               your own photo rules and the theme check (shared with the web app)
+    report              write the report CSV of a batch (every check and its reason)
+    reject              record a rejection and its reason
+    accept              record an acceptance
+    secrets             store a secret in the OS keyring
+    check-ftps          test the Shutterstock FTPS login
+    restrictions        inspect the content restriction rules
+
+options:
+  -h, --help            show this help message and exit
+  --config CONFIG       path to shuto.yaml
+  -v, --verbose
+  --version             show program's version number and exit

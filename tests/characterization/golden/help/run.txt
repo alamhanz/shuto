@@ -1,0 +1,17 @@
+usage: shuto run [-h] [--config CONFIG] [-v] [--notes NOTES] [--yes] [--provider PROVIDER]
+                 [--model MODEL]
+                 path
+
+import, cull and describe in one go
+
+positional arguments:
+  path
+
+options:
+  -h, --help           show this help message and exit
+  --config CONFIG      path to shuto.yaml
+  -v, --verbose
+  --notes NOTES
+  --yes                skip the estimate confirmation
+  --provider PROVIDER
+  --model MODEL

@@ -1,0 +1,9 @@
+usage: shuto rules add [-h] [--config CONFIG] [-v] (--avoid TEXT | --include TEXT) [--flag]
+
+options:
+  -h, --help       show this help message and exit
+  --config CONFIG  path to shuto.yaml
+  -v, --verbose
+  --avoid TEXT     photos showing this are a problem, e.g. "people"
+  --include TEXT   photos must show this
+  --flag           only flag ("Needs a look"), do not set aside

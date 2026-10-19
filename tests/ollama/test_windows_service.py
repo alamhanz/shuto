@@ -4,6 +4,7 @@ registry, processes or Ollama."""
 from __future__ import annotations
 
 import subprocess
+import sys
 import types
 from pathlib import Path
 
@@ -56,6 +57,8 @@ def no_wait(monkeypatch):
     monkeypatch.setattr(service.time, "monotonic", lambda: float(next(ticks)))
 
 
+# os.path.expandvars only expands %VAR% on Windows, the only place this registry path runs.
+@pytest.mark.skipif(sys.platform != "win32", reason="%VAR% expansion is Windows-only")
 def test_expand_sz_registry_value_is_expanded(monkeypatch, tmp_path):
     monkeypatch.setenv("SHUTO_TEST_HOME", str(tmp_path))
     monkeypatch.setattr(

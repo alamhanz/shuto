@@ -60,6 +60,27 @@ def test_condensed_prompt_stays_small():
     assert len(text.split()) < 420
 
 
+def test_condensed_prompt_lists_the_allowed_personal_data_kinds():
+    text = _prompt(True)
+    assert "id_number, card_number, name, address, phone, email, signature" in text
+
+
+def test_none_like_answers_in_detected_fields_count_as_empty():
+    d = Detected.model_validate(
+        {
+            "personal_data": ["none"],
+            "artworks_or_characters": ["N/A", "no"],
+            "logos_or_brands": "none",
+            "event": "none",
+        }
+    )
+    assert d.personal_data == [] and d.artworks_or_characters == [] and d.logos_or_brands == []
+    assert d.event == ""
+    assert Detected.model_validate({"event": ["n/a"]}).event == ""
+    kept = Detected.model_validate({"personal_data": ["name", "None"], "event": "Sanja Matsuri"})
+    assert kept.personal_data == ["name"] and kept.event == "Sanja Matsuri"
+
+
 def test_old_stored_detected_dicts_still_load():
     old = {"recognizable_people": 2, "logos_or_brands": ["Acme"], "private_interior": "yes"}
     d = Detected.model_validate(old)

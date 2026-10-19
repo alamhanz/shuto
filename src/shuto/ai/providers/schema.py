@@ -33,6 +33,13 @@ def _to_list(v: Any) -> Any:
     return v
 
 
+_NOTHING = _FALSE | {"n/a", "na", "-", "no event", "nothing", "not applicable", "unknown"}
+
+
+def _is_nothing(v: Any) -> bool:
+    return str(v).strip().lower().strip(".") in _NOTHING
+
+
 class Detected(BaseModel):
     recognizable_people: int = 0
     logos_or_brands: list[str] = Field(default_factory=list)
@@ -49,7 +56,8 @@ class Detected(BaseModel):
     )
     @classmethod
     def _lists(cls, v: Any) -> Any:
-        return _to_list(v)
+        v = _to_list(v)
+        return [x for x in v if not _is_nothing(x)] if isinstance(v, list) else v
 
     @field_validator("private_interior", "screen_content", "artwork_is_main_subject", mode="before")
     @classmethod
@@ -62,8 +70,9 @@ class Detected(BaseModel):
         if v is None or isinstance(v, bool):
             return ""
         if isinstance(v, (list, tuple)):
-            return ", ".join(str(x).strip() for x in v if str(x).strip())
-        return re.sub(r"\s+", " ", str(v)).strip()
+            v = ", ".join(str(x).strip() for x in v if str(x).strip() and not _is_nothing(x))
+        text = re.sub(r"\s+", " ", str(v)).strip()
+        return "" if _is_nothing(text) else text
 
     @field_validator("recognizable_people", mode="before")
     @classmethod

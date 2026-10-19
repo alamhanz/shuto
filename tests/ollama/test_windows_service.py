@@ -109,6 +109,16 @@ def test_relaunch_env_is_trimmed(monkeypatch, tmp_path):
     assert any(k.upper() == "SYSTEMROOT" for k in out)
 
 
+def test_relaunch_env_keeps_proxy_and_ca_settings(monkeypatch):
+    names = ["HTTPS_PROXY", "NO_PROXY", "SSL_CERT_FILE", "SSL_CERT_DIR", "REQUESTS_CA_BUNDLE"]
+    for name in names:
+        monkeypatch.setenv(name, "kept")
+    monkeypatch.setenv("http_proxy", "kept")  # lower case too
+    out = service._clean_env()
+    assert {k.upper() for k in out} >= {*names, "HTTP_PROXY"}
+    assert all(v == "kept" for k, v in out.items() if k.upper() in {*names, "HTTP_PROXY"})
+
+
 def test_spawn_passes_the_trimmed_env(monkeypatch):
     seen = {}
     monkeypatch.setattr(service, "_clean_env", lambda: {"A": "1"})

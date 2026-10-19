@@ -262,6 +262,21 @@ def test_topup_never_exceeds_max_tries():
     assert not [i for i in res.issues if i.hard]
 
 
+def test_topup_keeps_asking_over_several_small_answers():
+    llm = FakeProvider(
+        response=[
+            _resp(keywords=_kws("a", 10)),
+            _resp(keywords=_kws("b", 4)),
+            _resp(keywords=_kws("c", 5)),
+            _resp(keywords=_kws("d", 5)),
+            _resp(keywords=_kws("e", 5)),
+        ]
+    )
+    res = _describe(llm)
+    assert len(llm.calls) == 5
+    assert len(res.metadata.keywords) >= 25
+
+
 def test_no_topup_when_already_25():
     llm = FakeProvider(response=_resp(keywords=_kws("a", 25)))
     res = _describe(llm)

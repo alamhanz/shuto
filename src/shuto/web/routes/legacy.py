@@ -75,6 +75,8 @@ def batch_job(request: Request, batch_id: str, action: str, form: PostForm, ctx:
                 text += f" {len(s.problems)} photo(s) have problems, e.g. {first}"
             if s.warnings:
                 text += " " + s.warning_text()
+            if s.notes:
+                text += " " + s.note_text()
             return text
 
     elif action == "upload":
@@ -110,13 +112,12 @@ def batch_job(request: Request, batch_id: str, action: str, form: PostForm, ctx:
         def run(job: JobContext) -> str:
             s = exporting.export_batch(cfg, store, batch_id)
             if not s.files:
-                return "Nothing to export: upload prepared photos first."
+                return (s.skipped_text() + " ").lstrip() + (
+                    "Nothing to export: upload prepared photos first."
+                )
             text = f"Wrote the Shutterstock CSV for {len(s.rows)} photo(s)."
             if s.skipped:
-                text += (
-                    f" {len(s.skipped)} left out because the text is not in English;"
-                    " edit them in Review."
-                )
+                text += " " + s.skipped_text()
             return text
 
     return ctx.start_job(request, action, batch_id, run)

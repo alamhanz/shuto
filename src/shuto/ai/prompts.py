@@ -166,7 +166,8 @@ def _condensed_fields(style: Style, lim: rules.Limits) -> list[str]:
         '- "mature": true only for nudity, violence or mature content.',
         '- "detected": {"recognizable_people": int, "logos_or_brands": [], "landmarks": [], '
         '"artworks_or_characters": [], "private_interior": bool, "event": "", '
-        '"personal_data": [], "screen_content": bool, "artwork_is_main_subject": bool}',
+        '"personal_data": [] (only readable: id_number, card_number, name, address, phone, '
+        'email, signature), "screen_content": bool, "artwork_is_main_subject": bool}',
         '- "location": {"city", "region", "country"} in English, null if unknown.',
     ]
 

@@ -91,6 +91,20 @@ def test_people_stay_editorial_with_a_message_unless_a_model_release_exists(cfg,
     assert free.metadata["editorial"] is False and free.metadata["description"] == COMMERCIAL
 
 
+def test_unticking_a_forced_editorial_photo_keeps_the_factual_sentence(cfg, store, photos_dir):
+    _, photo, _ = _described(cfg, store, photos_dir)
+    on = review.update_metadata(cfg, store, photo.id, description=COMMERCIAL, editorial=True)
+    caption = on.metadata["description"]
+    store.update_photo(photo.id, detected={"recognizable_people": 2})
+    still = review.update_metadata(cfg, store, photo.id, description=caption, editorial=False)
+    assert still.metadata["editorial"] is True
+    assert still.metadata["description"] == caption
+    assert still.metadata["caption_sentence"] == "A quiet residential street with parked bicycles."
+    review.bulk_edit(cfg, store, [photo.id], editorial=False)
+    got = store.get_photo(photo.id)
+    assert got.metadata["description"] == caption
+
+
 def test_the_default_place_fills_a_missing_place_and_a_missing_date_blocks_nothing_silently(
     cfg, store, photos_dir
 ):

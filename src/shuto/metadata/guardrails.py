@@ -60,7 +60,31 @@ DEFAULT_CREDENTIAL_EVENTS = (
     "air show",
     "reenactment",
 )
-_ID_WORDS = frozenset({"id", "card", "passport", "licence", "license", "account", "iban"})
+# Exact normalized kinds that block. Matching whole kinds (not single words) keeps "license
+# plate", "business card" or "social media account" from blocking a photo.
+_ID_KINDS = frozenset(
+    {
+        "id",
+        "id number",
+        "id card",
+        "national id",
+        "card number",
+        "credit card",
+        "credit card number",
+        "bank card",
+        "bank card number",
+        "passport",
+        "passport number",
+        "account number",
+        "bank account",
+        "bank account number",
+        "iban",
+        "driver license number",
+        "drivers license number",
+        "driver s license number",
+        "driving licence number",
+    }
+)
 _EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
 # Phone-like: digit groups of 2 or more joined by space, dot, hyphen or brackets (8+ digits).
 _PHONE = re.compile(r"(?<![\w])(?:\+\d{1,3}[ -]?)?(?:\(?\d{2,5}\)?[ .-]){1,4}\d{2,5}(?![\w])")
@@ -508,8 +532,8 @@ def _text_pii_kinds(texts: Iterable[str]) -> list[str]:
     return kinds
 
 
-def _kind_words(value: str) -> set[str]:
-    return set(normalize(value).split())
+def _is_id_kind(value: str) -> bool:
+    return normalize(value) in _ID_KINDS
 
 
 def _is_credential_event(text: str, r: Restrictions) -> bool:
@@ -559,14 +583,14 @@ def _detected_signals(
             "Name the event in the caption.",
         )
     kinds = [str(k) for k in detected.get("personal_data") or [] if str(k).strip()]
-    if any(_kind_words(k) & _ID_WORDS for k in kinds):
+    if any(_is_id_kind(k) for k in kinds):
         hit(
             "id_or_card_number",
             "pii",
             "Readable ID, card or account number: Shutterstock does not accept it. "
             "Crop or blur it.",
         )
-    if any(not (_kind_words(k) & _ID_WORDS) for k in kinds):
+    if any(not _is_id_kind(k) for k in kinds):
         hit(
             "personal_data_other",
             "pii",

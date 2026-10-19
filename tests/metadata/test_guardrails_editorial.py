@@ -108,6 +108,25 @@ def test_readable_id_or_card_numbers_are_blocked_commercial_and_editorial(r, kin
         assert "does not accept" in texts(res)
 
 
+@pytest.mark.parametrize(
+    "kind",
+    ["Account number", "bank-account", "IBAN", "ID card", "driver's license number"],
+)
+def test_exact_id_kinds_in_free_text_still_block(r, kind):
+    _, res = run(r, {"personal_data": [kind]})
+    assert res.action == "block"
+
+
+@pytest.mark.parametrize(
+    "kind",
+    ["license plate", "number plate", "business card", "name card", "social media account"],
+)
+def test_look_alike_kinds_do_not_block(r, kind):
+    out, res = run(r, {"personal_data": [kind]})
+    assert res.action != "block"
+    assert "does not accept" not in texts(res)
+
+
 @pytest.mark.parametrize("kind", ["name", "address", "phone", "email", "signature"])
 def test_other_personal_data_is_editorial_and_needs_a_look(r, kind):
     out, res = run(r, {"personal_data": [kind]})

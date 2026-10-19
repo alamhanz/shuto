@@ -2,10 +2,7 @@
 
 from __future__ import annotations
 
-import pytest
-
 from shuto.ai.providers.fake import DEFAULT_RESPONSE, FakeProvider
-from shuto.core.errors import PipelineError
 from shuto.core.models import Status
 from shuto.workflow import delivering, describing, exporting
 
@@ -37,7 +34,9 @@ def test_prepare_warns_about_releases_on_an_editorial_photo(cfg, store, photos_d
     store.update_photo(pid, release_ids=["m-1"])
     summary = delivering.prepare_batch(cfg, store, batch, only_ids=[pid])
     assert summary.prepared and not summary.problems
-    assert "does not accept releases on editorial" in summary.warnings[pid][0]
+    assert "does not accept releases on editorial" in summary.notes[pid][0]
+    assert not summary.warnings and summary.warning_text() == ""
+    assert "will reject" not in summary.note_text() and "Fix them" not in summary.note_text()
 
 
 def test_prepare_refuses_a_caption_whose_date_is_not_the_capture_date(cfg, store, photos_dir):
@@ -48,15 +47,15 @@ def test_prepare_refuses_a_caption_whose_date_is_not_the_capture_date(cfg, store
     assert not summary.prepared and "capture date" in summary.problems[pid][0]
 
 
-def test_export_stops_with_a_plain_message_and_writes_no_file(cfg, store, photos_dir):
+def test_export_leaves_a_bad_caption_out_with_a_reason_and_writes_no_file(cfg, store, photos_dir):
     batch, pid = _approved_editorial(cfg, store, photos_dir)
     delivering.prepare_batch(cfg, store, batch, only_ids=[pid])
     store.set_status(pid, Status.UPLOADED)
     photo = store.get_photo(pid)
     store.update_photo(pid, metadata={**photo.metadata, "description": "Crowds at a crossing"})
-    with pytest.raises(PipelineError) as ei:
-        exporting.export_batch(cfg, store, batch)
-    assert photo.submit_name in str(ei.value) and "Fix it in Review" in str(ei.value)
+    got = exporting.export_batch(cfg, store, batch)
+    assert not got.files and set(got.skipped) == {pid}
+    assert "editorial caption is wrong" in got.skipped_text()
     assert store.get_photo(pid).status == Status.UPLOADED
     store.update_photo(pid, metadata={**photo.metadata, "description": MESSY})
     done = exporting.export_batch(cfg, store, batch)

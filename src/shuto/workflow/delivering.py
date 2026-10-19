@@ -32,6 +32,15 @@ class PrepareSummary:
     problems: dict[int, list[str]] = field(default_factory=dict)
     # prepared anyway (the owner approved them) although Shutterstock would reject the text
     warnings: dict[int, list[str]] = field(default_factory=dict)
+    # things worth knowing that are not problems (releases on an editorial photo)
+    notes: dict[int, list[str]] = field(default_factory=dict)
+
+    def note_text(self) -> str:
+        """One plain sentence for the notes (empty when there are none)."""
+        if not self.notes:
+            return ""
+        first = next(iter(self.notes.values()))[0]
+        return f"Note for {len(self.notes)} photo(s): {first}"
 
     def warning_text(self) -> str:
         """One plain sentence naming those photos (empty when there are none)."""
@@ -133,8 +142,10 @@ def prepare_batch(
         store.update_photo(pid, prepared_path=str(dest), submit_name=name)
         store.set_status(pid, Status.PREPARED)
         summary.prepared.append(name)
-        if unfixed := [*_text_problems(meta), *notes]:
+        if unfixed := _text_problems(meta):
             summary.warnings[pid] = unfixed
+        if notes:
+            summary.notes[pid] = notes
     if summary.prepared:
         reports.refresh_report(cfg, store, batch_id)
     return summary

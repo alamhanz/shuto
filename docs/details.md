@@ -113,18 +113,25 @@ The AI looks at each photo and reports what it sees: logos or brand names, recog
 events (concerts, sports), screens, artwork as the main subject, and readable personal data.
 Your own rules and the Shutterstock rules check turn these into a decision:
 
-- Logos, shop signs, recognizable people, events, screens and artwork make the photo Editorial.
-  People and logos always keep a photo Editorial, even if you switch it to Commercial: a
-  release is not enough in the Shutterstock portal, so shuto tells you why it stays Editorial.
-- Readable ID or card numbers block the photo (crop them out and send it back to the AI).
-  Names, addresses and phone numbers make it Editorial and ask for a look.
-- Releases can never be attached to Editorial photos, so you do not need one.
+- Logos and shop signs always keep a photo Editorial, even if you switch it to Commercial: a
+  property release does not clear a trademark. Screens with real content do too.
+- Recognizable people make the photo Editorial unless it has a model release; with a model
+  release you can switch it to Commercial. Artwork, statues, characters and building interiors
+  do the same with a property release.
+- Events do not make a photo Editorial by themselves. Concerts, sports and similar events ask
+  you for a look (press credentials and a case number), and other events remind you to name
+  the event in the caption.
+- Readable ID, card or account numbers block the photo (crop them out and send it back to the
+  AI). Names, addresses and phone numbers make it Editorial and ask for a look.
+- Releases cannot be attached to Editorial photos in the Shutterstock portal, so an Editorial
+  photo does not need one.
 
 shuto builds the caption prefix itself from the photo's date and place (GPS, then the file's own
 data, then the AI, then your Default place), and the AI writes only the sentence. If the date is
 unknown, the photo is stopped before upload. Before upload and export, every Editorial caption
 is checked: small slips such as an en dash or "July 31 2026" are fixed automatically, and a
-caption that is still wrong stops the export with a message naming the photo.
+caption that is still wrong (on a photo that is already uploaded) is left out of the CSV with a
+message naming the photo; the CSV is still written for the others.
 
 **Switching one photo:** open it in Review and switch it between Editorial and Commercial.
 Switching to Editorial rebuilds the caption at once; switching back restores the normal

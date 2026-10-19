@@ -37,7 +37,8 @@ def apply_editorial(
     description = str(out.get("description") or "")
     sentence = editorial.caption_sentence_of(description)
     stored = str((photo.metadata or {}).get("description") or "")
-    edited = description != stored
+    # The restored commercial text is not an owner edit: the stored sentence stays the sentence.
+    edited = description != stored and description != str(out.get("commercial_description") or "")
     if out.get("editorial"):
         if sentence is not None:
             if edited:

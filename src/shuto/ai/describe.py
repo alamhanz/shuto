@@ -257,8 +257,8 @@ def _repair_loop(
             break  # a soft top-up that adds nothing new: stop asking
         if hard2 < len(hard) or (topup and hard2 <= len(hard)):  # keep the best answer
             answer = found
-        if not hard2:
-            break
+        if not hard2 and len(found.kws) >= min(limits.kw_min, limits.kw_max):
+            break  # nothing hard left and enough keywords
         if same_in_a_row >= 2:
             break  # the same answer twice in a row, even when asked warmer: give up
     return answer, calls

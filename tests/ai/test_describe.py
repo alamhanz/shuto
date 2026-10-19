@@ -232,3 +232,46 @@ def test_editorial_prefix_counts_against_the_limit():
     res = _describe(llm)
     assert len(llm.calls) == 3
     assert any(i.code == "too_long" for i in res.issues)
+
+
+# ---------------------------------------------------- soft keyword top-up (aim for 25)
+
+
+def _kws(prefix, n):
+    return [f"{prefix}{chr(97 + i)}{chr(110 + i % 12)}" for i in range(n)]
+
+
+def test_light_keywords_are_topped_up_to_25():
+    first, more = _kws("alpha", 10), _kws("beta", 18)
+    llm = FakeProvider(response=[_resp(keywords=first), _resp(keywords=more)])
+    res = _describe(llm)
+    assert len(llm.calls) == 2 and res.llm.retries == 1
+    assert "ONLY 15 NEW" in llm.calls[1].prompt
+    assert len(res.metadata.keywords) >= 25
+    assert not any(i.code == "light_keywords" for i in res.issues)
+
+
+def test_topup_never_exceeds_max_tries():
+    llm = FakeProvider(
+        response=[_resp(keywords=_kws("a", 10)), _resp(keywords=_kws("b", 3))]
+        + [_resp(keywords=_kws("c", 3))] * 5
+    )
+    res = _describe(llm, max_tries=2)
+    assert len(llm.calls) == 2
+    assert 10 < len(res.metadata.keywords) < 25
+    assert not [i for i in res.issues if i.hard]
+
+
+def test_no_topup_when_already_25():
+    llm = FakeProvider(response=_resp(keywords=_kws("a", 25)))
+    res = _describe(llm)
+    assert len(llm.calls) == 1 and res.llm.retries == 0
+
+
+def test_topup_with_nothing_new_stops():
+    kws = _kws("a", 12)
+    llm = FakeProvider(response=[_resp(keywords=kws), _resp(keywords=kws)])
+    res = _describe(llm)
+    assert len(llm.calls) == 2
+    assert len(res.metadata.keywords) == 12
+    assert not [i for i in res.issues if i.hard]

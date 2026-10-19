@@ -200,16 +200,18 @@ def _repair_loop(
     same_in_a_row = 0
     while calls < max_tries:
         hard = [i for i in answer.issues if i.hard]
-        if not hard:
+        light = not hard and len(answer.kws) < min(limits.kw_min, limits.kw_max)
+        if not hard and not light:
             break
         active = answer.cap if answer.out.editorial else answer.desc
         # every retry is a little warmer, so a small model does not repeat itself
         warmer = min(max(temperature, TEMPERATURE_CAP), temperature + TEMPERATURE_STEP * calls)
         if any(i.code.startswith("dup_") for i in hard):
             warmer = max(warmer, 0.5)
-        topup = all(i.code == "few_keywords" for i in hard)
+        topup = light or all(i.code == "few_keywords" for i in hard)
         if topup:
-            missing = max(limits.kw_min, rules.KEYWORD_FLOOR) - len(answer.kws)
+            wanted = min(max(limits.kw_min, rules.KEYWORD_FLOOR), limits.kw_max)
+            missing = wanted - len(answer.kws)
             retry_prompt = topup_prompt(
                 asked.prompt, active, answer.kws, max(1, missing), check.style, asked.condensed
             )
@@ -244,6 +246,8 @@ def _repair_loop(
         same_in_a_row = same_in_a_row + 1 if latest == previous else 0
         previous = latest
         hard2 = len([i for i in found.issues if i.hard])
+        if light and len(found.kws) <= len(answer.kws):
+            break  # a soft top-up that adds nothing new: stop asking
         if hard2 < len(hard) or (topup and hard2 <= len(hard)):  # keep the best answer
             answer = found
         if not hard2:

@@ -401,10 +401,10 @@ def test_submit_page_and_marking(web, described, tmp_path):
     store.set_status(photo.id, Status.EXPORTED, force=True)
     page = web.get(f"/batch/{described}/submit").text
     assert "submit.shutterstock.com" in page and "I submitted this batch" in page
-    assert "Download commercial.csv" in page and 'alt="Screenshot placeholder' in page
+    assert "Download commercial.csv" in page and 'alt="Screenshot placeholder' not in page
     text = html.unescape(re.sub(r"<[^>]+>", " ", page))
-    assert "Portfolio → Not submitted" in text and "Upload CSV" in text
-    assert "Portfolio → Pending" in text and "Submit content" in text
+    assert "Portfolio → Submit content" in text and "Not submitted" in text and "Upload CSV" in text
+    assert "Portfolio → Pending content" in text and "Submit content" in text
     assert "commercial.csv" in text and str(web.state.cfg.workspace_path("batches")) in text
     assert 'rel="noopener noreferrer"' in page and "waiting there" not in text
     assert not any(word in visible(page) for word in JARGON)

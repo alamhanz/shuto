@@ -8,12 +8,25 @@ from urllib.parse import quote
 from fastapi import Request
 
 from shuto.core import paths
-from shuto.core.models import Photo
+from shuto.core.models import UPLOADED_STATES, Photo, Status
 from shuto.web import ux
 from shuto.web.state import WebCtx
 from shuto.workflow import reports
 
 FILTERS = ("attention", "good", "aside", "all")
+
+# Photos that wait for the AI (just imported, or sent back). Review hides them until it has run.
+WAITING = (Status.IMPORTED, Status.READY)
+SENT = (Status.ALREADY_UPLOADED, *UPLOADED_STATES)
+
+
+def is_waiting(photo: Photo) -> bool:
+    return photo.status in WAITING
+
+
+def is_sent(photo: Photo) -> bool:
+    """True when Shutterstock already has this photo (sent before, uploaded, submitted...)."""
+    return photo.status in SENT
 
 
 def batch_url(batch_id: str, page: str = "") -> str:
@@ -34,6 +47,8 @@ def count_by_status(photos: list[Photo]) -> dict[str, int]:
 
 
 def in_filter(photo: Photo, show: str | None) -> bool:
+    if is_waiting(photo):
+        return False
     return show in (None, "all") or ux.bucket(photo.status) == show
 
 

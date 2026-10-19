@@ -19,6 +19,8 @@ from shuto.web.routes.batch_support import (
     count_by_status,
     filter_of,
     in_filter,
+    is_sent,
+    is_waiting,
 )
 from shuto.web.state import Ctx, PostForm, WebCtx, short, split_lines
 from shuto.workflow import review as workflow_review
@@ -106,6 +108,7 @@ def _card(ctx: WebCtx, p: Photo) -> dict[str, Any]:
         "reason": short(str(reasons[0]), 220) if reasons else "",
         "layer": layer,
         "snippet": short(str(meta.get("description") or ""), 90),
+        "sent": is_sent(p),
         "editorial": bool(meta.get("editorial")),
         "gps": p.has_gps,
         "gps_sent": p.has_gps and ctx.cfg.prepare.include_gps,
@@ -118,7 +121,9 @@ def review_page(
     request: Request, batch_id: str, ctx: Ctx, show: str | None = None, why: str | None = None
 ):
     ctx.get_batch_or_404(batch_id)
-    photos = ctx.store.list_photos(batch_id)
+    everything = ctx.store.list_photos(batch_id)
+    waiting = sum(1 for p in everything if is_waiting(p))
+    photos = [p for p in everything if not is_waiting(p)]
     by_bucket = {"attention": 0, "good": 0, "aside": 0, "all": len(photos)}
     for p in photos:
         b = ux.bucket(p.status)
@@ -152,6 +157,8 @@ def review_page(
         why=chosen_why or "",
         why_counts=why_counts,
         why_labels=WHY_LABELS,
+        waiting=waiting,
+        check_href=batch_url(batch_id, "check"),
         report_href=batch_url(batch_id, "report.csv"),
         **ai_facts(ctx, batch_id),
         approved=counts.get("approved", 0) + counts.get("prepared", 0),
@@ -233,7 +240,10 @@ def batch_bulk(batch_id: str, form: PostForm, ctx: Ctx):
                         refused.append(str(exc))
                 return ctx.back(
                     path,
-                    notice=f"{changed} photo(s) sent back to the AI. Press Check to run it.",
+                    notice=(
+                        f"{changed} photo(s) sent back to the AI. They are hidden here until "
+                        "the AI has run: press Check to run it."
+                    ),
                     error=refused[0] if refused else None,
                 )
         else:

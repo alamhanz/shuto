@@ -12,7 +12,13 @@ from shuto.core.errors import PipelineError
 from shuto.core.jobs import JobContext
 from shuto.core.models import ALLOWED, Photo, Status
 from shuto.web import ux
-from shuto.web.routes.batch_support import batch_url, filter_of, in_filter, photo_path
+from shuto.web.routes.batch_support import (
+    batch_url,
+    filter_of,
+    in_filter,
+    is_sent,
+    photo_path,
+)
 from shuto.web.state import Ctx, PostForm, WebCtx, split_lines
 from shuto.workflow import describing, resend
 from shuto.workflow import review as workflow_review
@@ -125,6 +131,8 @@ def photo_page(request: Request, photo_id: int, ctx: Ctx, back: str | None = Non
         events=ctx.store.events_for(photo_id),
         rejections=ctx.store.list_rejections(photo_id),
         show=show or "",
+        sent=is_sent(photo),
+        sent_when=(photo.uploaded_at or photo.exported_at or photo.submitted_at or "")[:10],
         back_href=back_href,
         prev_href=photo_path(prev_id, show) if prev_id else None,
         next_href=photo_path(next_id, show) if next_id else None,

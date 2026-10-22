@@ -179,6 +179,7 @@ def model_context(ctx: WebCtx, report) -> dict:
         "providers": providers,
         "selected": report.selected,
         "chosen": report.selected is not None,
+        "conflict": ctx.ollama_conflict(),
         "pulling": pulling_tag(ctx),
     }
 

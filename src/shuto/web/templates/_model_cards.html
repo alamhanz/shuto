@@ -1,5 +1,6 @@
 {#- Needs: cards, providers, selected, use_action, return_to, show_bench -#}
 {% from "_ui.html" import chip, icon, field %}
+{% if conflict %}{% include "_ollama_conflict.html" %}{% endif %}
 {% if not cards %}
 <p class="flash warn">{{ icon('alert') }}<span>No AI model on this list fits this computer. Use an online AI below.</span></p>
 {% endif %}

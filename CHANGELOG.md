@@ -2,6 +2,18 @@
 
 Release notes are also published on the GitHub Releases page. Newest first.
 
+## 0.6.2
+
+### Fixed
+- When an older Ollama (for example one inside WSL or Docker) answers instead of the one you
+  installed, shuto now says so in plain words instead of "No AI model set" or a confusing
+  "requires a newer version" error when downloading a model.
+
+### Added
+- The warning, with simple steps, shows in the model banner, Settings, the setup wizard and
+  `shuto doctor`. The Help page has a new entry, "shuto says another Ollama is answering".
+- Detection only runs for an Ollama on this computer, not for one you set up on another machine.
+
 ## 0.6.1
 
 ### Added

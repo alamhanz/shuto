@@ -56,7 +56,12 @@ def _run(cmd: list[str], timeout: float = 20) -> subprocess.CompletedProcess:
     flags = 0x08000000 if sys.platform == "win32" else 0  # CREATE_NO_WINDOW
     try:
         return subprocess.run(
-            cmd, capture_output=True, text=True, timeout=timeout, creationflags=flags
+            cmd,
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=timeout,
+            creationflags=flags,
         )
     except (OSError, subprocess.SubprocessError) as exc:
         return subprocess.CompletedProcess(cmd, 127, "", str(exc))

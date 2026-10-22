@@ -433,3 +433,17 @@ def test_report_command(config_file, photos_dir, tmp_path, capsys):
     target = tmp_path / "elsewhere" / "r.csv"
     assert run(config_file, "report", "2025-W10", "--out", str(target)) == 0
     assert target.exists() and "file" in target.read_text(encoding="utf-8-sig")
+
+
+def test_doctor_warns_when_another_ollama_answers(config_file, capsys, monkeypatch):
+    from shuto.ollama import conflict
+
+    class OldOllama(FakeOllama):
+        def version(self):
+            return "0.22.0"
+
+    monkeypatch.setattr(conflict, "installed_version", lambda *a, **k: "0.40.8")
+    monkeypatch.setattr(selection, "ollama_client", lambda cfg: OldOllama())
+    assert run(config_file, "doctor") == 0
+    out = capsys.readouterr().out
+    assert "Warning:" in out and "0.22.0" in out and "3. Come back here" in out

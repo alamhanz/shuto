@@ -103,6 +103,16 @@ hand, use `export OLLAMA_MODELS=/mnt/bigdisk/ollama` first.
 
 `shuto doctor` prints the models folder in use and the free space there.
 
+## Another Ollama answering
+
+Only one Ollama can use the address `127.0.0.1:11434`. If a second copy (often inside WSL or
+Docker, or an old install) holds it, your own Ollama cannot start and its models do not show up.
+shuto notices when the Ollama that answers is older than the one installed here, or when
+downloaded models in your models folder are missing from its list. It then says so in the app
+(banner, Settings, setup wizard) and in `shuto doctor`, with steps: close the other Ollama, open
+yours, press Try again. The Help page has the commands for helpers. Nothing is checked when your
+Ollama address points to another computer.
+
 ## API fallback and cost
 
 If a local model is too slow or too weak on your machine, you can use an API provider. This

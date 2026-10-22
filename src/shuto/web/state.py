@@ -25,6 +25,8 @@ from shuto.core.config import Config
 from shuto.core.jobs import JobBusy, JobContext, JobRunner
 from shuto.core.models import REASON_CODES, Photo
 from shuto.metadata.categories import SHUTTERSTOCK_CATEGORIES
+from shuto.ollama import conflict as conflict_mod
+from shuto.ollama import models_dir as ollama_store
 from shuto.settings import effective
 from shuto.web import ux
 
@@ -59,6 +61,7 @@ def short(text: str, limit: int = 300) -> str:
 
 CHECK_TIMEOUT_S = 3.0  # asking Ollama whether the chosen model is there must stay quick
 CACHE_TTL_S = 10.0  # how long a model check is reused between page loads
+CONFLICT_TTL_S = 30.0  # how long "another Ollama is answering" is reused
 
 
 @dataclass(frozen=True)
@@ -96,6 +99,7 @@ class WebState:
         self.cfg = effective.effective_config(self.base_cfg, self.store)
         self.runner = JobRunner(self.store)
         self.csrf = _stdlib_secrets.token_urlsafe(32)
+        self.conflict_cache: tuple[float, Any] | None = None  # (when, Diagnosis | None)
         # (provider, model, ollama url) -> (when, ModelStatus); cleared by any change
         self.model_cache: dict[tuple[str, str, str], tuple[float, Any]] = {}
         # model the user started downloading in the setup wizard; chosen when the download ends
@@ -138,6 +142,7 @@ class WebState:
 async def post_form(request: Request) -> FormData:
     """Parse a POST form and enforce the CSRF token (header or hidden field)."""
     form = await request.form()
+    request.app.state.web.conflict_cache = None
     request.app.state.web.model_cache.clear()  # any change may alter which model is usable
     sent = request.headers.get("x-csrf-token") or str(form.get("csrf_token") or "")
     if not sent or not hmac.compare_digest(sent, request.app.state.web.csrf):
@@ -169,6 +174,29 @@ class WebCtx:
     def invalidate_model_status(self) -> None:
         """Forget cached model checks (a model was chosen, downloaded or removed, a key changed)."""
         self.state.model_cache.clear()
+        self.state.conflict_cache = None
+
+    def ollama_conflict(self) -> conflict_mod.Diagnosis | None:
+        """Another Ollama answering than the installed one (cached, never raises)."""
+        hit = self.state.conflict_cache
+        if hit is not None and time.monotonic() - hit[0] < CONFLICT_TTL_S:
+            return hit[1]
+        try:
+            chosen = None
+            try:
+                sel = selection.resolve_selection(self.cfg, self.store)
+                chosen = sel.model if sel.provider == "ollama" else None
+            except Exception:
+                pass
+            found = conflict_mod.diagnose(
+                selection.ollama_client(self.cfg),
+                ollama_store.current_models_dir(),
+                chosen=chosen,
+            )
+        except Exception:
+            found = None
+        self.state.conflict_cache = (time.monotonic(), found)
+        return found
 
     def model_status(self, request: Request | None = None) -> ModelStatus:
         """Is a usable AI model chosen? Cheap: short timeout, reused for a few seconds.
@@ -226,6 +254,9 @@ class WebCtx:
                 return ModelStatus("unknown", LOCAL_AI_UNREACHABLE)
             have = {hardware.normalize_tag(p) for p in found.pulled}
             if hardware.normalize_tag(sel.model) not in have:
+                found_conflict = self.ollama_conflict()
+                if found_conflict:
+                    return ModelStatus("missing", found_conflict.message)
                 return ModelStatus(
                     "missing", f"The AI model {sel.model} is not downloaded yet. Open Settings."
                 )

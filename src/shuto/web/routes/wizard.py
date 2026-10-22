@@ -36,7 +36,9 @@ def welcome(request: Request, ctx: Ctx, step: int = 1):
     step = min(max(step, 1), len(WIZARD_STEPS))
     extra: dict = {}
     if step in (2, 3, 6):
-        report = workflow_models.doctor(ctx.cfg, ctx.store, config_path=ctx.state.config_path)
+        report = workflow_models.doctor(
+            ctx.cfg, ctx.store, config_path=ctx.state.config_path, with_conflict=False
+        )
         extra.update(report=report, ollama=report.ollama, os_name=report.hardware.get("os"))
         extra["helper_steps"] = helper_steps(report.hardware.get("os", ""))
         if step in (3, 6):

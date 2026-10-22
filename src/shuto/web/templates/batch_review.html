@@ -19,15 +19,14 @@
   {% endfor %}
 </nav>
 {% endif %}
-{% if waiting %}
-<p class="flash warn" role="status">{{ icon('alert') }}<span>{{ waiting }} photo{{ ' is' if waiting == 1 else 's are' }} waiting for the AI. <a href="{{ check_href }}">Go to Check</a> to run it. {{ 'It comes' if waiting == 1 else 'They come' }} back here when it is done.</span></p>
-{% endif %}
+{% include "_ai_working.html" %}
 <p class="hint">{{ HELP[show] if show in HELP else 'Every photo in this batch.' }}</p>
 {% include "_report_bar.html" %}
 
 <form id="bulk-form" method="post" action="/batch/{{ batch.id|urlencode }}/bulk" class="toolbar" aria-label="Actions for photos">
   <input type="hidden" name="csrf_token" value="{{ csrf }}">
   <input type="hidden" name="show" value="{{ show }}">
+  {% for pid in clean_ids %}<input type="hidden" name="clean_ids" value="{{ pid }}">{% endfor %}
   <button type="button" class="secondary" data-select-all>Select all on screen</button>
   <button type="button" class="secondary" data-select-none>Select none</button>
   <button type="submit" name="action" value="approve_all"{% if not clean %} disabled{% endif %}>Approve all that look good ({{ clean }})</button>
@@ -59,5 +58,6 @@
 {% endblock %}
 {% block next %}
 {% if approved %}{{ next_action('Go to Upload (' ~ approved ~ ' approved)', upload_href) }}
+{% if not_approved %}<p class="hint next-action">{{ not_approved }} photo{{ ' is' if not_approved == 1 else 's are' }} not approved yet. Upload these now and the others later; the Shutterstock info file (CSV) is made when you upload and covers every uploaded photo you have not submitted yet.</p>{% endif %}
 {% else %}<p class="hint next-action">Approve at least one photo to go to Upload.</p>{% endif %}
 {% endblock %}

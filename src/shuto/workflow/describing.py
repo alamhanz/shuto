@@ -385,3 +385,63 @@ def describe_batch(
             _tally(summary, photo, status, err)
     reports.refresh_report(cfg, store, batch_id)
     return summary
+
+
+def _merge(total: DescribeSummary, part: DescribeSummary) -> None:
+    for name in (
+        "described",
+        "needs_review",
+        "blocked",
+        "set_aside",
+        "failed",
+        "approved",
+        "input_tokens",
+        "output_tokens",
+    ):
+        setattr(total, name, getattr(total, name) + getattr(part, name))
+    total.errors.extend(part.errors)
+    total.aborted = total.aborted or part.aborted
+
+
+def describe_waiting(
+    cfg: Config,
+    store: Store,
+    batch_id: str,
+    *,
+    llm: VisionLLM | None = None,
+    progress: Progress | None = None,
+    cancel: Cancel | None = None,
+    live: speedcheck.LiveRun | None = None,
+) -> DescribeSummary:
+    """Describe every `ready` photo, and the ones sent back while this runs.
+
+    Each round takes the `ready` photos not tried yet in this call; it ends when none are left,
+    when `cancel` says so or when the provider is down. A photo that failed stays `ready` and is
+    not tried twice. The progress total grows when photos are added while it runs.
+    """
+    progress = progress or core_progress.noop
+    llm = llm or selection.resolve_llm(cfg, store)
+    summary = DescribeSummary()
+    failed: set[int] = set()  # still `ready` after an attempt: not tried again in this call
+    handled = 0
+    while not (cancel and cancel()) and not summary.aborted:
+        ids = [p.id for p in _describe_targets(store, batch_id, None) if p.id not in failed]
+        ids = [i for i in ids if i is not None]
+        if not ids:
+            break
+        base, total = handled, handled + len(ids)
+
+        def part_progress(
+            done: int, count: int, name: str = "", _base: int = base, _total: int = total
+        ) -> None:
+            progress(_base + done, _total, name)
+
+        _merge(
+            summary,
+            describe_batch(
+                cfg, store, batch_id, ids, llm, progress=part_progress, cancel=cancel, live=live
+            ),
+        )
+        handled = total
+        failed |= {p.id for p in store.list_photos(batch_id, [Status.READY]) if p.id in ids}
+    return summary

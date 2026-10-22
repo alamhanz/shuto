@@ -1,0 +1,25 @@
+{% from "_ui.html" import icon with context %}
+{%- set bid = batch.id|urlencode -%}
+{%- set q = '?seen=' ~ ai.seen ~ '&show=' ~ (ai.show|urlencode) -%}
+<div id="ai-status" class="ai-status"{% if ai.state == 'working' %} hx-get="/batch/{{ bid }}/ai-status{{ q }}" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
+  {% if ai.note %}<p class="flash warn" role="status">{{ icon('alert') }}<span>{{ ai.note }}{% if 'Settings' not in ai.note and 'AI model' in ai.note %} <a href="/settings#model">Open Settings</a>{% endif %}</span></p>{% endif %}
+  {% if ai.state == 'working' %}
+  <div class="panel ai-working">
+    <p><span class="spin">{{ icon('spinner') }}</span> <strong>The AI is working on {{ ai.total }} photo{{ '' if ai.total == 1 else 's' }}{% if ai.kind == 'redo' %} ({{ ai.done }} done){% endif %}.</strong>
+      You can keep reviewing the other photos. Each photo comes back here when it is done.</p>
+    {% if ai.kind == 'redo' and ai.total %}<progress max="{{ ai.total }}" value="{{ ai.done }}" aria-label="Photos the AI has finished">{{ ai.done }} of {{ ai.total }}</progress>{% else %}<progress aria-label="The AI is working"></progress>{% endif %}
+    <p><button type="button" class="secondary" hx-post="/jobs/{{ ai.job }}/cancel" hx-swap="none">Stop</button>
+      <span class="hint">Photos that are done stay. The others wait for you to run the AI again.</span></p>
+  </div>
+  {% elif ai.waiting %}
+  <p class="flash warn" role="status">{{ icon('alert') }}<span>{{ ai.waiting }} photo{{ ' is' if ai.waiting == 1 else 's are' }} waiting for the AI.
+    {%- if ai.imported %} <a href="/batch/{{ bid }}/check">Go to Check</a> to run it.
+    {%- elif ai.other_task %} Another task is running; run the AI when it has finished.
+    {%- else %}
+    <button type="button" class="secondary" hx-post="/batch/{{ bid }}/redo" hx-vals='{{ {"seen": ai.seen, "show": ai.show}|tojson|forceescape }}' hx-target="#ai-status" hx-swap="outerHTML">Run the AI now</button>
+    {%- endif %}</span></p>
+  {% endif %}
+  {% if ai.back %}
+  <p class="flash ok" role="status">{{ icon('check') }}<span>{{ ai.back }} photo{{ ' is' if ai.back == 1 else 's are' }} back from the AI. <a href="/batch/{{ bid }}/review?show={{ ai.show|default('all', true)|urlencode }}">Show {{ 'it' if ai.back == 1 else 'them' }}</a></span></p>
+  {% endif %}
+</div>

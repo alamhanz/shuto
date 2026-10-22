@@ -75,7 +75,8 @@ class JobRunner:
     """Runs jobs one at a time, in submission order, on a daemon thread (started lazily).
 
     States: queued -> running -> done | failed | cancelled. At most one active job per batch.
-    Jobs left `queued`/`running` by a crashed process are not recovered.
+    Jobs left `queued`/`running` by a closed process are not recovered: the web app marks them
+    failed at startup (`Store.fail_unfinished_jobs`).
     """
 
     def __init__(self, store: JobStore):

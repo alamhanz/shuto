@@ -176,7 +176,8 @@ def test_batch_page_redirects_to_stage_and_serves_images(web, batch):
 def test_describe_approve_prepare_flow_and_upload_confirm(web, described, monkeypatch):
     store = web.state.store
     assert web.get(f"/batch/{described}/review").status_code == 200
-    r = web.post(f"/batch/{described}/bulk", {"action": "approve_all"})
+    clean = [str(p.id) for p in store.list_photos(described, [Status.DESCRIBED])]
+    r = web.post(f"/batch/{described}/bulk", {"action": "approve_all", "clean_ids": clean})
     assert r.status_code == 303
     assert store.list_photos(described, [Status.APPROVED])
     job, text = web.run_job(f"/batch/{described}/prepare")

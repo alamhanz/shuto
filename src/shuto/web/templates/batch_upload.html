@@ -7,6 +7,7 @@
 {% if n %}
 <div class="panel">
   <p><strong>{{ n }}</strong> approved photo{{ '' if n == 1 else 's' }} ({{ size }}) will be sent. shuto first makes a copy of each photo with its title and keywords saved inside, then uploads the copies and writes the Shutterstock info file (CSV). Your originals are never changed.</p>
+  {% if waiting or unapproved %}<p class="hint">{% if waiting %}{{ waiting }} photo{{ ' is' if waiting == 1 else 's are' }} still waiting for the AI{% if unapproved %} and {% endif %}{% endif %}{% if unapproved %}{{ unapproved }} photo{{ ' is' if unapproved == 1 else 's are' }} not approved yet{% endif %}. They are left out now; upload them later. The Shutterstock info file (CSV) is made again then and lists every photo you uploaded and have not submitted yet.</p>{% endif %}
   <h2>Shutterstock upload login</h2>
   <p class="hint">Shutterstock's photo upload server asks for the email and password of your contributor account. shuto uses them only to send these photos there. It does not read anything from your account and never signs in to the website; you still press Submit there yourself.</p>
   {% set login_form %}

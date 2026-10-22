@@ -205,7 +205,12 @@ _KEEPS_PREPARED = {
 
 
 def override_status(
-    store: Store, photo_id: int, status: Status | str, *, cfg: Config | None = None
+    store: Store,
+    photo_id: int,
+    status: Status | str,
+    *,
+    cfg: Config | None = None,
+    detail: dict[str, str] | None = None,
 ) -> Photo:
     """Manual status change that follows models.ALLOWED (e.g. culled -> ready, any -> ready).
 
@@ -213,7 +218,7 @@ def override_status(
     """
     before = get_photo(store, photo_id)
     try:
-        store.set_status(photo_id, Status(status))
+        store.set_status(photo_id, Status(status), detail=detail)
     except InvalidTransition as exc:
         raise PipelineError(str(exc)) from exc
     if Status(status) not in _KEEPS_PREPARED:

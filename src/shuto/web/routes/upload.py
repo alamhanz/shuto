@@ -61,6 +61,8 @@ def upload_page(request: Request, batch_id: str, ctx: Ctx):
         resend=_resend_choices(photos),
         resend_page="upload",
         sent=counts.get("uploaded", 0) + counts.get("exported", 0),
+        waiting=counts.get("imported", 0) + counts.get("ready", 0),
+        unapproved=sum(counts.get(k, 0) for k in ("described", "needs_review", "blocked")),
         back_path=batch_url(batch_id, "upload"),
         submit_href=batch_url(batch_id, "submit"),
     )

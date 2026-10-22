@@ -10,7 +10,11 @@ from shuto.web import ux
     [
         ({}, "empty"),
         ({"imported": 2}, "check"),
-        ({"ready": 1, "approved": 5}, "check"),
+        ({"ready": 1, "approved": 5}, "review"),
+        ({"ready": 4, "described": 6}, "review"),
+        ({"ready": 4, "approved": 6}, "review"),
+        ({"ready": 2}, "review"),
+        ({"imported": 1, "described": 3}, "check"),
         ({"needs_review": 1, "approved": 5}, "review"),
         ({"blocked": 1}, "review"),
         ({"described": 3}, "review"),
@@ -95,3 +99,18 @@ def test_friendly_error_upload_context():
         assert ux.friendly_error(text, context="upload")["what"] == text
         assert ux.friendly_error(text)["what"] == text
     assert "access key" in ux.friendly_error("ANTHROPIC_API_KEY missing")["what"]
+
+
+def test_waiting_photos_do_not_lock_the_other_steps():
+    def by_key(counts):
+        return {s["key"]: s for s in ux.steps("b", counts)}
+
+    mixed = by_key({"ready": 4, "approved": 6})
+    assert mixed["review"]["state"] == "current"
+    assert mixed["upload"]["state"] == "todo" and mixed["upload"]["link"] == "1"
+    new = by_key({"imported": 1, "described": 3})
+    assert new["check"]["state"] == "current"
+    assert new["review"]["link"] == "1"  # Review can be opened while new photos wait for Check
+    assert by_key({"described": 2})["upload"]["link"] == ""
+    assert ux.next_action("b", {"ready": 3})["label"] == "The AI is writing text for 3 photos"
+    assert ux.next_action("b", {"ready": 3, "described": 1})["href"] == "/batch/b/review"

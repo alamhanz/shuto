@@ -265,6 +265,18 @@
     "methods": [
       "GET"
     ],
+    "path": "/batch/{batch_id}/ai-status"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/batch/{batch_id}/redo"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
     "path": "/batch/{batch_id}/bulk-edit"
   },
   {

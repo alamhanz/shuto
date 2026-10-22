@@ -103,7 +103,7 @@ def check_batch(
             CHECK_SCALE,
             "No photos left for the AI after the quality check",
         )
-    described = describing.describe_batch(
+    described = describing.describe_waiting(
         cfg, store, batch_id, llm=llm, progress=describe_progress, cancel=cancel, live=live
     )
     return CheckSummary(culled, described)

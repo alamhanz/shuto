@@ -79,9 +79,9 @@ def _n(counts: dict[str, int], *names: str) -> int:
 
 def stage(counts: dict[str, int]) -> str:
     """Where the batch is in the flow; first match wins."""
-    if _n(counts, "imported", "ready") > 0:
+    if _n(counts, "imported") > 0:
         return "check"
-    if _n(counts, "described", "needs_review", "blocked") > 0:
+    if _n(counts, "ready", "described", "needs_review", "blocked") > 0:
         return "review"
     if _n(counts, "approved", "prepared") > 0:
         return "upload"
@@ -112,8 +112,10 @@ def next_action(batch_id: str, counts: dict[str, int]) -> dict[str, str]:
             text = f"Review {_plural(n, 'photo')} that need a look"
             if n == 1:
                 text = "Review 1 photo that needs a look"
-        else:
+        elif _n(counts, "described"):
             text = f"Review {_plural(_n(counts, 'described'), 'photo')}"
+        else:
+            text = f"The AI is writing text for {_plural(_n(counts, 'ready'), 'photo')}"
         return {"label": text, "href": _href(batch_id, "review")}
     if st == "upload":
         n = _n(counts, "approved", "prepared")
@@ -132,16 +134,35 @@ def next_action(batch_id: str, counts: dict[str, int]) -> dict[str, str]:
     return {"label": "Add photos", "href": "/add"}
 
 
+def _reachable(counts: dict[str, int]) -> dict[str, bool]:
+    """Which steps have something to show, so their link works even before they are current."""
+    return {
+        "add": True,
+        "check": _n(counts, "imported", "ready") > 0,
+        "review": sum(int(v or 0) for v in counts.values()) - _n(counts, "imported") > 0,
+        "upload": _n(counts, "approved", "prepared") > 0,
+        "submit": _n(counts, "uploaded", "exported") > 0,
+    }
+
+
 def steps(batch_id: str, counts: dict[str, int]) -> list[dict[str, str]]:
-    """The five flow steps as `{key, label, href, state}`; state is done / current / todo."""
+    """The five flow steps as `{key, label, href, state, link}`.
+
+    state is done / current / todo. `link` is "1" when the step has a working link whatever its
+    state: a step with photos can be opened before it is the current one.
+    """
     st = stage(counts)
     current = _STAGE_STEP.get(st)
     idx = _FLOW.index(current) if current else len(_FLOW)
+    reach = _reachable(counts)
     out: list[dict[str, str]] = []
     for i, key in enumerate(_FLOW):
         state = "done" if i < idx else "current" if i == idx else "todo"
         href = "/add" if key == "add" else _href(batch_id, key)
-        out.append({"key": key, "label": STEP_LABELS[key], "href": href, "state": state})
+        link = "1" if state != "todo" or reach[key] else ""
+        out.append(
+            {"key": key, "label": STEP_LABELS[key], "href": href, "state": state, "link": link}
+        )
     return out
 
 

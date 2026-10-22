@@ -1,0 +1,7 @@
+{#- Needs: conflict (a Diagnosis) -#}
+{% from "_ui.html" import icon %}
+<div class="flash warn" role="note" id="other-ollama-note">{{ icon('alert') }}<div>
+  <p><strong>Another Ollama may be answering.</strong> {{ conflict.message.removesuffix(' Open Help for the steps.') }}</p>
+  <ol>{% for step in conflict.steps %}<li>{{ step }}</li>{% endfor %}</ol>
+  <p><a href="/help#other-ollama">Open Help for the steps.</a></p>
+</div></div>

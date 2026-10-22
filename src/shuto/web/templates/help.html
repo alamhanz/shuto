@@ -28,6 +28,13 @@
 <h2>If something goes wrong</h2>
 <h3>The AI helper is not running</h3>
 <p>Open Ollama from the Start menu (Windows) or Applications (Mac), leave it open, and try again. If it is not installed, see <a href="/settings#computer">Settings, This computer</a>.</p>
+<h3 id="other-ollama">shuto says another Ollama is answering</h3>
+<p>Sometimes a second copy of Ollama, often one inside WSL (Linux on Windows) or Docker, is already using the address shuto talks to. It can be an older version, and it does not have your downloaded models. Your own Ollama then cannot start, so shuto cannot find your models or download new ones.</p>
+<ol>
+  <li>Close the other Ollama. If you do not know how, ask a helper to follow the "For helpers" box below.</li>
+  <li>Open Ollama from the Start menu (Windows) or Applications (Mac) and leave it open.</li>
+  <li>Come back to shuto and press Try again, or reload the page.</li>
+</ol>
 <h3>There is not enough space</h3>
 <p>AI models are large downloads. Free up space on your drive, or pick a smaller model in <a href="/settings#model">Settings</a>. If another drive has more room, open <a href="/settings#storage">Settings, Where to keep AI models</a> and choose a folder there. shuto moves your models for you. On Linux, the "For helpers" box below has the steps.</p>
 <h3>The Shutterstock login failed</h3>
@@ -45,6 +52,12 @@
   <p>On Windows and Mac, keep Ollama's models on another drive from <a href="/settings#storage">Settings, Where to keep AI models</a>. No commands are needed. On Linux, set the <code>OLLAMA_MODELS</code> setting to a folder on that drive, then restart Ollama. Replace the example folder with your own.</p>
   <dl class="facts">
     <dt>Linux</dt><dd><code>sudo systemctl edit ollama</code>, then add <code>[Service]</code> and <code>Environment="OLLAMA_MODELS=/mnt/photos/ollama/models"</code>, then <code>sudo systemctl restart ollama</code>. The <code>ollama</code> user must be allowed to write to that folder.</dd>
+  </dl>
+  <p>If shuto says another Ollama is answering, find and stop it. These commands run in a terminal or PowerShell. Replace the names in angle brackets with your own.</p>
+  <dl class="facts">
+    <dt>Which Ollama</dt><dd><code>ollama --version</code> shows the installed version, and a warning line if a different one answers. <code>netstat -ano | findstr 11434</code> shows what holds the port (Windows).</dd>
+    <dt>WSL</dt><dd><code>wsl -l -v</code> lists the Linux systems. Then <code>wsl -d &lt;distro&gt; -- sudo systemctl disable --now ollama</code> stops Ollama there and keeps it from starting again.</dd>
+    <dt>Docker</dt><dd><code>docker ps</code> lists running containers. Then <code>docker stop &lt;name&gt;</code>.</dd>
   </dl>
   <p>To save an online AI key from a terminal instead of Settings: <code>shuto secrets set ANTHROPIC_API_KEY</code> (or <code>GEMINI_API_KEY</code>).</p>
 </details>

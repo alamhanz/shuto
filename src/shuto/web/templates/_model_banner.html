@@ -1,2 +1,6 @@
 {% from "_ui.html" import icon %}
+{% if conflict %}
+<p class="model-banner" role="status">{{ icon('alert') }}<span>No AI model is ready. {{ conflict.message.removesuffix(' Open Help for the steps.') }}</span> <a href="/help#other-ollama">Open Help for the steps.</a> <a href="/settings#model">Choose a model</a></p>
+{% else %}
 <p class="model-banner" role="status">{{ icon('alert') }}<span>No AI model set. shuto can't write titles and keywords until you choose one.</span> <a href="/settings#model">Choose a model</a></p>
+{% endif %}

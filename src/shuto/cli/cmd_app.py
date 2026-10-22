@@ -252,6 +252,10 @@ def cmd_doctor(ctx: Ctx) -> int:
     else:
         out("Ollama:    not found")
         out("  " + ollama_guidance(report.hardware["os"]).replace("\n", "\n  "))
+    if report.conflict:
+        out(f"Warning:   {report.conflict.message.removesuffix(' Open Help for the steps.')}")
+        for i, step in enumerate(report.conflict.steps, 1):
+            out(f"           {i}. {step}")
     free = (
         f"{report.disk_free_gb:g} GB free"
         if report.disk_free_gb is not None

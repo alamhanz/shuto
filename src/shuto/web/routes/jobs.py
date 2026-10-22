@@ -39,7 +39,7 @@ def model_banner(request: Request, ctx: Ctx):
         return HTMLResponse("")
     if ctx.model_status(request).state != "missing":
         return HTMLResponse("")
-    return ctx.render(request, "_model_banner.html")
+    return ctx.render(request, "_model_banner.html", conflict=ctx.ollama_conflict())
 
 
 @router.get("/downloads/bar", response_class=HTMLResponse)

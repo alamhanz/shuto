@@ -182,8 +182,16 @@ class WebCtx:
         if hit is not None and time.monotonic() - hit[0] < CONFLICT_TTL_S:
             return hit[1]
         try:
+            chosen = None
+            try:
+                sel = selection.resolve_selection(self.cfg, self.store)
+                chosen = sel.model if sel.provider == "ollama" else None
+            except Exception:
+                pass
             found = conflict_mod.diagnose(
-                selection.ollama_client(self.cfg), ollama_store.current_models_dir()
+                selection.ollama_client(self.cfg),
+                ollama_store.current_models_dir(),
+                chosen=chosen,
             )
         except Exception:
             found = None

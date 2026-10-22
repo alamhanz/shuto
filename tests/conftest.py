@@ -33,7 +33,7 @@ def _no_real_ollama_conflict(monkeypatch):
     """Tests never run the real `ollama` program or read the real models folder."""
     from shuto.ollama import conflict
 
-    conflict.installed_version_cached.cache_clear()
+    conflict.clear_installed_cache()
     monkeypatch.setattr(conflict, "installed_version", lambda *a, **k: None)
     monkeypatch.setattr(conflict, "disk_models", lambda _dir: set())
     monkeypatch.setattr(conflict, "port_hint", lambda _url, *a, **k: "")

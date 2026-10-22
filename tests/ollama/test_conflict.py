@@ -76,6 +76,7 @@ def test_disk_models(tmp_path):
         "registry.ollama.ai/library/gemma3/4b",
         "registry.ollama.ai/library/moondream/latest",
         "hf.co/user/repo/Q4",
+        "registry.ollama.ai/someuser/model/v1",
     ):
         f = root / rel
         f.parent.mkdir(parents=True, exist_ok=True)
@@ -84,6 +85,7 @@ def test_disk_models(tmp_path):
         "gemma3:4b",
         "moondream:latest",
         "hf.co/user/repo:Q4",
+        "someuser/model:v1",
     }
     assert real_disk_models(tmp_path / "missing") == set()
 
@@ -106,19 +108,15 @@ def runner(netstat, tasklist=""):
 
 
 def test_port_hint():
-    def no_wsl(_name):
-        return None
-
     assert real_port_hint(URL, "linux", runner(proc())) == ""
     quiet = proc(out="  TCP 0.0.0.0:80 0.0.0.0:0 LISTENING 4")
     assert real_port_hint(URL, "windows", runner(quiet)) == "no_windows_process"
     wsl = runner(proc(out=NETSTAT), '"wslrelay.exe","4242","Services","0","1 K"')
-    assert real_port_hint(URL, "windows", wsl, no_wsl) == "wsl"
+    assert real_port_hint(URL, "windows", wsl) == "wsl"
     dock = runner(proc(out=NETSTAT), '"com.docker.backend.exe","4242","Console","1","1 K"')
-    assert real_port_hint(URL, "windows", dock, no_wsl) == "docker"
+    assert real_port_hint(URL, "windows", dock) == "docker"
     other = runner(proc(out=NETSTAT), '"thing.exe","4242","Console","1","1 K"')
-    assert real_port_hint(URL, "windows", other, no_wsl) == ""
-    assert real_port_hint(URL, "windows", other, lambda n: "wsl.exe") == "wsl"
+    assert real_port_hint(URL, "windows", other) == ""
     assert real_port_hint(URL, "windows", runner(proc(127))) == ""
 
 
@@ -153,6 +151,13 @@ def test_diagnose_no_problem_cases(tmp_path):
     assert same is None
 
 
+def test_unrelated_unlisted_models_do_not_alarm(tmp_path):
+    kw = {"installed": "0.40.8", "hint_for": lambda u: "", "disk": lambda p: {"old:latest"}}
+    server = Server("0.40.8", tags=["a:latest"])
+    assert conflict.diagnose(server, tmp_path, chosen="a", **kw) is None
+    assert conflict.diagnose(server, tmp_path, chosen=None, **kw) is None
+
+
 def test_diagnose_unlisted_models_only(tmp_path):
     d = conflict.diagnose(
         Server("0.40.8", tags=["a:latest"]),
@@ -160,9 +165,10 @@ def test_diagnose_unlisted_models_only(tmp_path):
         installed="0.40.8",
         hint_for=lambda u: "",
         disk=lambda p: {"a:latest", "gemma3:4b"},
+        chosen="gemma3:4b",
     )
     assert d.kind == "unlisted_models" and d.unlisted == ["gemma3:4b"]
-    assert "may" in d.message and str(tmp_path) in d.message
+    assert "may" in d.message and str(tmp_path) in d.message and "gemma3:4b" in d.message
 
 
 OWNER_412 = (
@@ -180,12 +186,22 @@ def test_pull_412_message(tmp_path):
     assert "update ollama" not in text.lower()
     old = conflict.pull_412_message(OWNER_412, None, "0.3.0")
     assert "version 0.3.0" in old and "Update Ollama" in old
-    assert "Update Ollama" in conflict.pull_412_message("HTTP 412", None, None)
+    assert "Update Ollama" in conflict.pull_412_message("Ollama HTTP 412: nope", None, None)
+    assert conflict.pull_412_message("blob sha256:4125 size 412 MB", None, None) is None
+
+
+def test_missing_installed_version_is_not_cached(monkeypatch):
+    answers = iter([None, "1.0", "2.0"])
+    monkeypatch.setattr(conflict, "installed_version", lambda: next(answers))
+    conflict.clear_installed_cache()
+    assert conflict.installed_version_cached() is None
+    assert conflict.installed_version_cached() == "1.0"
+    assert conflict.installed_version_cached() == "1.0"
 
 
 def test_cached_installed_version_runs_once(monkeypatch):
     calls = []
     monkeypatch.setattr(conflict, "installed_version", lambda: calls.append(1) or "1.0")
-    conflict.installed_version_cached.cache_clear()
+    conflict.clear_installed_cache()
     assert conflict.installed_version_cached() == conflict.installed_version_cached() == "1.0"
     assert len(calls) == 1

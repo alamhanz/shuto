@@ -7,7 +7,6 @@ every program started has a short timeout.
 
 from __future__ import annotations
 
-import functools
 import os
 import re
 import shutil
@@ -91,10 +90,23 @@ def installed_version(run=env._run, which=shutil.which) -> str | None:
     return parse_cli_version((proc.stdout or "") + "\n" + (proc.stderr or ""))
 
 
-@functools.lru_cache(maxsize=1)
+_installed_cache: list[str] = []
+
+
 def installed_version_cached() -> str | None:
-    """`installed_version()` once per process, so page polls start no new programs."""
-    return installed_version()
+    """`installed_version()` once per process, so page polls start no new programs.
+
+    A missing answer is not kept, so installing Ollama while shuto runs is noticed."""
+    if not _installed_cache:
+        found = installed_version()
+        if found is None:
+            return None
+        _installed_cache.append(found)
+    return _installed_cache[0]
+
+
+def clear_installed_cache() -> None:
+    _installed_cache.clear()
 
 
 def disk_models(models_dir: Path) -> set[str]:
@@ -121,8 +133,9 @@ def disk_models(models_dir: Path) -> set[str]:
             elif len(parts) >= 3:
                 host, *middle, name = parts
                 tag = f"{name}:{e.name}"
-                if host == "registry.ollama.ai" and middle == ["library"]:
-                    found.add(hardware.normalize_tag(tag))
+                if host == "registry.ollama.ai":
+                    middle = [] if middle == ["library"] else middle
+                    found.add(hardware.normalize_tag("/".join([*middle, tag])))
                 else:
                     found.add(hardware.normalize_tag("/".join([host, *middle, tag])))
 
@@ -146,7 +159,7 @@ def _is_loopback(url: str) -> bool:
     return (host or "") in LOOPBACK
 
 
-def port_hint(url: str, os_name=None, run=env._run, which=shutil.which) -> str:
+def port_hint(url: str, os_name=None, run=env._run) -> str:
     """Windows only: who holds the port. "wsl", "docker", "no_windows_process" or ""."""
     if (os_name or core_platform.os_name()) != "windows":
         return ""
@@ -174,8 +187,6 @@ def port_hint(url: str, os_name=None, run=env._run, which=shutil.which) -> str:
         return "wsl"
     if name.startswith(("docker", "com.docker")) or "vpnkit" in name:
         return "docker"
-    if not name.startswith("ollama") and which("wsl"):
-        return "wsl"
     return ""
 
 
@@ -203,6 +214,7 @@ def diagnose(
     installed: str | None = None,
     hint_for: Callable[[str], str] | None = None,
     disk: Callable[[Path], set[str]] | None = None,
+    chosen: str | None = None,
 ) -> Diagnosis | None:
     """Is a different Ollama answering than the one installed here? None when not or unsure."""
     url = getattr(client, "url", "http://127.0.0.1:11434")
@@ -220,7 +232,10 @@ def diagnose(
     inst = installed or installed_version_cached()
     older = is_newer(inst, server)
     unlisted = sorted((disk or disk_models)(models_dir) - listed)
-    if not older and not unlisted:
+    # Models on disk that the server does not list only matter when the chosen one is among
+    # them; stale manifests of other models are no reason to alarm.
+    wanted = hardware.normalize_tag(chosen) if chosen else None
+    if not older and wanted not in unlisted:
         return None
     hint = (hint_for or port_hint)(url)
     if older:
@@ -231,8 +246,8 @@ def diagnose(
         )
     else:
         message = (
-            f"shuto found downloaded models in {models_dir} that the running Ollama does not "
-            "list. Another Ollama may be answering."
+            f"shuto found the model {chosen} in {models_dir}, but the running Ollama does not "
+            "list it. Another Ollama may be answering."
         )
     return Diagnosis(
         "older_server" if older else "unlisted_models",
@@ -248,7 +263,7 @@ def diagnose(
 def pull_412_message(err: str, d: Diagnosis | None, server_version: str | None) -> str | None:
     """Plain replacement for Ollama's 'requires a newer version' refusal (else None)."""
     low = (err or "").lower()
-    if "412" not in low and "requires a newer version" not in low:
+    if not any(n in low for n in ("http 412", "status 412", ": 412", "requires a newer version")):
         return None
     if d is not None and d.kind == "older_server":
         steps = " ".join(f"{i}) {s}" for i, s in enumerate(d.steps, 1))

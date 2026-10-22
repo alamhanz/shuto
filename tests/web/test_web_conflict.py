@@ -27,7 +27,7 @@ class OldOllama(FakeOllama):
 @pytest.fixture
 def clash(monkeypatch):
     monkeypatch.setattr(conflict, "installed_version", lambda *a, **k: "0.40.8")
-    conflict.installed_version_cached.cache_clear()
+    conflict.clear_installed_cache()
 
 
 @pytest.fixture
@@ -83,3 +83,34 @@ def test_doctor_report_carries_the_conflict(cfg, store, clash):
     same = OldOllama()
     same.version = lambda: "0.40.8"
     assert workflow_models.doctor(cfg, store, client=same).conflict is None
+
+
+def test_doctor_can_skip_the_conflict_check(cfg, store, clash):
+    class Counting(OldOllama):
+        calls = 0
+
+        def tags(self):
+            Counting.calls += 1
+            return super().tags()
+
+    report = workflow_models.doctor(cfg, store, client=Counting(), with_conflict=False)
+    assert report.conflict is None and Counting.calls == 1
+
+
+def test_unrelated_stale_manifest_keeps_the_plain_message(cfg, monkeypatch):
+    monkeypatch.setattr(conflict, "installed_version", lambda *a, **k: "0.40.8")
+    monkeypatch.setattr(conflict, "disk_models", lambda _dir: {"stale:latest"})
+    fake = FakeOllama(pulled=["other:latest"])
+    fake.version = lambda: "0.40.8"
+    w = make_web(cfg, monkeypatch, fake, choose=True)
+    try:
+        from shuto.web.state import WebCtx
+
+        status = WebCtx(w.state).fresh_model_status()
+        assert "not downloaded yet" in status.message
+        monkeypatch.setattr(conflict, "disk_models", lambda _dir: {"gemma3:4b"})
+        w.state.conflict_cache = None
+        status = WebCtx(w.state).fresh_model_status()
+        assert "Another Ollama may be answering" in status.message
+    finally:
+        w.state.runner.shutdown()

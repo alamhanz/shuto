@@ -47,11 +47,18 @@ def list_models(
     )
 
 
-def ollama_conflict(cfg: Config, client: Any = None) -> ollama_conflict_mod.Diagnosis | None:
-    """Is a different Ollama than the installed one answering? None when not or unsure."""
+def ollama_conflict(
+    cfg: Config, client: Any = None, chosen: str | None = None
+) -> ollama_conflict_mod.Diagnosis | None:
+    """Is a different Ollama than the installed one answering? None when not or unsure.
+
+    `chosen` is the local model in use (if any); models on disk that Ollama does not list only
+    count when it is one of them."""
     try:
         return ollama_conflict_mod.diagnose(
-            ai_selection._client_or_default(cfg, client), ollama_store.current_models_dir()
+            ai_selection._client_or_default(cfg, client),
+            ollama_store.current_models_dir(),
+            chosen=chosen,
         )
     except Exception:
         return None
@@ -81,6 +88,7 @@ def doctor(
     client: Any = None,
     profile: hardware.HardwareProfile | None = None,
     config_path: str | os.PathLike[str] | None = None,
+    with_conflict: bool = True,
 ) -> DoctorReport:
     profile = profile or machine.hardware_profile()
     client = ai_selection._client_or_default(cfg, client)
@@ -116,7 +124,11 @@ def doctor(
         unreadable,
         workflow_checks.active_checks(cfg),
         ", ".join(p for p in (cfg.style.default_place.city, cfg.style.default_place.country) if p),
-        ollama_conflict(cfg, client) if status.running else None,
+        ollama_conflict(
+            cfg, client, selected[7:] if selected and selected.startswith("ollama:") else None
+        )
+        if with_conflict and status.running
+        else None,
     )
 
 

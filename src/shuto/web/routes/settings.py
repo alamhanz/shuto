@@ -103,7 +103,9 @@ def rules_values(ctx: WebCtx) -> dict:
 
 @router.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request, ctx: Ctx):
-    report = workflow_models.doctor(ctx.cfg, ctx.store, config_path=ctx.state.config_path)
+    report = workflow_models.doctor(
+        ctx.cfg, ctx.store, config_path=ctx.state.config_path, with_conflict=False
+    )
     usage = {"calls": 0, "input_tokens": 0, "output_tokens": 0, "seconds": 0.0}
     for b in reports.batch_report(ctx.store):
         for k in usage:

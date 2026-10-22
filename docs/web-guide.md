@@ -1,6 +1,6 @@
 # shuto web guide
 
-This guide matches shuto version 0.6.1. Screens may differ slightly in other versions.
+This guide matches shuto version 0.6.2. Screens may differ slightly in other versions.
 
 shuto is a web page that runs on your own computer. Open it by double-clicking the **shuto**
 icon (or go to <http://127.0.0.1:8765>). The menu at the top has **Home**, **Add photos**,
@@ -140,7 +140,8 @@ on Shutterstock" in the details guide.
   reloads. **Check now** looks right away; the tick box turns the daily check off. It cannot
   start while a task is running.
 - **Help:** plain explanations of the words used, what happens to your photos, and fixes for
-  common problems.
+  common problems. If shuto says another Ollama is answering (for example one in WSL or
+  Docker), the entry "shuto says another Ollama is answering" has the steps.
 
 ## Uninstall
 

@@ -115,7 +115,7 @@ def next_action(batch_id: str, counts: dict[str, int]) -> dict[str, str]:
         elif _n(counts, "described"):
             text = f"Review {_plural(_n(counts, 'described'), 'photo')}"
         else:
-            text = f"Open Review: {_plural(_n(counts, 'ready'), 'photo')} wait for the AI"
+            text = f"Open Review: {_plural(_n(counts, 'ready'), 'photo')} waiting for the AI"
         return {"label": text, "href": _href(batch_id, "review")}
     if st == "upload":
         n = _n(counts, "approved", "prepared")

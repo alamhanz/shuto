@@ -1,6 +1,6 @@
 # shuto web guide
 
-This guide matches shuto version 0.6.2. Screens may differ slightly in other versions.
+This guide matches shuto version 0.6.3. Screens may differ slightly in other versions.
 
 shuto is a web page that runs on your own computer. Open it by double-clicking the **shuto**
 icon (or go to <http://127.0.0.1:8765>). The menu at the top has **Home**, **Add photos**,
@@ -88,9 +88,9 @@ Here you decide what goes to Shutterstock. Each photo has a label:
 - **Approve all that look good** approves the good ones in one click.
 - Click a photo to read and edit its title, description and keywords. The page also explains
   what shuto noticed. **Approve** saves your edits first and then approves the photo, so you do not need to save
-  separately. You can also use **Ask AI again** for a new text. **Send back to AI** removes the
-  photos from every list; a note shows how many wait for the AI and links to Check, and they
-  return in their new group when the AI has finished.
+  separately. You can also use **Ask AI again** for a new text. **Send back to AI** starts the AI
+  in the background. The photos leave the lists and come back one by one in their new group.
+  You can keep reviewing the other photos while you wait; a note shows how many are still with the AI.
   <!-- screenshot: editing one photo (images/web-photo.png) -->
 - Photos with visible logos or recognizable people can usually only be sold as **Editorial**.
   shuto suggests this and writes the caption in the editorial style.
@@ -102,6 +102,8 @@ When you are done, click **Go to Upload**.
 Check the number of approved photos and your Shutterstock login, tick **Yes, upload these
 photos to Shutterstock**, and click the upload button. shuto prepares copies of your photos
 (your originals stay as they are), uploads them and creates the Shutterstock info file (CSV), one per batch.
+The CSV covers the photos that are approved and uploaded. If some photos are still being
+reviewed, upload them later; they go into the next CSV.
 If something fails, a message says what happened and a **Try again** button appears.
 <!-- screenshot: the upload step (images/web-upload.png) -->
 

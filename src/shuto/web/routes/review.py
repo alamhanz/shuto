@@ -9,8 +9,10 @@ from fastapi.responses import HTMLResponse
 
 from shuto.ai import filters as filters_mod
 from shuto.core.errors import PipelineError
-from shuto.core.models import Photo, Status
+from shuto.core.jobs import JobBusy, JobContext
+from shuto.core.models import UPLOADED_STATES, Photo, Status
 from shuto.web import ux
+from shuto.web.routes.batch import start_live
 from shuto.web.routes.batch_support import (
     FILTERS,
     ai_facts,
@@ -23,6 +25,7 @@ from shuto.web.routes.batch_support import (
     is_waiting,
 )
 from shuto.web.state import Ctx, PostForm, WebCtx, short, split_lines
+from shuto.workflow import redo
 from shuto.workflow import review as workflow_review
 
 router = APIRouter()
@@ -109,6 +112,7 @@ def _card(ctx: WebCtx, p: Photo) -> dict[str, Any]:
         "layer": layer,
         "snippet": short(str(meta.get("description") or ""), 90),
         "sent": is_sent(p),
+        "pickable": p.status not in UPLOADED_STATES,
         "editorial": bool(meta.get("editorial")),
         "gps": p.has_gps,
         "gps_sent": p.has_gps and ctx.cfg.prepare.include_gps,
@@ -122,8 +126,8 @@ def review_page(
 ):
     ctx.get_batch_or_404(batch_id)
     everything = ctx.store.list_photos(batch_id)
-    waiting = sum(1 for p in everything if is_waiting(p))
     photos = [p for p in everything if not is_waiting(p)]
+    waiting = len(everything) - len(photos)
     by_bucket = {"attention": 0, "good": 0, "aside": 0, "all": len(photos)}
     for p in photos:
         b = ux.bucket(p.status)
@@ -158,13 +162,191 @@ def review_page(
         why_counts=why_counts,
         why_labels=WHY_LABELS,
         waiting=waiting,
-        check_href=batch_url(batch_id, "check"),
+        not_approved=waiting
+        + counts.get("described", 0)
+        + counts.get("needs_review", 0)
+        + counts.get("blocked", 0),
+        clean_ids=[p.id for p in photos if p.status == Status.DESCRIBED],
+        ai=ai_working(ctx, batch_id, len(photos), chosen),
         report_href=batch_url(batch_id, "report.csv"),
         **ai_facts(ctx, batch_id),
         approved=counts.get("approved", 0) + counts.get("prepared", 0),
         clean=counts.get("described", 0),
         upload_href=batch_url(batch_id, "upload"),
     )
+
+
+def _count_text(n: int, word: str = "photo") -> str:
+    return f"{n} {word}" + ("" if n == 1 else "s")
+
+
+def _running_job(ctx: WebCtx, batch_id: str) -> tuple[Any, bool]:
+    """The batch's running job, and whether it picks up photos sent back (check and redo do)."""
+    job_id = ctx.runner.active_job(batch_id)
+    job = ctx.runner.get(job_id) if job_id else None
+    if job is not None and job.state not in ("queued", "running"):
+        job = None  # it has just ended; the runner has not dropped it yet
+    return job, job is not None and job.kind in ("check", "redo")
+
+
+def ai_working(
+    ctx: WebCtx, batch_id: str, seen: int, show: str | None, note: str = ""
+) -> dict[str, Any]:
+    """What the "AI is working" indicator on Review shows (also its htmx poll).
+
+    state: working (a job is writing text) | waiting (photos wait, no job) | back (photos came
+    back since the page was drawn) | none. `seen` is the number of photos Review showed when it
+    was drawn; more now means photos came back.
+    """
+    photos = ctx.store.list_photos(batch_id)
+    imported = sum(1 for p in photos if p.status == Status.IMPORTED)
+    ready = sum(1 for p in photos if p.status == Status.READY)
+    job, drains = _running_job(ctx, batch_id)
+    state = "none"
+    total = done = 0
+    if drains and job is not None:
+        state = "working"
+        total = imported + ready
+        if job.kind == "redo":
+            total = max(job.total, ready)
+            done = min(job.done, total)
+    elif imported + ready:
+        state = "waiting"
+    back = max(0, len(photos) - imported - ready - seen)
+    if state == "none" and back:
+        state = "back"
+    return {
+        "state": state,
+        "total": total,
+        "done": done,
+        "imported": imported,
+        "waiting": imported + ready,
+        "back": back,
+        "seen": seen,
+        "show": show or "",
+        "note": note,
+        "job": job.id if job is not None else None,
+        "kind": job.kind if job is not None else "",
+        "other_task": job is not None and not drains,
+    }
+
+
+def _seen_of(value: Any) -> int:
+    text = str(value or "")
+    return int(text) if text.isdigit() and len(text) <= 9 else 0
+
+
+def start_redo_job(ctx: WebCtx, batch_id: str) -> int:
+    """Queue the background job that writes new text for every `ready` photo of the batch.
+
+    Raises JobBusy when the batch already has a job.
+    """
+    cfg, store = ctx.cfg, ctx.store
+
+    def run(job: JobContext) -> str:
+        live = start_live(ctx, batch_id)
+        try:
+            s = redo.run_redo(
+                cfg,
+                store,
+                batch_id,
+                progress=job.progress_text,
+                cancel=job.cancelled,
+                live=live,
+                explain=lambda err: ux.friendly_error(err)["what"].rstrip("."),
+            )
+        finally:
+            ctx.state.live.pop(batch_id, None)
+        if s.aborted and not s.done:
+            fe = ux.friendly_error(s.aborted)
+            raise PipelineError(f"{fe['what']} {fe['todo']}")
+        text = f"The AI wrote new text for {_count_text(s.done)}."
+        if s.failed:
+            text += f" {s.failed} could not be done"
+            if s.errors:
+                text += f": {ux.friendly_error(s.errors[0][1])['what']}"
+            text += "."
+            if s.restored:
+                text += f" The old text of {len(s.restored)} is back under Needs a look."
+            if s.failed > len(s.restored):
+                text += " The others wait: press Run the AI now to try again."
+        return text
+
+    total = len(store.list_photos(batch_id, [Status.READY]))
+    return ctx.runner.submit("redo", batch_id, run, total=total)
+
+
+def send_back_and_run(
+    ctx: WebCtx, request: Request, batch_id: str, ids: list[int]
+) -> tuple[str | None, str | None]:
+    """Send photos back and make sure the AI runs on them. Returns (notice, error) texts."""
+    s = redo.send_back(ctx.cfg, ctx.store, batch_id, ids)
+    left_out = len(s.on_shutterstock)
+    parts: list[str] = []
+    error = next(iter(s.refused.values()), None)
+    if error and len(s.refused) > 1:
+        error = f"{_count_text(len(s.refused))} could not be sent back. First reason: {error}"
+    if s.sent:
+        parts.append(f"{_count_text(len(s.sent))} sent back.")
+        block = ctx.model_block(request)
+        job, drains = _running_job(ctx, batch_id)
+        if block:
+            parts.append(
+                f"The AI cannot run now: {block} The photos wait; fix that in Settings, then "
+                "press Run the AI now."
+            )
+        elif job is not None and drains:
+            parts.append(
+                "The AI is already working on this batch and should pick them up. If they are "
+                "still waiting when it stops, press Run the AI now. "
+                "You can keep reviewing the others."
+            )
+        else:
+            try:
+                start_redo_job(ctx, batch_id)
+                parts.append(
+                    "The AI is writing new text now; each one comes back here when it is done. "
+                    "You can keep reviewing the others."
+                )
+            except JobBusy:
+                parts.append(
+                    "Another task is running for this batch. The photos wait: press Run the AI "
+                    "now when it has finished."
+                )
+    elif left_out and not error:
+        parts.append("Nothing to send back.")
+    if left_out:
+        parts.append(
+            f"{_count_text(left_out)} {'is' if left_out == 1 else 'are'} already on Shutterstock "
+            "and left out."
+        )
+    return " ".join(parts) or None, error
+
+
+@router.get("/batch/{batch_id}/ai-status", response_class=HTMLResponse)
+def ai_status(request: Request, batch_id: str, ctx: Ctx, seen: str = "0", show: str = ""):
+    batch = ctx.get_batch_or_404(batch_id)
+    ai = ai_working(ctx, batch_id, _seen_of(seen), filter_of(show))
+    return ctx.render(request, "_ai_working.html", batch=batch, ai=ai)
+
+
+@router.post("/batch/{batch_id}/redo", response_class=HTMLResponse)
+def redo_start(request: Request, batch_id: str, form: PostForm, ctx: Ctx):
+    """Run the AI now: write new text for the photos that wait for it."""
+    batch = ctx.get_batch_or_404(batch_id)
+    seen, show = _seen_of(form.get("seen")), filter_of(form.get("show"))
+    note = ""
+    if not ctx.store.list_photos(batch_id, [Status.READY]):
+        note = "No photos are waiting for the AI."
+    else:
+        note = ctx.model_block(request) or ""
+        if not note and not _running_job(ctx, batch_id)[1]:
+            try:
+                start_redo_job(ctx, batch_id)
+            except JobBusy:
+                note = "The AI is busy with another task for this batch. Try again in a moment."
+    ai = ai_working(ctx, batch_id, seen, show, note)
+    return ctx.render(request, "_ai_working.html", batch=batch, ai=ai)
 
 
 @router.get("/batch/{batch_id}/bulk-edit", response_class=HTMLResponse)
@@ -210,7 +392,7 @@ def _edit_selected(ctx: WebCtx, form: Any, ids: list[int], path: str):
 
 
 @router.post("/batch/{batch_id}/bulk")
-def batch_bulk(batch_id: str, form: PostForm, ctx: Ctx):
+def batch_bulk(request: Request, batch_id: str, form: PostForm, ctx: Ctx):
     cfg = ctx.cfg
     ctx.get_batch_or_404(batch_id)
     action = str(form.get("action") or "")
@@ -219,7 +401,15 @@ def batch_bulk(batch_id: str, form: PostForm, ctx: Ctx):
     path = batch_url(batch_id, "review") + (f"?show={show}" if show else "")
     try:
         if action == "approve_all":
-            s = workflow_review.approve(cfg, ctx.store, batch_id=batch_id)
+            # Only the photos that were on screen when the page was drawn, never ones that came
+            # back from the AI since.
+            # A photo must still be clean now: one sent back or flagged since is left alone.
+            mine = {p.id for p in ctx.store.list_photos(batch_id, [Status.DESCRIBED])}
+            clean = [int(v) for v in form.getlist("clean_ids") if str(v).isdigit()]
+            clean = [i for i in clean if i in mine]
+            if not clean:
+                return ctx.back(path, error="No photos to approve here. Reload the page first.")
+            s = workflow_review.approve(cfg, ctx.store, photo_ids=clean, include_needs_review=False)
         elif action in ("approve", "ready", "edit"):
             if not ids:
                 return ctx.back(path, error="Select at least one photo first.")
@@ -230,22 +420,8 @@ def batch_bulk(batch_id: str, form: PostForm, ctx: Ctx):
                     cfg, ctx.store, photo_ids=ids, include_needs_review=True
                 )
             else:
-                changed = 0
-                refused = []
-                for pid in ids:
-                    try:
-                        workflow_review.override_status(ctx.store, pid, Status.READY, cfg=cfg)
-                        changed += 1
-                    except PipelineError as exc:
-                        refused.append(str(exc))
-                return ctx.back(
-                    path,
-                    notice=(
-                        f"{changed} photo(s) sent back to the AI. They are hidden here until "
-                        "the AI has run: press Check to run it."
-                    ),
-                    error=refused[0] if refused else None,
-                )
+                notice, error = send_back_and_run(ctx, request, batch_id, ids)
+                return ctx.back(path, notice=notice, error=error)
         else:
             raise HTTPException(status_code=400, detail="Unknown bulk action.")
     except PipelineError as exc:

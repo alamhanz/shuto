@@ -82,7 +82,9 @@ def _photos(web, batch, *statuses):
     [
         ([], "review"),
         ([Status.IMPORTED], "check"),
-        ([Status.READY, Status.DESCRIBED], "check"),
+        ([Status.READY, Status.DESCRIBED], "review"),
+        ([Status.READY], "review"),
+        ([Status.IMPORTED, Status.DESCRIBED], "check"),
         ([Status.DESCRIBED], "review"),
         ([Status.NEEDS_REVIEW, Status.APPROVED], "review"),
         ([Status.APPROVED], "upload"),
@@ -418,7 +420,9 @@ def test_submit_page_and_marking(web, described, tmp_path):
 
 
 def test_legacy_routes_still_work(web, described):
-    assert web.post(f"/batch/{described}/bulk", {"action": "approve_all"}).status_code == 303
+    clean = [str(p.id) for p in _photos(web, described, Status.DESCRIBED)]
+    data = {"action": "approve_all", "clean_ids": clean}
+    assert web.post(f"/batch/{described}/bulk", data).status_code == 303
     job = web.run_job(f"/batch/{described}/prepare")
     assert job.state == "done"
     assert web.post(f"/batch/{described}/format-disk").status_code == 404

@@ -2,6 +2,20 @@
 
 Release notes are also published on the GitHub Releases page. Newest first.
 
+## 0.6.3
+
+### Changed
+- **Send back to AI** now runs the AI in the background. You can keep reviewing the other
+  photos while it works, and the sent-back photos return one by one in their new group.
+- The Review page shows a small note while the AI is working, and when photos are back.
+
+### Fixed
+- Sending back all photos on the screen no longer ends with a confusing "not allowed" message.
+- **Approve all that look good** only approves the photos you can see as good, not ones that
+  changed while the page was open.
+- If the AI fails on a sent-back photo, it keeps its old text and appears under Needs a look.
+- Jobs left unfinished when the app was closed no longer look like they are still running.
+
 ## 0.6.2
 
 ### Fixed

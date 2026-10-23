@@ -79,6 +79,8 @@ def create_app(
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI):
+        # Jobs still queued/running now belong to a closed app; finished photos were kept.
+        state.store.fail_unfinished_jobs("shuto was closed before this finished")
         yield
         state.runner.shutdown()
 

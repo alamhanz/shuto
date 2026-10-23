@@ -1,6 +1,6 @@
 {% from "_ui.html" import chip, icon with context %}
 <article class="card {{ c.status }}{% if c.sent %} sent{% endif %}{% if c.group is not none %} similar{% endif %}">
-  <label class="pick"><input type="checkbox" name="ids" value="{{ c.id }}" form="bulk-form" aria-label="Select {{ c.name }}"></label>
+  {% if c.pickable %}<label class="pick"><input type="checkbox" name="ids" value="{{ c.id }}" form="bulk-form" aria-label="Select {{ c.name }}"></label>{% endif %}
   <a href="/photo/{{ c.id }}?back={{ show }}"><img loading="lazy" src="/thumb/{{ c.id }}" alt="{{ c.name }}"></a>
   {% if c.sent %}<span class="ribbon" aria-hidden="true">{{ icon('upload') }}Sent</span>{% endif %}
   <div class="meta">

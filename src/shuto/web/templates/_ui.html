@@ -18,16 +18,18 @@
 <span class="chip {{ kind }}">{% if ico %}{{ icon(ico) }}{% endif %}{{ label }}{% if count is not none %} <span class="chip-count">{{ count }}</span>{% endif %}</span>
 {%- endmacro %}
 
-{# steps: list of {key,label,href,state}; state = done | current | todo. `current` (a key) overrides state. #}
+{# steps: list of {key,label,href,state,link}; state = done | current | todo. `current` (a key) is the
+   only current step; the step the stage points at then shows as todo. link="1" keeps the link on a todo step. #}
 {% macro stepper(steps, current=None, mini=False) -%}
 <ol class="stepper{% if mini %} mini{% endif %}" aria-label="Steps">
 {%- for s in steps %}
-{%- set st = 'current' if (current is not none and s.key == current) else s.state %}
+{%- set st = ('current' if s.key == current else ('todo' if s.state == 'current' else s.state)) if current is not none else s.state %}
+  {%- set linked = s.href and (st != 'todo' or s.link) %}
   <li class="{{ st }}"{% if st == 'current' %} aria-current="step"{% endif %}>
-    {%- if s.href and st != 'todo' %}<a href="{{ s.href }}">{% endif -%}
+    {%- if linked %}<a href="{{ s.href }}">{% endif -%}
     <span class="n">{% if st == 'done' %}{{ icon('check') }}<span class="sr-only">{{ loop.index }}</span>{% else %}{{ loop.index }}{% endif %}</span>
     <span class="t">{{ s.label }}{% if st == 'done' %} <span class="sr-only">(done)</span>{% elif st == 'current' %} <span class="sr-only">(current step)</span>{% endif %}</span>
-    {%- if s.href and st != 'todo' %}</a>{% endif -%}
+    {%- if linked %}</a>{% endif -%}
   </li>
 {%- endfor %}
 </ol>

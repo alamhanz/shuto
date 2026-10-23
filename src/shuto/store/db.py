@@ -455,6 +455,16 @@ class Store:
             if cur.rowcount == 0:
                 raise KeyError(f"No job with id {job_id}")
 
+    def fail_unfinished_jobs(self, note: str) -> int:
+        """Mark jobs left `queued`/`running` (the app was closed under them) as failed."""
+        with self._write() as conn:
+            cur = conn.execute(
+                "UPDATE jobs SET state='failed', error=?, finished_at=? "
+                "WHERE state IN ('queued','running')",
+                (note, _now()),
+            )
+            return cur.rowcount
+
     def get_job(self, job_id: int) -> Job | None:
         with self._read() as conn:
             row = conn.execute("SELECT * FROM jobs WHERE id=?", (job_id,)).fetchone()

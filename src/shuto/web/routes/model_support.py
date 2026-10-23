@@ -19,7 +19,7 @@ from shuto.ollama import move as ollama_move
 from shuto.web.routes.actions import TAG_RE
 from shuto.web.state import MODELS_JOB_KEY, WebCtx
 
-AI_JOB_KINDS = {"check", "describe"}  # jobs that use the AI model
+AI_JOB_KINDS = {"check", "describe", "redo"}  # jobs that use the AI model
 # Pages that reload by themselves when a model download ends well, so the chosen model shows at
 # once. Pages with text fields (other wizard steps, Settings, Add photos) are left alone: a
 # reload would throw away what the user is typing. They get the final bar message instead.

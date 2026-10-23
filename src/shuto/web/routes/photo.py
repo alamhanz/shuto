@@ -19,6 +19,7 @@ from shuto.web.routes.batch_support import (
     is_sent,
     photo_path,
 )
+from shuto.web.routes.review import send_back_and_run
 from shuto.web.state import Ctx, PostForm, WebCtx, split_lines
 from shuto.workflow import describing, resend
 from shuto.workflow import review as workflow_review
@@ -190,14 +191,13 @@ def photo_approve(photo_id: int, form: PostForm, ctx: Ctx):
 
 
 @router.post("/photo/{photo_id}/ready")
-def photo_ready(photo_id: int, form: PostForm, ctx: Ctx):
-    ctx.get_photo_or_404(photo_id)
+def photo_ready(request: Request, photo_id: int, form: PostForm, ctx: Ctx):
+    photo = ctx.get_photo_or_404(photo_id)
     path = photo_path(photo_id, filter_of(form.get("back")))
-    try:
-        workflow_review.override_status(ctx.store, photo_id, Status.READY, cfg=ctx.cfg)
-    except PipelineError as exc:
-        return ctx.back(path, error=str(exc))
-    return ctx.back(path, notice="Sent back to the AI. Press Check on the batch to run it.")
+    if not photo.batch_id:
+        return ctx.back(path, error="This photo is not part of a batch.")
+    notice, error = send_back_and_run(ctx, request, photo.batch_id, [photo_id])
+    return ctx.back(path, notice=notice, error=error)
 
 
 @router.post("/photo/{photo_id}/regenerate", response_class=HTMLResponse)

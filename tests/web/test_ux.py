@@ -112,5 +112,8 @@ def test_waiting_photos_do_not_lock_the_other_steps():
     assert new["check"]["state"] == "current"
     assert new["review"]["link"] == "1"  # Review can be opened while new photos wait for Check
     assert by_key({"described": 2})["upload"]["link"] == ""
-    assert ux.next_action("b", {"ready": 3})["label"] == "The AI is writing text for 3 photos"
+    waiting = ux.next_action("b", {"ready": 3})
+    assert waiting["label"] == "Open Review: 3 photos wait for the AI"
+    assert "writing" not in waiting["label"]
+    assert ux.next_action("b", {"ready": 1})["label"] == "Open Review: 1 photo wait for the AI"
     assert ux.next_action("b", {"ready": 3, "described": 1})["href"] == "/batch/b/review"

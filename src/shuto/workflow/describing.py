@@ -436,12 +436,10 @@ def describe_waiting(
         ) -> None:
             progress(_base + done, _total, name)
 
-        _merge(
-            summary,
-            describe_batch(
-                cfg, store, batch_id, ids, llm, progress=part_progress, cancel=cancel, live=live
-            ),
+        part = describe_batch(
+            cfg, store, batch_id, ids, llm, progress=part_progress, cancel=cancel, live=live
         )
+        _merge(summary, part)
         handled = total
-        failed |= {p.id for p in store.list_photos(batch_id, [Status.READY]) if p.id in ids}
+        failed |= {pid for pid, _ in part.errors}
     return summary

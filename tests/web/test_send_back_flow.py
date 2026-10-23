@@ -116,7 +116,7 @@ def test_sending_more_joins_the_running_job(web, described, gate):  # noqa: F811
     job_id = web.state.runner.active_job(described)
     assert gate.entered.wait(10)
     r = _bulk(web, described, "ready", [second, third])
-    assert "adds them to its list" in _text(r)
+    assert "should pick them up" in _text(r) and "Run the AI now" in _text(r)
     assert web.state.runner.active_job(described) == job_id  # no second job
     assert "working on" in web.get(f"/batch/{described}/ai-status").text
     gate.gate.set()
@@ -139,6 +139,19 @@ def test_approve_all_only_approves_photos_that_were_on_screen(web, described):  
     assert r.status_code == 303
     assert {str(p.id) for p in _photos(web, described, Status.APPROVED)} == set(clean)
     assert store.get_photo(late.id).status == Status.DESCRIBED
+
+
+def test_approve_all_skips_photos_that_changed_status_since(web, described):  # noqa: F811
+    store = web.state.store
+    page = web.get(f"/batch/{described}/review?show=good").text
+    clean = re.findall(r'name="clean_ids" value="(\d+)"', page)
+    flagged, sent = int(clean[0]), int(clean[1])
+    store.set_status(flagged, Status.NEEDS_REVIEW)
+    store.set_status(sent, Status.READY)
+    _bulk(web, described, "approve_all", [], clean_ids=clean)
+    assert store.get_photo(flagged).status == Status.NEEDS_REVIEW
+    assert store.get_photo(sent).status == Status.READY
+    assert {str(p.id) for p in _photos(web, described, Status.APPROVED)} == set(clean[2:])
 
 
 def test_approve_all_without_the_list_approves_nothing(web, described):  # noqa: F811

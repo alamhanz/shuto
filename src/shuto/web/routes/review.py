@@ -297,7 +297,8 @@ def send_back_and_run(
             )
         elif job is not None and drains:
             parts.append(
-                "The AI is already working on this batch and adds them to its list. "
+                "The AI is already working on this batch and should pick them up. If they are "
+                "still waiting when it stops, press Run the AI now. "
                 "You can keep reviewing the others."
             )
         else:
@@ -402,7 +403,8 @@ def batch_bulk(request: Request, batch_id: str, form: PostForm, ctx: Ctx):
         if action == "approve_all":
             # Only the photos that were on screen when the page was drawn, never ones that came
             # back from the AI since.
-            mine = {p.id for p in ctx.store.list_photos(batch_id)}
+            # A photo must still be clean now: one sent back or flagged since is left alone.
+            mine = {p.id for p in ctx.store.list_photos(batch_id, [Status.DESCRIBED])}
             clean = [int(v) for v in form.getlist("clean_ids") if str(v).isdigit()]
             clean = [i for i in clean if i in mine]
             if not clean:

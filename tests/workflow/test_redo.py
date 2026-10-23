@@ -84,6 +84,33 @@ def test_describe_waiting_drains_photos_sent_back_while_it_runs(cfg, store, phot
     assert seen[-1] == (2, 2) and max(t for _, t in seen) == 2
 
 
+def test_describe_waiting_picks_up_a_finished_photo_sent_back_mid_round(cfg, store, photos_dir):
+    batch = _described(cfg, store, photos_dir)
+    a, b, c = _ids(store, batch, Status.DESCRIBED)
+    redo.send_back(cfg, store, batch, [a, b, c])
+    cfg.llm.concurrency = 1
+    sent = []
+
+    def second_call():
+        done = [i for i in (a, b, c) if store.get_photo(i).status != Status.READY]
+        sent.extend(done)
+        redo.send_back(cfg, store, batch, done)  # a finished one comes back while the round runs
+
+    state = {"calls": 0}
+    base = vary(DEFAULT_RESPONSE)
+
+    def answer(req):
+        state["calls"] += 1
+        if state["calls"] == 2:
+            second_call()
+        return base(req)
+
+    llm = FakeProvider("fake", response=answer)
+    s = describing.describe_waiting(cfg, store, batch, llm=llm)
+    assert sent and len(llm.calls) == 3 + len(sent)  # the sent-back photo is written again
+    assert s.failed == 0 and _ids(store, batch, Status.READY) == []
+
+
 def test_describe_waiting_does_not_retry_a_failed_photo(cfg, store, photos_dir):
     batch = _described(cfg, store, photos_dir)
     a = _ids(store, batch, Status.DESCRIBED)[0]

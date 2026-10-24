@@ -25,7 +25,7 @@ from shuto.web.routes.batch_support import (
     is_waiting,
 )
 from shuto.web.state import Ctx, PostForm, WebCtx, short, split_lines
-from shuto.workflow import redo
+from shuto.workflow import recheck, redo
 from shuto.workflow import review as workflow_review
 
 router = APIRouter()
@@ -114,6 +114,7 @@ def _card(ctx: WebCtx, p: Photo) -> dict[str, Any]:
         "layer": layer,
         "snippet": short(str(meta.get("description") or ""), 90),
         "sent": is_sent(p),
+        "new_text": is_sent(p) and recheck.has_new_text(p),
         "pickable": p.status not in UPLOADED_STATES,
         "editorial": bool(meta.get("editorial")),
         "gps": p.has_gps,

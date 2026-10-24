@@ -389,6 +389,63 @@ def test_v2_database_with_the_column_already_there(tmp_path):
     assert _version(db) == 3 and _columns(db).count("draft_json") == 1
 
 
+def test_upgrade_keeps_a_backup_of_the_old_database(tmp_path):
+    db = tmp_path / "old" / "shuto.db"
+    _make_v2_db(db)
+    Store(db)
+    bak = db.with_name("shuto.db.v2.bak")
+    assert bak.is_file() and _version(bak) == 2 and "draft_json" not in _columns(bak)
+    assert _version(db) == 3
+    assert Store(bak.with_name("copy.db")).find_by_sha("abc") is None  # a separate file
+    # an older shuto can use the backup as its database
+    with sqlite3.connect(bak) as c:
+        assert c.execute("SELECT count(*) FROM photos").fetchone()[0] == 1
+
+
+def test_v1_upgrade_is_named_after_the_old_version(tmp_path):
+    db = tmp_path / "old" / "shuto.db"
+    _make_v1_db(db)
+    Store(db)
+    assert db.with_name("shuto.db.v1.bak").is_file()
+
+
+def test_backup_is_made_once_and_never_overwritten(tmp_path):
+    db = tmp_path / "old" / "shuto.db"
+    _make_v2_db(db)
+    bak = db.with_name("shuto.db.v2.bak")
+    bak.write_bytes(b"older backup")
+    Store(db)
+    assert bak.read_bytes() == b"older backup"
+    assert _version(db) == 3
+
+
+def test_no_backup_for_new_or_current_databases(tmp_path):
+    db = tmp_path / "new" / "shuto.db"
+    Store(db)
+    Store(db)
+    assert list(db.parent.glob("*.bak")) == []
+
+
+def test_failed_backup_stops_the_upgrade(tmp_path, monkeypatch):
+    db = tmp_path / "old" / "shuto.db"
+    _make_v2_db(db)
+
+    real_connect = sqlite3.connect
+
+    class NoBackup(sqlite3.Connection):
+        def backup(self, *a, **kw):
+            raise sqlite3.OperationalError("disk full")
+
+    monkeypatch.setattr(
+        "shuto.store.db.sqlite3.connect",
+        lambda *a, **kw: real_connect(*a, factory=NoBackup, **kw),
+    )
+    with pytest.raises(RuntimeError, match="backup of your database.*Nothing was changed"):
+        Store(db)
+    assert _version(db) == 2 and "draft_json" not in _columns(db)
+    assert list(db.parent.glob("*.bak*")) == []
+
+
 def test_filters_roundtrip_and_none_default(store):
     pid = _photo(store)
     assert store.get_photo(pid).filters is None

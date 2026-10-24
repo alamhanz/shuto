@@ -1,6 +1,6 @@
 # shuto web guide
 
-This guide matches shuto version 0.6.3. Screens may differ slightly in other versions.
+This guide matches shuto version 0.6.4. Screens may differ slightly in other versions.
 
 shuto is a web page that runs on your own computer. Open it by double-clicking the **shuto**
 icon (or go to <http://127.0.0.1:8765>). The menu at the top has **Home**, **Add photos**,
@@ -51,6 +51,12 @@ Shutterstock rules. A progress bar shows how long it will take, and you can canc
 
 If the AI helper is not running, a box explains how to fix it in **Settings**.
 
+While the AI is working, the **Check all photos** button is greyed out and shows how many photos
+are still with the AI. It works again when the AI is done.
+
+If you use a thinking model (for example qwen3-vl:8b), Settings notes that it thinks before it
+answers, so it is slower (about a minute per photo).
+
 ### Your photo rules
 
 In the same step the AI also answers three kinds of questions about each photo, with the same
@@ -91,6 +97,13 @@ Here you decide what goes to Shutterstock. Each photo has a label:
   separately. You can also use **Ask AI again** for a new text. **Send back to AI** starts the AI
   in the background. The photos leave the lists and come back one by one in their new group.
   You can keep reviewing the other photos while you wait; a note shows how many are still with the AI.
+  The box **Run the AI right away** (shuto remembers your choice) decides whether the AI starts
+  at once or only when you press **Check all photos**; until then the photos wait in the list.
+- **Check again with AI** (photo page, for photos already sent to Shutterstock): the AI writes
+  a new text as a draft and the photo keeps its place. Review marks it **New text to check**.
+  Compare the two texts, then **Use the new text** or **Keep the old text**. If you use the new text,
+  shuto rewrites the Shutterstock info file, and you upload that file again by hand on
+  Shutterstock. shuto never submits for you; Submit stays manual.
   <!-- screenshot: editing one photo (images/web-photo.png) -->
 - Photos with visible logos or recognizable people can usually only be sold as **Editorial**.
   shuto suggests this and writes the caption in the editorial style.

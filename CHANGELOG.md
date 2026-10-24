@@ -2,6 +2,28 @@
 
 Release notes are also published on the GitHub Releases page. Newest first.
 
+## 0.6.4
+
+### Added
+- **Check again with AI** on the photo page for photos already sent to Shutterstock. The AI
+  writes new text as a draft; you compare it, then use it (the Shutterstock info file is
+  rewritten, and you upload it again by hand) or keep the old text. Review marks these photos
+  with "New text to check".
+- **Send back to AI** has a "Run the AI right away" box. shuto remembers your choice.
+- Before shuto upgrades your database to a newer layout, it saves a copy next to it
+  (for example `shuto.db.v2.bak`). To go back to an older version, restore that copy.
+
+### Changed
+- The Check and Review AI buttons are greyed out while the AI is running and work again when
+  it ends.
+- shuto now looks for a new version when it opens and every 3 hours (it was once a day), so a
+  new release shows up the same day.
+
+### Fixed
+- Thinking models such as qwen3-vl:8b no longer fail every photo. They get more room to think,
+  one bigger retry, and a plain hint. Settings notes which downloaded models think and are
+  slower.
+
 ## 0.6.3
 
 ### Changed

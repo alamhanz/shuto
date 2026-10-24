@@ -5,6 +5,7 @@
   {% if c.sent %}<span class="ribbon" aria-hidden="true">{{ icon('upload') }}Sent</span>{% endif %}
   <div class="meta">
     {% if c.sent %}{{ chip('sent', label(c.status)) }}{% else %}{{ chip(c.bucket if c.bucket in ('good', 'attention', 'aside') else 'neutral', label(c.status)) }}{% endif %}
+    {% if c.new_text %}<span class="chip review" title="The AI wrote new text for this photo. Open it to compare and choose.">New text to check</span>{% endif %}
     {% if c.group is not none %}<span class="chip neutral">Similar photos</span>{% endif %}
     {% if c.editorial %}<span class="chip neutral">Editorial</span>{% endif %}
     {% if c.default_place %}<span class="chip review" title="The place in the caption is your default place. Check that it is right for this photo.">Default place</span>{% endif %}

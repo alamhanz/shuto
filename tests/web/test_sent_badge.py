@@ -27,3 +27,22 @@ def test_ordinary_photo_has_no_sent_mark(web, described):  # noqa: F811
     assert "chip sent" not in page and "ribbon" not in page
     photo = _photos(web, described, Status.DESCRIBED)[0]
     assert "chip sent" not in web.get(f"/photo/{photo.id}").text
+
+
+def test_sent_photo_with_a_ready_draft_shows_new_text_chip(web, described):  # noqa: F811
+    photo = _photos(web, described, Status.DESCRIBED)[0]
+    web.state.store.set_status(photo.id, Status.UPLOADED, force=True)
+    page = web.get(f"/batch/{described}/review?show=all").text
+    assert "New text to check" not in page
+    web.state.store.update_photo(photo.id, draft={"state": "waiting"})
+    assert "New text to check" not in web.get(f"/batch/{described}/review?show=all").text
+    web.state.store.update_photo(photo.id, draft={"state": "ready"})
+    assert "New text to check" in web.get(f"/batch/{described}/review?show=all").text
+    web.state.store.update_photo(photo.id, draft=None)
+    assert "New text to check" not in web.get(f"/batch/{described}/review?show=all").text
+
+
+def test_unsent_photo_never_shows_new_text_chip(web, described):  # noqa: F811
+    photo = _photos(web, described, Status.DESCRIBED)[0]
+    web.state.store.update_photo(photo.id, draft={"state": "ready"})
+    assert "New text to check" not in web.get(f"/batch/{described}/review?show=all").text

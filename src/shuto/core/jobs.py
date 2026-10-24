@@ -197,11 +197,13 @@ class JobRunner:
                     state = "cancelled"
                 except Exception as exc:
                     state, error = "failed", f"{type(exc).__name__}: {exc}"
-            self.store.update_job(
-                job_id, state=state, error=error, finished_at=datetime.now().isoformat()
-            )
             self._texts.pop(job_id, None)
+            # Free the batch in the same step the job is marked finished, so whoever sees
+            # "done" can start the next job without hitting JobBusy.
             with self._lock:
+                self.store.update_job(
+                    job_id, state=state, error=error, finished_at=datetime.now().isoformat()
+                )
                 if batch_id is not None:
                     self._active.pop(batch_id, None)
                 self._cancel.pop(job_id, None)

@@ -236,6 +236,12 @@ class _Client:
     def __init__(self):
         self.options = None
 
+    def supports_thinking(self, model):
+        return False
+
+    def always_thinks(self, model):
+        return False
+
     def chat(self, model, messages, format=None, options=None, keep_alive=None, timeout=None):
         self.options = options
         return {"message": {"content": "{}"}}

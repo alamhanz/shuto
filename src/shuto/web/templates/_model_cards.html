@@ -24,6 +24,7 @@
       <p>{{ r.time_text }} &middot; {{ "%.1f"|format(r.size_gb) }} GB download</p>
       <p>Works on this computer: <strong>{{ "yes" if r.fits_hardware else "no" }}</strong>
         {% if not r.pulled %}&middot; Enough free space: <strong>{{ "yes" if r.fits_disk else "no" }}</strong>{% endif %}</p>
+      {% if r.thinks %}<p class="snip">This model thinks before it answers, so it is slower (about a minute per photo).</p>{% endif %}
       {% if r.notes %}<p class="snip">{{ r.notes }}</p>{% endif %}
       <div class="row">
         {% if r.pulled %}

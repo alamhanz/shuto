@@ -193,6 +193,11 @@ _AI_ERRORS: tuple[tuple[tuple[str, ...], str, str], ...] = (
         "Try again. What was already downloaded is kept, so it continues where it stopped.",
     ),
     (
+        ("thinks before it answers",),
+        "This AI model spends its time thinking and ran out of room.",
+        "Choose another model in Settings.",
+    ),
+    (
         ("timed out", "timeout"),
         "The AI took too long to answer.",
         "Wait a minute, then press Try again. A smaller model may be faster.",

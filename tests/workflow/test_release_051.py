@@ -83,11 +83,22 @@ def test_empty_answer_with_thinking_is_a_clear_retryable_error(monkeypatch):
     _server(
         monkeypatch,
         ["thinking"],
-        {"message": {"content": "", "thinking": "hmm"}, "done_reason": "length"},
+        {"message": {"content": "", "thinking": "hmm"}, "done_reason": "stop"},
     )
     with pytest.raises(LLMError, match="thinking") as ei:
         OllamaProvider("qwen3.5:4b", url="http://x:1").complete(_req(), {})
     assert ei.value.retryable is True
+
+
+def test_thinking_that_runs_out_twice_is_not_retryable(monkeypatch):
+    _server(
+        monkeypatch,
+        ["thinking"],
+        {"message": {"content": "", "thinking": "hmm"}, "done_reason": "length"},
+    )
+    with pytest.raises(LLMError, match="thinks before it answers") as ei:
+        OllamaProvider("qwen3.5:4b", url="http://x:1").complete(_req(), {})
+    assert ei.value.retryable is False
 
 
 def test_empty_answer_without_thinking_stays_empty_text(monkeypatch):

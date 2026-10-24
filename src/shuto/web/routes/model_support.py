@@ -49,6 +49,16 @@ def _tags(rows: list[dict]) -> None:
         r["time_text"] = f"about {_plain_seconds(r['est_seconds_per_image'])} per photo"
 
 
+def _mark_thinkers(ctx: WebCtx, rows: list[dict]) -> None:
+    """Set `thinks` on the downloaded models Ollama says think before they answer (slower)."""
+    client = selection.ollama_client(ctx.cfg)
+    for r in rows:
+        try:
+            r["thinks"] = bool(r.get("pulled") and client.supports_thinking(r["tag"]))
+        except Exception:
+            r["thinks"] = False  # a hint is never worth breaking the page for
+
+
 def helper_steps(os_name: str) -> list[str]:
     if os_name == "windows":
         return [
@@ -151,6 +161,7 @@ def model_is_downloaded(ctx: WebCtx, tag: str) -> bool:
 def model_context(ctx: WebCtx, report) -> dict:
     rows = [r.to_dict() for r in report.rows]
     _tags(rows)
+    _mark_thinkers(ctx, rows)
     providers = []
     for prov in API_PROVIDERS:
         entry = selection.api_model(prov)

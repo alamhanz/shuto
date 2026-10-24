@@ -139,7 +139,7 @@ on Shutterstock" in the details guide.
   go in the **Access key** field; they are saved securely, and **Forget** removes them. **Run setup again** repeats the first-time setup.
 - **Updates (in Settings):** shows your version and the newest one. When a newer version is
   ready, press **Update now**; shuto closes, updates and opens again by itself, and this page
-  reloads. **Check now** looks right away; the tick box turns the daily check off. It cannot
+  reloads. **Check now** looks right away; shuto also looks by itself when it opens and every few hours; the tick box turns that off. It cannot
   start while a task is running.
 - **Help:** plain explanations of the words used, what happens to your photos, and fixes for
   common problems. If shuto says another Ollama is answering (for example one in WSL or

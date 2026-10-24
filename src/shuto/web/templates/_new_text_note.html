@@ -1,0 +1,6 @@
+{% from "_ui.html" import icon with context %}
+{%- if new_text -%}
+<p class="flash warn" role="status">{{ icon('alert') }}<span>{{ new_text|length }} sent photo{{ ' has' if new_text|length == 1 else 's have' }} new text waiting for you:
+{% for p in new_text %}<a href="/photo/{{ p.id }}">{{ p.orig_name }}</a>{{ ', ' if not loop.last }}{% endfor %}.
+Open {{ 'it' if new_text|length == 1 else 'each one' }} to use the new text or keep the old text.</span></p>
+{%- endif -%}

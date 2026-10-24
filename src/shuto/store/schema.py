@@ -5,7 +5,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 SCHEMA_V1 = """
 CREATE TABLE batches(
@@ -62,6 +62,11 @@ def migrate(conn: sqlite3.Connection, path: Path) -> None:
             if "filters_json" not in cols:
                 conn.execute("ALTER TABLE photos ADD COLUMN filters_json TEXT")
             conn.execute("PRAGMA user_version=2")
+        if version < 3:
+            cols = {r["name"] for r in conn.execute("PRAGMA table_info(photos)")}
+            if "draft_json" not in cols:
+                conn.execute("ALTER TABLE photos ADD COLUMN draft_json TEXT")
+            conn.execute("PRAGMA user_version=3")
     except BaseException:
         conn.execute("ROLLBACK")
         raise

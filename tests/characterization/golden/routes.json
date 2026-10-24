@@ -386,5 +386,23 @@
       "POST"
     ],
     "path": "/photo/{photo_id}/result"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/photo/{photo_id}/recheck"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/photo/{photo_id}/draft/use"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/photo/{photo_id}/draft/drop"
   }
 ]

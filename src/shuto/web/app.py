@@ -32,6 +32,7 @@ from shuto.web.routes import (
     models,
     photo,
     preferences,
+    recheck,
     review,
     settings,
     updates,
@@ -61,6 +62,7 @@ ROUTERS = (
     legacy,
     files,
     photo,
+    recheck,
 )
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 CSP = (

@@ -4,6 +4,7 @@ import json
 import os
 import re
 from pathlib import Path
+from urllib.parse import unquote
 
 import pytest
 from fastapi.testclient import TestClient
@@ -266,11 +267,21 @@ def test_approve_and_ready_actions(web, described):
     photo = store.list_photos(described, [Status.DESCRIBED])[0]
     assert web.post(f"/photo/{photo.id}/approve").status_code == 303
     assert store.get_photo(photo.id).status == Status.APPROVED
-    web.post(f"/photo/{photo.id}/ready")
-    assert store.get_photo(photo.id).status == Status.READY
+    # Send back starts the AI in the background, so wait for it before checking the result.
+    assert "sent back" in unquote(web.post(f"/photo/{photo.id}/ready").headers["location"])
+    _settle(web, described)
+    assert store.get_photo(photo.id).status == Status.DESCRIBED
     culled = store.list_photos(described, [Status.CULLED])[0]
-    web.post(f"/batch/{described}/bulk", {"action": "ready", "ids": [str(culled.id)]})
-    assert store.get_photo(culled.id).status == Status.READY
+    r = web.post(f"/batch/{described}/bulk", {"action": "ready", "ids": [str(culled.id)]})
+    assert "sent back" in unquote(r.headers["location"])
+    _settle(web, described)
+    assert store.get_photo(culled.id).status == Status.DESCRIBED
+
+
+def _settle(w, batch_id):
+    job_id = w.state.runner.active_job(batch_id)
+    if job_id is not None:
+        assert w.state.runner.wait(job_id, timeout=60).state == "done"
 
 
 def test_regenerate_runs_as_job(web, described):

@@ -17,7 +17,7 @@ from shuto.ai import recommend as ai_recommend
 from shuto.ai import selection as ai_selection
 from shuto.ai.providers import API_PROVIDERS
 from shuto.ai.providers.base import LLMError
-from shuto.ai.providers.ollama import OllamaProvider
+from shuto.ai.providers.ollama import OllamaProvider, forget_always_thinking
 from shuto.ai.selection import Selection
 from shuto.core import paths
 from shuto.core.config import Config
@@ -30,12 +30,15 @@ from shuto.workflow import checks as workflow_checks
 LOOKUP_TIMEOUT_S = 2  # Ollama questions asked while a page is built: short, never worth a hang
 _CAPS: dict[tuple[str, str], list[str]] = {}  # (Ollama address, tag) -> capabilities; per run
 _SEEN: dict[tuple[str, str], ai_rating.Observed] = {}  # (address, tag) -> last seen in memory
+_BANDS: dict[str, dict[str, int]] = {}  # address -> tag -> speed band last shown
 
 
 def clear_caches() -> None:
     """Forget what was learned from Ollama (tests, and a changed Ollama address)."""
     _CAPS.clear()
     _SEEN.clear()
+    _BANDS.clear()
+    forget_always_thinking()
 
 
 def _param_billions(details: dict) -> float:
@@ -100,7 +103,7 @@ def model_facts(
         listed = {hardware.normalize_tag(m.tag) for m in local_models.load_catalog()[0]}
         if any(hardware.normalize_tag(p) not in listed for p in status.pulled):
             try:
-                for entry in client.tags():
+                for entry in status.entries:
                     name = str(entry.get("name") or entry.get("model") or "")
                     if not name or hardware.normalize_tag(name) in listed:
                         continue
@@ -123,6 +126,7 @@ def model_facts(
             always_thinks=always,
             measured=measured.get(tag),
             observed=_SEEN.get((url, tag)),
+            band_memory=_BANDS.setdefault(url, {}),
         )
     return facts, extras
 
@@ -256,6 +260,12 @@ def model_disk_advice(
         for p in hardware.ollama_status(ai_selection._client_or_default(cfg, client)).pulled
     }
     return ai_recommend.disk_advice(model, hardware.ollama_models_dir(), api, pulled=pulled)
+
+
+def is_installed(cfg: Config, tag: str, *, client: Any = None) -> bool:
+    """Whether Ollama lists this model as downloaded (any model, listed by shuto or not)."""
+    pulled = hardware.ollama_status(ai_selection._client_or_default(cfg, client)).pulled
+    return hardware.normalize_tag(tag) in {hardware.normalize_tag(p) for p in pulled}
 
 
 def pull_model(

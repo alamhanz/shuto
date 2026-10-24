@@ -328,7 +328,8 @@ class DescribeRun:
         except LLMCancelled:
             return photo, None, None  # stopped mid-answer: nothing was written, old text stays
         except LLMError as exc:
-            self._log_call(use, pid, ok=False, error=str(exc)[:500])
+            kind = f"[{exc.kind}] " if exc.kind else ""  # the rating counts only kind "model"
+            self._log_call(use, pid, ok=False, error=f"{kind}{exc}"[:500])
             if self.as_draft:
                 self._fail_draft(pid, str(exc))
             if self.abort.failed(exc):

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import re
+import traceback
 
 import pytest
 
@@ -210,7 +211,7 @@ def test_failed_lookups_never_break_a_page_and_stop_early(web, ollama, owner):
     ollama.show = boom
     r = web.get("/settings")
     assert r.status_code == 200 and "a-vl:1b" not in r.text
-    assert len(asked) == 1  # not one call per model
+    assert len(asked) == 1, "".join(asked[-1][-6:])  # not one call per model
     web.get("/settings")
     assert len(asked) == 2  # failures are not kept
 
@@ -229,3 +230,44 @@ def test_lookup_answers_are_kept_between_page_loads(web, ollama, owner):
     web.get("/settings")
     web.get("/settings")
     assert asked == ["a-vl:1b"]
+
+
+def _installed_unlisted(ollama):
+    ollama.pulled = ["mine-vl:4b"]
+    ollama.capabilities = {"mine-vl:4b": ["completion", "vision"]}
+    ollama.sizes = {"mine-vl:4b": 3_300_000_000}
+    ollama.details = {"mine-vl:4b": {"parameter_size": "4.2B"}}
+
+
+def test_use_this_works_for_a_downloaded_model_that_is_not_on_the_list(web, ollama, owner):
+    _installed_unlisted(ollama)
+    r = web.post("/settings/use", {"spec": "mine-vl:4b"}, headers={"HX-Request": "true"})
+    assert r.status_code == 204
+    assert web.state.store.get_setting("llm.model") == "mine-vl:4b"
+    assert web.state.store.get_setting("llm.provider") == "ollama"
+
+
+def test_the_wizard_uses_a_downloaded_model_that_is_not_on_the_list(web, ollama, owner):
+    _installed_unlisted(ollama)
+    r = web.post("/welcome/3", {"spec": "mine-vl:4b"}, follow_redirects=False)
+    assert r.status_code in (303, 204)
+    assert web.state.store.get_setting("llm.model") == "mine-vl:4b"
+    assert "/welcome?step=4" in r.headers.get("location", r.headers.get("HX-Redirect", ""))
+
+
+def test_a_model_that_is_neither_listed_nor_downloaded_is_refused(web, ollama, owner):
+    _installed_unlisted(ollama)
+    for url in ("/settings/use", "/welcome/3"):
+        r = web.post(url, {"spec": "ghost-vl:9b"}, follow_redirects=True)
+        assert "is not on the model list and is not downloaded" in r.text
+    assert web.state.store.get_setting("llm.model") is None
+
+
+def test_building_the_model_list_reuses_the_status_answer_for_installed_models(web, ollama, owner):
+    _installed_unlisted(ollama)
+    asked = []
+    real = ollama.tags
+    ollama.tags = lambda: asked.append(traceback.format_stack()) or real()
+    assert "mine-vl:4b" in web.get("/settings").text
+    assert asked  # the status check asks once; the other-Ollama check is a separate question
+    assert not any("model_facts" in "".join(stack) for stack in asked)

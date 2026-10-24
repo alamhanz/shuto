@@ -440,11 +440,12 @@ class Store:
         self, provider: str, per_model: int = 10, since_days: int = 90
     ) -> list[dict[str, Any]]:
         """The latest `per_model` calls of each model of `provider` from the last `since_days`
-        days, newest first within a model: {model, ok, seconds, output_tokens, error, at}."""
+        days, newest first within a model:
+        {model, ok, seconds, output_tokens, retries, error, at}."""
         cutoff = (datetime.now(UTC) - timedelta(days=since_days)).isoformat(timespec="seconds")
         with self._read() as conn:
             rows = conn.execute(
-                "SELECT model, ok, seconds, output_tokens, error, at FROM ("
+                "SELECT model, ok, seconds, output_tokens, retries, error, at FROM ("
                 "SELECT *, ROW_NUMBER() OVER (PARTITION BY model ORDER BY id DESC) AS n "
                 "FROM llm_calls WHERE provider=? AND at >= ?) WHERE n <= ? ORDER BY model, n",
                 (provider, cutoff, per_model),

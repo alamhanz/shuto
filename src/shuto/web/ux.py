@@ -173,6 +173,8 @@ _BUSY_ERROR = (
     "Wait a moment, then try again. Make sure shuto is not open in two windows.",
 )
 
+_SPILL_NEEDLES = ("does not fit in your graphics card memory",)
+_PICK_RE = re.compile(r"Pick (\S+) in Settings")
 _AI_ERRORS: tuple[tuple[tuple[str, ...], str, str], ...] = (
     _BUSY_ERROR,
     (
@@ -198,10 +200,10 @@ _AI_ERRORS: tuple[tuple[tuple[str, ...], str, str], ...] = (
         "Choose another model in Settings.",
     ),
     (
-        ("does not fit in your graphics card memory",),
+        _SPILL_NEEDLES,
         "The AI took too long to answer.",
         "This model does not fit in your graphics card memory, so part of it runs on the "
-        "processor and is very slow. Choose a smaller model such as minicpm-v:8b in Settings.",
+        "processor and is very slow. Choose another model in Settings.",
     ),
     (
         ("timed out", "timeout"),
@@ -261,6 +263,11 @@ def friendly_error(exc: BaseException | str, context: str = "ai") -> dict[str, s
     tables = (_UPLOAD_ERRORS + _AI_ERRORS) if context == "upload" else _AI_ERRORS
     for needles, what, todo in tables:
         if any(n in low for n in needles):
+            if needles == _SPILL_NEEDLES:
+                # the message already names the best Good model for this computer (if any)
+                pick = _PICK_RE.search(raw)
+                if pick:
+                    todo = todo.replace("Choose another model", f"Choose {pick.group(1)}")
             return {"what": what, "todo": todo}
     if context != "upload":
         for needles, what, todo in _UPLOAD_ERRORS:

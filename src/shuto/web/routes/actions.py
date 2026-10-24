@@ -30,8 +30,10 @@ def apply_model(ctx: WebCtx, spec: str) -> tuple[str | None, str | None]:
     prov = spec.partition(":")[0]
     if ":" in spec and prov in API_PROVIDERS:
         pass  # provider choice, validated by workflow.models.use_model against the price table
-    elif workflow_models.model_disk_advice(cfg, spec) is None:
-        return None, f"{spec} is not in the model catalog."
+    elif workflow_models.model_disk_advice(cfg, spec) is None and not workflow_models.is_installed(
+        cfg, spec
+    ):
+        return None, f"{spec} is not on the model list and is not downloaded."
     try:
         sel = workflow_models.use_model(cfg, ctx.store, spec)
     except errors.PipelineError as exc:

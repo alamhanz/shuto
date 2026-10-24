@@ -23,12 +23,17 @@ The rules, strictest result wins:
 * Quality below 3 or a small context window: at most OK.
 * Numbers not confirmed (``verify`` in the model list) or unknown (a model not on the list):
   at most OK until shuto has measured it.
-* Three or more failed calls in the last ten: Not recommended. A model seen spilling out of
+* Three or more failed calls in the last ten: Not recommended. Only failures the model causes
+  count (it stalled, ran out of room, or gave an unusable answer). Ollama not running, a lost
+  connection, a model that is not downloaded and cancels do not. A model seen spilling out of
   graphics card memory right now: Not recommended.
+* Ratings do not flip back and forth: the speed band last shown for a model is remembered for the
+  session, and a new band needs the speed to be 20% past the limit.
 """
 
 from __future__ import annotations
 
+import re
 import statistics
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
@@ -95,6 +100,8 @@ class Facts:
     always_thinks: bool = False  # Ollama client saw it think although told not to
     measured: Measured | None = None
     observed: Observed | None = None
+    # speed band last shown per normalized tag; `rate` reads and updates it (None = no memory)
+    band_memory: dict[str, int] | None = None
 
 
 @dataclass(frozen=True)
@@ -172,8 +179,12 @@ def _band_with_hysteresis(measured: float, est: float | None, good_s: float, ok_
     limit. Without an estimate the plain band is used."""
     if est is None:
         return _band(measured, good_s, ok_s)
+    return _band_around(_band(est, good_s, ok_s), measured, good_s, ok_s)
+
+
+def _band_around(cur: int, measured: float, good_s: float, ok_s: float) -> int:
+    """Stay in band `cur` unless `measured` is 20% past a limit (a dead-band both ways)."""
     limits = (good_s, ok_s)
-    cur = _band(est, good_s, ok_s)
     while cur < 2 and measured > limits[cur] * (1 + HYSTERESIS):
         cur += 1
     while cur > 0 and measured < limits[cur - 1] * (1 - HYSTERESIS):
@@ -204,6 +215,8 @@ def rate(
     kind, usable, _unknown = budget(profile)
     thinks = _thinks_anyway(m, facts)
     cpu_usable = max(profile.ram_gb - OS_RESERVED_RAM_GB, 0.0)
+    memory_key = normalize_tag(m.tag)
+    shown = facts.band_memory.get(memory_key) if facts.band_memory is not None else None
 
     num_ctx = catalog.effective_num_ctx(m.tag, profile, [m])
     if thinks and num_ctx > catalog.SMALL_CONTEXT_TOKENS:
@@ -249,6 +262,10 @@ def rate(
     if me is not None and me.ok_calls >= MIN_OK_CALLS and me.median_s is not None:
         seconds, basis = me.median_s, "measured"
         band = _band_with_hysteresis(me.median_s, est, good_s, ok_s)
+    if shown is not None and seconds is not None:
+        band = _band_around(shown, seconds, good_s, ok_s)
+    if facts.band_memory is not None and band is not None:
+        facts.band_memory[memory_key] = band
 
     # candidates: (level, priority, reason); the worst level wins, the lowest priority breaks ties
     level_of = {name: i for i, name in enumerate(_BAND_NAMES)}
@@ -358,16 +375,32 @@ def rate(
 # ---------------------------------------------------------------- what shuto has seen
 
 
-def _is_cancel(error: object) -> bool:
-    return isinstance(error, str) and "cancel" in error.lower()
+_KIND_RE = re.compile(r"^\[([a-z]+)\] ")
+# Failures logged before the error kind existed: text that shows it was not the model's doing
+_LEGACY_NOT_MODEL = ("is not running", "http 404", "connection was lost", "model not pulled")
+
+
+def caused_by_model(error: object) -> bool:
+    """Whether a failed call is the model's own doing. The call log starts an error with its
+    kind in brackets (``[model] ...``). Only ``model`` counts: the model stalled, ran out of room
+    or wrote an unusable answer. Not running, a lost connection, a missing download and
+    cancels are not the model's fault."""
+    text = error if isinstance(error, str) else ""
+    found = _KIND_RE.match(text)
+    if found:
+        return found.group(1) == "model"
+    low = text.lower()
+    return not any(n in low for n in _LEGACY_NOT_MODEL)
 
 
 def measured_from_calls(rows: Iterable[Mapping]) -> dict[str, Measured]:
     """Per model (normalized tag) from call rows `{model, ok, seconds, output_tokens, error}`,
-    newest first. Only the last WINDOW calls per model count; cancelled calls are skipped."""
+    newest first. Only the last WINDOW calls per model count. Failures the model did not cause
+    (see `caused_by_model`) are skipped. Output tokens are per try (a photo's row adds up its
+    retries), so a model that needs repairs is not mistaken for one that thinks."""
     grouped: dict[str, list[Mapping]] = {}
     for r in rows:
-        if _is_cancel(r.get("error")):
+        if not r.get("ok") and not caused_by_model(r.get("error")):
             continue
         calls = grouped.setdefault(normalize_tag(str(r.get("model") or "")), [])
         if len(calls) < WINDOW:
@@ -375,7 +408,11 @@ def measured_from_calls(rows: Iterable[Mapping]) -> dict[str, Measured]:
     out: dict[str, Measured] = {}
     for tag, calls in grouped.items():
         good = [c for c in calls if c.get("ok") and c.get("seconds") is not None]
-        outs = [int(c["output_tokens"]) for c in good if c.get("output_tokens") is not None]
+        outs = [
+            int(c["output_tokens"]) // (1 + int(c.get("retries") or 0))
+            for c in good
+            if c.get("output_tokens") is not None
+        ]
         out[tag] = Measured(
             ok_calls=len(good),
             failures=sum(1 for c in calls if not c.get("ok")),

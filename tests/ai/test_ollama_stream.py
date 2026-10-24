@@ -5,9 +5,11 @@ from __future__ import annotations
 import json
 import threading
 from datetime import datetime, timedelta
+from types import SimpleNamespace
 
 import pytest
 
+from shuto.ai import machine
 from shuto.ai.providers import ollama as ollama_mod
 from shuto.ai.providers.base import LLMCancelled, LLMError, LLMRequest
 from shuto.ai.providers.fake import DEFAULT_RESPONSE, FakeProvider
@@ -18,6 +20,7 @@ from shuto.web.ux import friendly_error
 from shuto.workflow import check_batch, importing, redo
 
 from .test_llm_core import patch_urlopen
+from .test_rating import GPU_4, OWNER
 
 GOOD = json.dumps(DEFAULT_RESPONSE)
 WAIT = 10  # seconds a test may wait on an Event before it gives up (never a sleep)
@@ -27,6 +30,25 @@ def _line(**chunk) -> bytes:
     return json.dumps(chunk).encode() + b"\n"
 
 
+class FakeSocket:
+    """The socket under a streamed reply: shutting it down wakes a read that waits on a gate,
+    like a real socket does."""
+
+    def __init__(self, resp):
+        self.resp = resp
+        self.shut = threading.Event()
+        self.timeouts: list[float] = []
+
+    def shutdown(self, how):
+        self.shut.set()
+        for step in self.resp.steps:
+            if isinstance(step, threading.Event):
+                step.set()
+
+    def settimeout(self, value):
+        self.timeouts.append(value)
+
+
 class StreamResp:
     """A streamed /api/chat reply. `steps` are bytes lines, Events to wait for (a gate) or
     callables to run."""
@@ -34,6 +56,8 @@ class StreamResp:
     def __init__(self, steps):
         self.steps = steps
         self.closed = threading.Event()
+        self.sock = FakeSocket(self)
+        self.fp = SimpleNamespace(raw=SimpleNamespace(_sock=self.sock))
 
     def __iter__(self):
         for step in self.steps:
@@ -134,15 +158,65 @@ def test_idle_timeout_is_a_friendly_timeout(monkeypatch):
 
 
 def test_first_chunk_gets_the_longer_wait(monkeypatch):
-    monkeypatch.setattr(ollama_mod, "FIRST_CHUNK_WAIT_S", 0.3)
+    monkeypatch.setattr(ollama_mod, "FIRST_CHUNK_WAIT_S", 7)
     gate = threading.Event()
+    seen_wait = threading.Event()
     stuck = StreamResp([gate])
     _server(monkeypatch, stuck)
+    clock = {"now": 0.0}
+    monkeypatch.setattr(ollama_mod.time, "monotonic", lambda: clock["now"])
+    real_get = ollama_mod.queue.Queue.get
+
+    def jump(self, *a, **k):  # time passes only when the waiting thread asks for the next chunk
+        try:
+            return real_get(self, timeout=0.01)
+        except ollama_mod.queue.Empty:
+            clock["now"] += 3
+            seen_wait.set()
+            raise
+
+    monkeypatch.setattr(ollama_mod.queue.Queue, "get", jump)
     try:
-        with pytest.raises(OllamaTimeout, match="no data for 0 s|no data for 1 s"):
-            OllamaClient("http://x:1", timeout=0.1).chat("m", [], timeout=0.1)
+        with pytest.raises(OllamaTimeout, match="no data for 7 s"):
+            OllamaClient("http://x:1", timeout=2).chat("m", [], timeout=2)
     finally:
         gate.set()
+    assert seen_wait.is_set()
+
+
+def test_after_the_first_chunk_the_socket_gets_the_idle_limit(monkeypatch):
+    resp = _answer("a", "b")
+    _server(monkeypatch, resp)
+    OllamaClient("http://x:1").chat("m", [], timeout=42)
+    assert resp.closed.wait(WAIT)
+    assert resp.sock.timeouts == [42]
+
+
+def test_a_quiet_cancel_cuts_the_connection_at_once(monkeypatch):
+    gate = threading.Event()  # never released by the test: only the socket shutdown does it
+    resp = StreamResp([gate])
+    _server(monkeypatch, resp)
+    with pytest.raises(LLMCancelled):
+        OllamaClient("http://x:1").chat("m", [], cancel=lambda: True)
+    assert resp.sock.shut.is_set()  # cut before the cancel was raised, not at the next chunk
+    assert resp.closed.wait(WAIT)  # and the reader let go of the response once
+
+
+def test_an_idle_timeout_cuts_the_connection_too(monkeypatch):
+    gate = threading.Event()
+    resp = StreamResp([_line(message={"content": "{"}, done=False), gate])
+    _server(monkeypatch, resp)
+    with pytest.raises(OllamaTimeout):
+        OllamaClient("http://x:1", timeout=0.2).chat("m", [], timeout=0.2)
+    assert resp.sock.shut.is_set()
+    assert resp.closed.wait(WAIT)
+
+
+def test_a_finished_answer_leaves_nothing_open(monkeypatch):
+    resp = _answer("x")
+    _server(monkeypatch, resp)
+    OllamaClient("http://x:1").chat("m", [])
+    assert resp.closed.wait(WAIT)
 
 
 def test_cancel_closes_the_stream_and_raises(monkeypatch):
@@ -226,7 +300,8 @@ def test_cancelled_redo_job_ends_cancelled_and_keeps_old_text(cfg, store, photos
 SPILL = {"name": "qwen3-vl:8b", "model": "qwen3-vl:8b", "size": 6_500, "size_vram": 5_000}
 
 
-def _stalled_chat(monkeypatch, model, ps):
+def _stalled_chat(monkeypatch, model, ps, profile=OWNER):
+    monkeypatch.setattr(machine, "hardware_profile", lambda refresh=False: profile)
     gate = threading.Event()
     seen = _server(monkeypatch, StreamResp([gate]), ps=ps)
     monkeypatch.setattr(ollama_mod, "FIRST_CHUNK_WAIT_S", 0.2)
@@ -247,6 +322,24 @@ def test_hint_appears_when_the_model_spills_to_the_processor(monkeypatch):
     assert [r.full_url for r in seen if r.full_url.endswith("/api/ps")]
     fe = friendly_error(err)
     assert fe["what"] == "The AI took too long to answer." and "minicpm-v:8b" in fe["todo"]
+
+
+def test_hint_suggests_the_best_good_model_for_this_computer_not_the_failing_one(monkeypatch):
+    spill = {**SPILL, "name": "minicpm-v:8b", "model": "minicpm-v:8b"}
+    err, _ = _stalled_chat(monkeypatch, "minicpm-v:8b", [spill])
+    msg = str(err)
+    assert "Pick minicpm-v:8b" not in msg and "Pick " in msg
+    pick = msg.split("Pick ")[1].split(" in Settings")[0]
+    assert pick != "minicpm-v:8b"
+    assert friendly_error(err)["todo"].endswith(f"Choose {pick} in Settings.")
+
+
+def test_hint_stays_plain_when_no_model_is_good_here(monkeypatch):
+    err, _ = _stalled_chat(monkeypatch, "qwen3-vl:8b", [SPILL], profile=GPU_4)
+    msg = str(err)
+    assert "does not fit in your graphics card memory" in msg and "Pick " not in msg
+    todo = friendly_error(err)["todo"]
+    assert "minicpm" not in todo and todo.endswith("Choose another model in Settings.")
 
 
 def test_no_hint_when_the_model_fits_or_is_not_listed(monkeypatch):

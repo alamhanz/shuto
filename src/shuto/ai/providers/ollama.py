@@ -6,6 +6,7 @@ import base64
 import http.client
 import json
 import queue
+import socket
 import threading
 import time
 import urllib.error
@@ -15,6 +16,7 @@ from typing import Any
 
 from shuto.ai.catalog import NUM_CTX_TARGET, SMALL_CONTEXT_TOKENS, context_tokens, load_catalog
 from shuto.ai.providers.base import LLMCancelled, LLMError, LLMRequest
+from shuto.ai.recommend import suggest_model
 
 DEFAULT_URL = "http://127.0.0.1:11434"
 DEFAULT_NUM_CTX = NUM_CTX_TARGET  # Ollama's own default (2048/4096) cuts the start of a long prompt
@@ -22,14 +24,22 @@ THINKING_HEADROOM = 4096  # extra num_predict for models that may think (num_pre
 FIRST_CHUNK_WAIT_S = 600  # Ollama may spend minutes loading the model before the first chunk
 MAX_ANSWER_S = 1800  # one answer may never take longer than this, however steadily it streams
 CANCEL_POLL_S = 0.25  # how often a quiet stream looks at the cancel check
-HINT_MODEL = "minicpm-v:8b"
+
+# (address, tag) of models seen thinking although `think: false` was asked. Kept for the whole run
+# (not per client) because every page and job makes its own client.
+_ALWAYS: set[tuple[str, str]] = set()
+
+
+def forget_always_thinking() -> None:
+    """Forget which models were seen thinking anyway (tests)."""
+    _ALWAYS.clear()
 
 
 class OllamaTimeout(LLMError):
     """Ollama stopped sending data (or the whole answer took too long)."""
 
     def __init__(self, message: str):
-        super().__init__(message, retryable=True)
+        super().__init__(message, retryable=True, kind="model")
 
 
 def _close(resp: Any) -> None:
@@ -38,17 +48,35 @@ def _close(resp: Any) -> None:
         close()
 
 
+def _socket_of(resp: Any) -> Any:
+    """The socket under a urllib response (None for anything else or once it is closed)."""
+    return getattr(getattr(getattr(resp, "fp", None), "raw", None), "_sock", None)
+
+
+def _shutdown(resp: Any) -> None:
+    """Cut the connection under `resp` from another thread. A read blocked on it wakes at once,
+    and Ollama sees the client leave, so it stops working on the request. The thread that owns
+    `resp` still closes it."""
+    sock = _socket_of(resp)
+    if sock is None:
+        return
+    try:
+        sock.shutdown(socket.SHUT_RDWR)
+    except OSError:
+        pass  # already closed or reset: nothing left to cut
+
+
 class OllamaClient:
     def __init__(self, url: str = DEFAULT_URL, timeout: float = 300):
         self.url = url.rstrip("/")
         self.timeout = timeout
         self._thinking: dict[str, bool] = {}
-        self._always: dict[str, bool] = {}
 
     def _not_running(self) -> LLMError:
         return LLMError(
             f"Ollama is not running at {self.url}; start it or run `shuto doctor`",
             retryable=False,
+            kind="connection",
         )
 
     def _timeout(self) -> LLMError:
@@ -78,7 +106,8 @@ class OllamaClient:
             msg = f"Ollama HTTP {e.code}: {detail or e.reason}"
             if e.code == 404 and body and body.get("model"):
                 msg += f" (model not pulled? run `shuto models pull {body['model']}`)"
-            raise LLMError(msg, retryable=e.code >= 500) from e
+            kind = "missing" if e.code == 404 else "model" if e.code >= 500 else "other"
+            raise LLMError(msg, retryable=e.code >= 500, kind=kind) from e
         except urllib.error.URLError as e:
             if isinstance(e.reason, TimeoutError):
                 raise self._timeout() from e
@@ -100,7 +129,9 @@ class OllamaClient:
         try:
             return json.loads(raw.decode("utf-8"))
         except ValueError as e:
-            raise LLMError("Ollama returned a non-JSON response", retryable=True) from e
+            raise LLMError(
+                "Ollama returned a non-JSON response", retryable=True, kind="other"
+            ) from e
 
     def version(self) -> str:
         return str(self._json("/api/version", timeout=min(5, self.timeout)).get("version", ""))
@@ -134,14 +165,14 @@ class OllamaClient:
                 break
         else:
             return ""
-        tags = {lm.tag for lm in load_catalog()[0]}
-        who = model if model in tags else "This model"
+        who = model if model in {lm.tag for lm in load_catalog()[0]} else "This model"
         hint = (
             f"{who} does not fit in your graphics card memory, so part of it runs on the "
             "processor and is very slow."
         )
-        if HINT_MODEL in tags and model != HINT_MODEL:
-            hint += f" Pick a smaller model such as {HINT_MODEL} in Settings."
+        better = suggest_model(model)
+        if better:
+            hint += f" Pick {better} in Settings, which suits this computer better."
         return hint
 
     def pull(self, tag: str, on_progress: Callable[[dict], None] | None = None) -> None:
@@ -197,7 +228,10 @@ class OllamaClient:
     def always_thinks(self, model: str) -> bool:
         """True once this model sent thinking although `think: false` was asked (some builds
         only think and ignore the switch)."""
-        return self._always.get(model, False)
+        return self._always_key(model) in _ALWAYS
+
+    def _always_key(self, model: str) -> tuple[str, str]:
+        return (self.url, model.removesuffix(":latest"))
 
     def chat(
         self,
@@ -231,7 +265,7 @@ class OllamaClient:
                 raise OllamaTimeout(f"{e}. {hint}") from e
             raise
         if think_off and (resp.get("message") or {}).get("thinking"):
-            self._always[model] = True
+            _ALWAYS.add(self._always_key(model))
         return resp
 
     def _stream_chat(
@@ -240,20 +274,33 @@ class OllamaClient:
         """Read the NDJSON stream into one reply shaped like the old non-streamed one.
 
         A helper thread owns the connection and does the blocking reads; this thread waits for
-        its chunks, so a cancel or a stall is noticed even while a read is blocked. The helper
-        closes the connection as soon as it sees `stop` (at its next chunk or when its own
-        socket timeout ends), which is what makes Ollama stop generating."""
+        its chunks, so a cancel or a stall is noticed even while a read is blocked. When this
+        thread stops waiting (cancel, stall, done) it cuts the connection at once, which wakes
+        the blocked read and makes Ollama stop generating. Only the helper closes the response,
+        so nothing is closed twice."""
         inbox: queue.Queue[tuple[str, Any]] = queue.Queue()
         stop = threading.Event()
         first_wait = max(idle, FIRST_CHUNK_WAIT_S)
+        lock = threading.Lock()
+        opened: list[Any] = []  # the response, once the helper has it
 
         def reader() -> None:
             resp = None
             try:
                 resp = self._open("/api/chat", body, timeout=first_wait)
+                with lock:
+                    opened.append(resp)
+                    if stop.is_set():
+                        return
+                first = True
                 for line in resp:
                     if stop.is_set():
                         return
+                    if first:
+                        first = False
+                        sock = _socket_of(resp)
+                        if sock is not None:
+                            sock.settimeout(idle)  # after the first chunk only the idle limit
                     inbox.put(("line", line))
                 inbox.put(("end", None))
             except BaseException as e:  # handed to the waiting thread
@@ -304,7 +351,9 @@ class OllamaClient:
                 except ValueError:
                     continue
                 if ev.get("error"):
-                    raise LLMError(f"Ollama chat failed: {ev['error']}", retryable=False)
+                    raise LLMError(
+                        f"Ollama chat failed: {ev['error']}", retryable=False, kind="model"
+                    )
                 msg = ev.get("message") or {}
                 if msg.get("content"):
                     content.append(msg["content"])
@@ -314,9 +363,15 @@ class OllamaClient:
                     final = ev
                     break
         finally:
-            stop.set()
+            with lock:
+                stop.set()
+                live = opened[0] if opened else None
+            if live is not None:
+                _shutdown(live)
         if not final:
-            raise LLMError("The AI connection was lost: Ollama ended the answer early", True)
+            raise LLMError(
+                "The AI connection was lost: Ollama ended the answer early", True, "connection"
+            )
         message: dict[str, Any] = {"role": "assistant", "content": "".join(content)}
         if thinking:
             message["thinking"] = "".join(thinking)
@@ -336,7 +391,9 @@ class OllamaClient:
             ) from exc
         if isinstance(exc, OSError | http.client.HTTPException):
             raise LLMError(
-                f"The AI connection was lost ({type(exc).__name__})", retryable=True
+                f"The AI connection was lost ({type(exc).__name__})",
+                retryable=True,
+                kind="connection",
             ) from exc
         raise exc
 
@@ -386,12 +443,14 @@ class OllamaProvider:
                     f"{self.model} thinks before it answers and ran out of room. Pick a model "
                     "without thinking (for example minicpm-v:8b or gemma3:4b) in Settings.",
                     retryable=False,
+                    kind="model",
                 )
         if not text.strip() and message.get("thinking"):
             raise LLMError(
                 f"{self.model} used all its tokens on thinking and wrote no answer "
                 f"(stopped: {resp.get('done_reason') or 'unknown'})",
                 retryable=True,
+                kind="model",
             )
         return (
             text,

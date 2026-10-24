@@ -24,7 +24,16 @@ Release notes are also published on the GitHub Releases page. Newest first.
   its old text, or keeps waiting. Before, it only stopped after the photo in progress, which
   could take 10 minutes.
 - When the AI is too slow because the model does not fit in your graphics card memory, the
-  message now says so and suggests a smaller model such as minicpm-v:8b.
+  message now says so and suggests the best model for this computer (none when no model suits it).
+- "Use this" now works for a downloaded model that is not on shuto's list.
+- A model's rating now counts only what the model itself gets wrong (it stalls, runs out of
+  room or gives an answer shuto cannot use). Ollama being closed, a lost connection or a model
+  that is not downloaded no longer make it "Not recommended".
+- A model that often needs a second try is no longer mistaken for one that thinks too long.
+- A model that keeps thinking although told not to is now remembered between pages.
+- Ratings no longer flip back and forth when a model's speed hovers around a limit.
+- Cancel and a stalled AI now cut the connection to Ollama at once, so it stops working on the
+  photo.
 - The finish time of a background job is now saved in UTC, like its start time.
 
 ## 0.6.4

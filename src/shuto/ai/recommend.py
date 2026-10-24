@@ -11,7 +11,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-from shuto.ai import catalog, rating
+from shuto.ai import catalog, machine, rating
 from shuto.ai import estimate as est
 from shuto.ai.benchmark import bench_key
 from shuto.ai.catalog import DISK_HEADROOM_GB, QUALITY_LABELS, ApiModel, LocalModel
@@ -152,6 +152,30 @@ class ModelRow:
 
     def to_dict(self) -> dict:
         return asdict(self)
+
+
+def suggest_model(
+    exclude: str = "",
+    *,
+    profile: HardwareProfile | None = None,
+    facts: dict[str, rating.Facts] | None = None,
+) -> str | None:
+    """The best model rated Good for this computer (never `exclude`), or None when no model is
+    Good or the computer cannot be read. Uses the model list's speed figures."""
+    try:
+        rows = top_models(
+            profile or machine.hardware_profile(),
+            catalog.load_catalog(),
+            [],
+            None,
+            None,
+            None,
+            facts,
+        )
+    except Exception:
+        return None
+    skip = normalize_tag(exclude) if exclude else ""
+    return next((r.tag for r in rows if r.rating == "good" and normalize_tag(r.tag) != skip), None)
 
 
 def top_models(

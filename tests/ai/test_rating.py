@@ -247,10 +247,65 @@ def test_three_failures_in_the_window_is_not_recommended():
     assert rate("minicpm-v:8b", OWNER, Facts(measured=Measured(8, 2, 8.0, 300))).rating == "good"
 
 
-def test_cancelled_calls_do_not_count():
-    rows = calls(2, None, None, ok=False, error="Stopped by you (cancelled)") + calls(4, 8.0)
+def test_only_failures_the_model_causes_count():
+    caused = ["[model] Ollama timed out", "[model] thinks before it answers and ran out of room"]
+    not_caused = [
+        "[connection] Ollama is not running at http://x",
+        "[missing] Ollama HTTP 404: model not found",
+        "[cancelled] Stopped by you",
+        "[other] Ollama HTTP 400: bad request",
+    ]
+    for err in caused:
+        assert rating.caused_by_model(err)
+    for err in not_caused:
+        assert not rating.caused_by_model(err)
+    rows = [c for e in not_caused for c in calls(1, None, None, ok=False, error=e)] + calls(4, 8.0)
     (m,) = rating.measured_from_calls(rows).values()
     assert (m.failures, m.ok_calls) == (0, 4)
+    rows = [c for e in caused for c in calls(1, None, None, ok=False, error=e)] + calls(4, 8.0)
+    (m,) = rating.measured_from_calls(rows).values()
+    assert (m.failures, m.ok_calls) == (2, 4)
+
+
+def test_ollama_stopped_does_not_make_the_model_not_recommended():
+    rows = calls(3, None, None, ok=False, error="[connection] Ollama is not running") + calls(
+        4, 8.0, model="minicpm-v:8b"
+    )
+    rows = [{**r, "model": "minicpm-v:8b"} for r in rows]
+    measured = rating.measured_from_calls(rows)
+    assert rate("minicpm-v:8b", OWNER, Facts(measured=measured["minicpm-v:8b"])).rating == "good"
+
+
+def test_failures_logged_before_error_kinds_are_judged_by_their_text():
+    old_stop = "Ollama is not running at http://127.0.0.1:11434; start it"
+    assert not rating.caused_by_model(old_stop)
+    assert not rating.caused_by_model("Ollama HTTP 404: model not found (model not pulled?)")
+    assert not rating.caused_by_model("The AI connection was lost (ConnectionResetError)")
+    assert rating.caused_by_model("Ollama timed out at http://127.0.0.1:11434")
+    assert rating.caused_by_model(None)
+
+
+def test_output_tokens_are_counted_per_try():
+    # a normal model (300 tokens an answer) whose photos often needed 2 more tries
+    rows = [
+        {
+            "model": "m",
+            "ok": True,
+            "seconds": 9.0,
+            "output_tokens": 900,
+            "retries": 2,
+            "error": None,
+        }
+        for _ in range(4)
+    ]
+    (m,) = rating.measured_from_calls(rows).values()
+    assert m.median_out == 300
+    r = rate("minicpm-v:8b", OWNER, Facts(measured=Measured(4, 0, 9.0, m.median_out)))
+    assert not r.thinks and r.rating == "good"
+    # a real thinker still shows: 2400 tokens in a single try
+    rows = [{**rows[0], "output_tokens": 2400, "retries": 0}] * 4
+    (m,) = rating.measured_from_calls(rows).values()
+    assert m.median_out == 2400
 
 
 def test_only_the_last_ten_calls_count_and_the_median_is_used():
@@ -329,6 +384,50 @@ def test_measured_normal_answers_clear_the_list_flag():
 def test_the_client_seeing_it_think_is_enough():
     r = rate("gemma3:4b", OWNER, Facts(always_thinks=True))
     assert r.thinks and r.rating == "ok"
+
+
+def test_a_speed_hovering_around_a_limit_does_not_flip_the_rating():
+    memory: dict[str, int] = {}
+
+    def shown(seconds, tag="minicpm-v:8b"):
+        f = Facts(measured=Measured(5, 0, seconds, 300), band_memory=memory)
+        return rate(tag, OWNER, f).rating
+
+    assert shown(19.0) == "good"
+    assert [shown(s) for s in (23.9, 22.0, 24.0)] == ["good"] * 3
+    assert shown(24.1) == "ok"  # 20% past the 20 s limit: it really is slower now
+    assert [shown(s) for s in (23.9, 17.0, 23.9, 16.1)] == ["ok"] * 4
+    assert shown(15.9) == "good"  # 20% below the limit
+    assert [shown(s) for s in (19.9, 23.9, 19.0)] == ["good"] * 3
+
+
+def test_flap_protection_also_works_without_an_estimate():
+    memory: dict[str, int] = {}
+    unlisted = dataclasses.replace(custom(5), est_s={})  # no speed figures in the model list
+
+    def shown(seconds):
+        f = Facts(measured=Measured(5, 0, seconds, 300), band_memory=memory)
+        return rating.rate(unlisted, OWNER, f).rating
+
+    assert [shown(s) for s in (10.0, 23.0, 10.0, 23.9)] == ["good"] * 4
+    assert [shown(s) for s in (24.1, 23.0, 17.0)] == ["ok"] * 3
+    assert shown(15.0) == "good"
+    # no figure at all: it still rates, and remembers nothing new
+    nothing = rating.rate(unlisted, OWNER, Facts(band_memory={}))
+    assert nothing.basis == "unknown" and nothing.rating == "ok"
+
+
+def test_each_model_has_its_own_remembered_band():
+    memory: dict[str, int] = {}
+    slow = Facts(measured=Measured(5, 0, 25.0, 300), band_memory=memory)
+    assert rate("minicpm-v:8b", OWNER, slow).rating == "ok"  # past the estimate's dead-band
+    assert (
+        rate(
+            "gemma3:4b", OWNER, Facts(measured=Measured(5, 0, 5.0, 300), band_memory=memory)
+        ).rating
+        == "good"
+    )
+    assert set(memory) == {"minicpm-v:8b", "gemma3:4b"}
 
 
 def test_best_good_is_the_first_good_row():

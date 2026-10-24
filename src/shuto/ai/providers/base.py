@@ -16,9 +16,14 @@ _FILTER_KEYS = ("theme_fit", "checks")
 
 
 class LLMError(Exception):
-    def __init__(self, message: str, retryable: bool = False):
+    """A failed model call. `kind` says whose fault it was, for the call log and the model
+    rating: "model" (stalled, ran out of room, unusable answer), "connection" (not running,
+    connection lost), "missing" (model not downloaded), "other" or "" (not said)."""
+
+    def __init__(self, message: str, retryable: bool = False, kind: str = ""):
         super().__init__(message)
         self.retryable = retryable
+        self.kind = kind
 
 
 class LLMCancelled(Exception):
@@ -124,4 +129,5 @@ def describe_structured(
         f"{llm.name}/{llm.model} returned invalid output after {retries + 1} attempt(s): "
         f"{last_err[:300]}",
         retryable=False,
+        kind="model",
     )

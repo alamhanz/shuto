@@ -36,6 +36,8 @@
           hx-target="#bulk-edit-area" hx-swap="innerHTML">Edit selected...</button>
   <button type="submit" name="action" value="ready" class="secondary" data-needs-selection disabled
           title="The AI will write the text again for these photos">Send back to AI</button>
+  <input type="hidden" name="run_now_shown" value="1">
+  <label title="Untick it to let the photos wait. You start the AI later."><input type="checkbox" name="run_now" value="on"{% if run_now %} checked{% endif %}> Run the AI right away</label>
   <span class="count" data-select-count data-select-template="{n} selected" aria-live="polite">0 selected</span>
 </form>
 <div id="bulk-edit-area"></div>

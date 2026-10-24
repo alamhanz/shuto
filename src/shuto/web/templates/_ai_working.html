@@ -17,6 +17,7 @@
     {%- elif ai.other_task %} Another task is running; run the AI when it has finished.
     {%- else %}
     <button type="button" class="secondary" hx-post="/batch/{{ bid }}/redo" hx-vals='{{ {"seen": ai.seen, "show": ai.show}|tojson|forceescape }}' hx-target="#ai-status" hx-swap="outerHTML">Run the AI now</button>
+    or <a href="/batch/{{ bid }}/check">Check all {{ ai.waiting }} photo{{ '' if ai.waiting == 1 else 's' }}</a> on the Check page.
     {%- endif %}</span></p>
   {% endif %}
   {% if ai.back %}

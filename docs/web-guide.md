@@ -1,6 +1,6 @@
 # shuto web guide
 
-This guide matches shuto version 0.6.4. Screens may differ slightly in other versions.
+This guide matches shuto version 0.6.5. Screens may differ slightly in other versions.
 
 shuto is a web page that runs on your own computer. Open it by double-clicking the **shuto**
 icon (or go to <http://127.0.0.1:8765>). The menu at the top has **Home**, **Add photos**,
@@ -47,6 +47,8 @@ Your original photos are only read, never changed.
 Click **Check all photos**. shuto does three things in one go: it looks at quality (sharp,
 bright and big enough), the AI writes a title, description and keywords, and shuto checks the
 Shutterstock rules. A progress bar shows how long it will take, and you can cancel.
+Cancel stops the AI within a second or two, even in the middle of a photo; that photo keeps
+its old text. A slow model is only given up on when it sends nothing for 5 minutes.
 <!-- screenshot: the check step with a progress bar (images/web-check.png) -->
 
 If the AI helper is not running, a box explains how to fix it in **Settings**.

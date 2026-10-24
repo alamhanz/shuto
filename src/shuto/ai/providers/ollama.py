@@ -5,17 +5,31 @@ from __future__ import annotations
 import base64
 import http.client
 import json
+import queue
+import threading
+import time
 import urllib.error
 import urllib.request
 from collections.abc import Callable
 from typing import Any
 
-from shuto.ai.catalog import NUM_CTX_TARGET, SMALL_CONTEXT_TOKENS, context_tokens
-from shuto.ai.providers.base import LLMError, LLMRequest
+from shuto.ai.catalog import NUM_CTX_TARGET, SMALL_CONTEXT_TOKENS, context_tokens, load_catalog
+from shuto.ai.providers.base import LLMCancelled, LLMError, LLMRequest
 
 DEFAULT_URL = "http://127.0.0.1:11434"
 DEFAULT_NUM_CTX = NUM_CTX_TARGET  # Ollama's own default (2048/4096) cuts the start of a long prompt
 THINKING_HEADROOM = 4096  # extra num_predict for models that may think (num_predict is only a cap)
+FIRST_CHUNK_WAIT_S = 600  # Ollama may spend minutes loading the model before the first chunk
+MAX_ANSWER_S = 1800  # one answer may never take longer than this, however steadily it streams
+CANCEL_POLL_S = 0.25  # how often a quiet stream looks at the cancel check
+HINT_MODEL = "minicpm-v:8b"
+
+
+class OllamaTimeout(LLMError):
+    """Ollama stopped sending data (or the whole answer took too long)."""
+
+    def __init__(self, message: str):
+        super().__init__(message, retryable=True)
 
 
 def _close(resp: Any) -> None:
@@ -38,7 +52,7 @@ class OllamaClient:
         )
 
     def _timeout(self) -> LLMError:
-        return LLMError(f"Ollama timed out at {self.url}", retryable=True)
+        return OllamaTimeout(f"Ollama timed out at {self.url}")
 
     def _open(
         self,
@@ -98,8 +112,33 @@ class OllamaClient:
         """Remove a downloaded model from this computer (Ollama frees its files)."""
         _close(self._open("/api/delete", {"model": tag}, timeout=60, method="DELETE"))
 
-    def ps(self) -> list[dict]:
-        return list(self._json("/api/ps", timeout=10).get("models", []))
+    def ps(self, timeout: float = 10) -> list[dict]:
+        return list(self._json("/api/ps", timeout=timeout).get("models", []))
+
+    def slow_model_hint(self, model: str) -> str:
+        """Plain advice when `model` only partly fits in graphics card memory ("" otherwise).
+        One short /api/ps call; only used after a timeout, never on the happy path."""
+        try:
+            running = self.ps(timeout=3)
+        except LLMError:
+            return ""
+        names = {model, f"{model}:latest"}
+        for m in running:
+            if (m.get("name") in names or m.get("model") in names) and (
+                0 < int(m.get("size_vram") or 0) < int(m.get("size") or 0)
+            ):
+                break
+        else:
+            return ""
+        tags = {lm.tag for lm in load_catalog()[0]}
+        who = model if model in tags else "This model"
+        hint = (
+            f"{who} does not fit in your graphics card memory, so part of it runs on the "
+            "processor and is very slow."
+        )
+        if HINT_MODEL in tags and model != HINT_MODEL:
+            hint += f" Pick a smaller model such as {HINT_MODEL} in Settings."
+        return hint
 
     def pull(self, tag: str, on_progress: Callable[[dict], None] | None = None) -> None:
         """Download a model. Anything raised by `on_progress` (a cancel) stops the stream: the
@@ -164,8 +203,13 @@ class OllamaClient:
         options: dict | None = None,
         keep_alive: str | None = None,
         timeout: float | None = None,
+        cancel: Callable[[], bool] | None = None,
     ) -> dict:
-        body: dict[str, Any] = {"model": model, "messages": messages, "stream": False}
+        """One answer, streamed. `timeout` is the idle limit: no data from Ollama for that many
+        seconds is a stall (the first chunk gets FIRST_CHUNK_WAIT_S while the model loads).
+        `cancel` is checked on every chunk and every CANCEL_POLL_S while it is quiet; a cancel
+        closes the connection (Ollama then stops generating) and raises LLMCancelled."""
+        body: dict[str, Any] = {"model": model, "messages": messages, "stream": True}
         think_off = self.supports_thinking(model)
         if think_off:
             body["think"] = False  # else the hidden thinking eats the whole token budget
@@ -175,10 +219,122 @@ class OllamaClient:
             body["options"] = options
         if keep_alive:
             body["keep_alive"] = keep_alive
-        resp = self._json("/api/chat", body, timeout)
+        try:
+            resp = self._stream_chat(body, timeout or self.timeout, cancel)
+        except OllamaTimeout as e:
+            hint = self.slow_model_hint(model)
+            if hint:
+                raise OllamaTimeout(f"{e}. {hint}") from e
+            raise
         if think_off and (resp.get("message") or {}).get("thinking"):
             self._always[model] = True
         return resp
+
+    def _stream_chat(
+        self, body: dict, idle: float, cancel: Callable[[], bool] | None
+    ) -> dict[str, Any]:
+        """Read the NDJSON stream into one reply shaped like the old non-streamed one.
+
+        A helper thread owns the connection and does the blocking reads; this thread waits for
+        its chunks, so a cancel or a stall is noticed even while a read is blocked. The helper
+        closes the connection as soon as it sees `stop` (at its next chunk or when its own
+        socket timeout ends), which is what makes Ollama stop generating."""
+        inbox: queue.Queue[tuple[str, Any]] = queue.Queue()
+        stop = threading.Event()
+        first_wait = max(idle, FIRST_CHUNK_WAIT_S)
+
+        def reader() -> None:
+            resp = None
+            try:
+                resp = self._open("/api/chat", body, timeout=first_wait)
+                for line in resp:
+                    if stop.is_set():
+                        return
+                    inbox.put(("line", line))
+                inbox.put(("end", None))
+            except BaseException as e:  # handed to the waiting thread
+                inbox.put(("error", e))
+            finally:
+                if resp is not None:
+                    _close(resp)
+
+        threading.Thread(target=reader, name="shuto-ollama-stream", daemon=True).start()
+        content: list[str] = []
+        thinking: list[str] = []
+        final: dict[str, Any] = {}
+        started = last = time.monotonic()
+        seen_data = False
+        try:
+            while True:
+                now = time.monotonic()
+                limit = idle if seen_data else first_wait
+                left = min(limit - (now - last), MAX_ANSWER_S - (now - started))
+                try:
+                    kind, value = inbox.get(timeout=max(0.0, min(left, CANCEL_POLL_S)))
+                except queue.Empty:
+                    if cancel and cancel():
+                        raise LLMCancelled() from None
+                    now = time.monotonic()
+                    if now - started >= MAX_ANSWER_S:
+                        raise OllamaTimeout(
+                            f"Ollama timed out at {self.url}: the answer took longer than "
+                            f"{MAX_ANSWER_S / 60:.0f} minutes"
+                        ) from None
+                    if now - last >= limit:
+                        raise OllamaTimeout(
+                            f"Ollama timed out at {self.url}: it stalled, no data for {limit:.0f} s"
+                        ) from None
+                    continue
+                if cancel and cancel():
+                    raise LLMCancelled()
+                if kind == "end":
+                    break
+                if kind == "error":
+                    self._raise_stream_error(value, idle)
+                last, seen_data = time.monotonic(), True
+                text = value.strip()
+                if not text:
+                    continue
+                try:
+                    ev = json.loads(text.decode("utf-8"))
+                except ValueError:
+                    continue
+                if ev.get("error"):
+                    raise LLMError(f"Ollama chat failed: {ev['error']}", retryable=False)
+                msg = ev.get("message") or {}
+                if msg.get("content"):
+                    content.append(msg["content"])
+                if msg.get("thinking"):
+                    thinking.append(msg["thinking"])
+                if ev.get("done"):
+                    final = ev
+                    break
+        finally:
+            stop.set()
+        if not final:
+            raise LLMError("The AI connection was lost: Ollama ended the answer early", True)
+        message: dict[str, Any] = {"role": "assistant", "content": "".join(content)}
+        if thinking:
+            message["thinking"] = "".join(thinking)
+        return {
+            "message": message,
+            "done_reason": final.get("done_reason"),
+            "prompt_eval_count": final.get("prompt_eval_count"),
+            "eval_count": final.get("eval_count"),
+        }
+
+    def _raise_stream_error(self, exc: BaseException, idle: float) -> None:
+        if isinstance(exc, LLMError):
+            raise exc
+        if isinstance(exc, TimeoutError):
+            raise OllamaTimeout(
+                f"Ollama timed out at {self.url}: it stalled, no data for {idle:.0f} s"
+            ) from exc
+        if isinstance(exc, OSError | http.client.HTTPException):
+            raise LLMError(
+                f"The AI connection was lost ({type(exc).__name__})", retryable=True
+            ) from exc
+        raise exc
 
 
 class OllamaProvider:
@@ -261,4 +417,5 @@ class OllamaProvider:
             },
             keep_alive=self.keep_alive,
             timeout=req.timeout_s,
+            cancel=req.cancel,
         )

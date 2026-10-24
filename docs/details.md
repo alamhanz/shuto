@@ -376,7 +376,7 @@ To go back: close shuto, install the older version, then replace `shuto.db` with
 
 ## Status and roadmap
 
-shuto is an early version (0.6.4). The pipeline, command line and local web app work end to end,
+shuto is an early version (0.6.5). The pipeline, command line and local web app work end to end,
 and the tests run on Linux, macOS and Windows.
 
 Known limits:

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -20,6 +21,10 @@ class LLMError(Exception):
         self.retryable = retryable
 
 
+class LLMCancelled(Exception):
+    """The caller asked to stop while the model was answering (not an error)."""
+
+
 @dataclass
 class LLMRequest:
     image_jpeg: bytes
@@ -27,7 +32,8 @@ class LLMRequest:
     prompt: str
     max_tokens: int = 1500
     temperature: float = 0.2
-    timeout_s: float = 300
+    timeout_s: float = 300  # Ollama: seconds without data before a stall; others: total
+    cancel: Callable[[], bool] | None = None  # polled while the model answers (Ollama)
 
 
 @dataclass
@@ -98,6 +104,7 @@ def describe_structured(
                 max_tokens=req.max_tokens,
                 temperature=0.0,
                 timeout_s=req.timeout_s,
+                cancel=req.cancel,
             )
             continue
         return LLMResult(

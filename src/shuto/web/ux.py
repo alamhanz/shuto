@@ -198,6 +198,12 @@ _AI_ERRORS: tuple[tuple[tuple[str, ...], str, str], ...] = (
         "Choose another model in Settings.",
     ),
     (
+        ("does not fit in your graphics card memory",),
+        "The AI took too long to answer.",
+        "This model does not fit in your graphics card memory, so part of it runs on the "
+        "processor and is very slow. Choose a smaller model such as minicpm-v:8b in Settings.",
+    ),
+    (
         ("timed out", "timeout"),
         "The AI took too long to answer.",
         "Wait a minute, then press Try again. A smaller model may be faster.",

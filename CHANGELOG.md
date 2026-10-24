@@ -2,6 +2,19 @@
 
 Release notes are also published on the GitHub Releases page. Newest first.
 
+## 0.6.5
+
+### Fixed
+- Slow AI models no longer fail with "The AI took too long to answer". shuto now reads the
+  answer as it is written and only gives up when the AI sends nothing for 5 minutes (it was
+  5 minutes for the whole answer). Models that think, such as qwen3-vl:8b, can now finish.
+- **Cancel** stops the AI within a second or two, even in the middle of a photo. The photo keeps
+  its old text, or keeps waiting. Before, it only stopped after the photo in progress, which
+  could take 10 minutes.
+- When the AI is too slow because the model does not fit in your graphics card memory, the
+  message now says so and suggests a smaller model such as minicpm-v:8b.
+- The finish time of a background job is now saved in UTC, like its start time.
+
 ## 0.6.4
 
 ### Added

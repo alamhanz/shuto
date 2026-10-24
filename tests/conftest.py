@@ -83,6 +83,24 @@ def _no_real_update_check(monkeypatch):
     monkeypatch.setattr(updates, "fetch_wheel_digest", no_digest)
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _no_launch_update_check():
+    """The check at app start never runs in tests, even from a thread that outlives its test.
+
+    The launch_check unit tests set the flag back to False themselves (and monkeypatch undoes it).
+    """
+    from shuto.update import core as updates
+
+    updates._launch_checked = True
+
+
+@pytest.fixture(autouse=True)
+def _fresh_thinking_hints():
+    from shuto.web.routes import model_support
+
+    model_support._THINKS.clear()
+
+
 @pytest.fixture
 def isolated(tmp_path, monkeypatch):
     """No test may touch the user's config, cache, keyring-dependent state or hardware."""

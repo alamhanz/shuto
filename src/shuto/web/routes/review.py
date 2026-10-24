@@ -114,7 +114,7 @@ def _card(ctx: WebCtx, p: Photo) -> dict[str, Any]:
         "layer": layer,
         "snippet": short(str(meta.get("description") or ""), 90),
         "sent": is_sent(p),
-        "new_text": is_sent(p) and recheck.has_new_text(p),
+        "new_text": p.status in recheck.RECHECKABLE and recheck.has_new_text(p),
         "pickable": p.status not in UPLOADED_STATES,
         "editorial": bool(meta.get("editorial")),
         "gps": p.has_gps,

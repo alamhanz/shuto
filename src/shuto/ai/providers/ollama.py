@@ -224,7 +224,7 @@ class OllamaProvider:
             if not text.strip() and message.get("thinking"):
                 raise LLMError(
                     f"{self.model} thinks before it answers and ran out of room. Pick a model "
-                    "without thinking (for example minicpm-v:8b or qwen3.5:4b) in Settings.",
+                    "without thinking (for example minicpm-v:8b or gemma3:4b) in Settings.",
                     retryable=False,
                 )
         if not text.strip() and message.get("thinking"):

@@ -10,12 +10,15 @@ from fastapi.responses import HTMLResponse
 from shuto.core.jobs import JobBusy
 from shuto.core.models import Photo
 from shuto.web import ux
+from shuto.web.routes.batch import ai_busy
 from shuto.web.routes.batch_support import filter_of, photo_path
-from shuto.web.routes.review import start_redo_job
+from shuto.web.routes.review import _running_job, start_redo_job
 from shuto.web.state import Ctx, PostForm, WebCtx, split_lines
 from shuto.workflow import recheck
 
 router = APIRouter()
+
+CSV_JOB_KINDS = ("deliver", "upload", "export")  # jobs that write or send the Shutterstock CSV
 
 
 def panel(ctx: WebCtx, photo: Photo) -> dict[str, Any]:
@@ -24,13 +27,14 @@ def panel(ctx: WebCtx, photo: Photo) -> dict[str, Any]:
     draft = photo.draft or {}
     state = draft.get("state") if can else None
     job_id = ctx.runner.active_job(photo.batch_id) if photo.batch_id else None
+    job = ai_busy(ctx, photo.batch_id) if photo.batch_id else None
     new = dict(draft.get("metadata") or {}) if state == "ready" else {}
     return {
         "recheck": {
             "can": can,
             "too_late": recheck.why_not(photo) == recheck.TOO_LATE,
             "state": state,
-            "busy": job_id is not None,
+            "busy": job is not None and job.kind in ("check", "redo"),
             "job_id": job_id,
             "new": new,
             "new_keywords": ", ".join(new.get("keywords") or []),
@@ -57,11 +61,18 @@ def photo_recheck(request: Request, photo_id: int, form: PostForm, ctx: Ctx):
         return ctx.message_fragment(
             request, why[0].upper() + why[1:] + ("" if why[-1] == "." else ".")
         )
-    running = ctx.runner.active_job(batch_id)
+    running, drains = _running_job(ctx, batch_id)
     if running is not None:
-        # The running check or redo picks the photo up when it is done with the others.
+        if drains:
+            # The running check or redo picks the photo up when it is done with the others.
+            return ctx.message_fragment(
+                request, "The AI is already working on this batch; this photo is next."
+            )
+        # Another kind of task never takes the photo; the owner presses the button again later.
         return ctx.message_fragment(
-            request, "The AI is already working on this batch; this photo is next."
+            request,
+            "Another task is running for this batch. Press Check again with AI when it has "
+            "finished.",
         )
     try:
         job_id = start_redo_job(ctx, batch_id)
@@ -72,8 +83,11 @@ def photo_recheck(request: Request, photo_id: int, form: PostForm, ctx: Ctx):
 
 @router.post("/photo/{photo_id}/draft/use")
 def draft_use(photo_id: int, form: PostForm, ctx: Ctx):
-    ctx.get_photo_or_404(photo_id)
+    photo = ctx.get_photo_or_404(photo_id)
     path = photo_path(photo_id, filter_of(form.get("back")))
+    busy = ai_busy(ctx, photo.batch_id) if photo.batch_id else None
+    if busy is not None and busy.kind in CSV_JOB_KINDS:
+        return ctx.back(path, error="Wait until the upload has finished, then try again.")
     edits: dict[str, Any] | None = None
     if "keywords" in form:  # the edit boxes were on the form
         edits = {

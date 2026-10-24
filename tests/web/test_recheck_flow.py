@@ -59,13 +59,14 @@ def _first(web, batch):
 def _start(web, pid):
     r = web.post(f"/photo/{pid}/recheck")
     assert r.status_code == 200, r.text
+    found = re.search(r'id="job-(\d+)"', r.text)
+    if found:  # read from the answer: the job may already be gone when the test looks
+        web.job_id = int(found.group(1))
     return r
 
 
-def _finish(web, batch):
-    job_id = web.state.runner.active_job(batch)
-    assert job_id is not None
-    return web.state.runner.wait(job_id, timeout=60)
+def _finish(web, batch=None):
+    return web.state.runner.wait(web.job_id, timeout=60)
 
 
 def test_sent_photo_page_offers_check_again(web, uploaded):  # noqa: F811
@@ -182,3 +183,53 @@ def test_failed_draft_shows_a_plain_message_and_try_again(web, ai, uploaded, mon
     page = web.get(f"/photo/{p.id}").text
     assert "could not write new text" in page and "Try again" in page
     assert "old text is kept" in page
+
+
+def _hold_job(web, batch, kind):
+    """A job of this kind that stays running until the returned event is set."""
+    release = threading.Event()
+    started = threading.Event()
+
+    def run(job):
+        started.set()
+        release.wait(30)
+        return "ok"
+
+    job_id = web.state.runner.submit(kind, batch, run)
+    assert started.wait(10)
+    return job_id, release
+
+
+def test_another_kind_of_task_does_not_promise_the_photo_is_next(web, uploaded):  # noqa: F811
+    p = _first(web, uploaded)
+    job_id, release = _hold_job(web, uploaded, "deliver")
+    try:
+        r = _start(web, p.id)
+        assert "this photo is next" not in r.text
+        assert "Another task is running" in r.text and "Press Check again with AI" in r.text
+        page = web.get(f"/photo/{p.id}").text
+        assert "The AI is writing new text" not in page
+        assert not re.search(r"<button[^>]*disabled[^>]*>Check again with AI", page)
+    finally:
+        release.set()
+    web.state.runner.wait(job_id, timeout=60)
+
+
+def test_use_the_new_text_waits_for_a_running_upload(web, uploaded):  # noqa: F811
+    p = _first(web, uploaded)
+    _start(web, p.id)
+    _finish(web)
+    now = web.state.store.get_photo(p.id)
+    job_id, release = _hold_job(web, uploaded, "deliver")
+    try:
+        r = web.post(
+            f"/photo/{p.id}/draft/use",
+            {"description": NEW_TEXT, "keywords": ", ".join(now.draft["metadata"]["keywords"])},
+        )
+        assert r.status_code == 303
+        assert "Wait until the upload has finished" in unquote(r.headers["location"])
+        after = web.state.store.get_photo(p.id)
+        assert after.draft["state"] == "ready" and after.metadata == p.metadata
+    finally:
+        release.set()
+    web.state.runner.wait(job_id, timeout=60)

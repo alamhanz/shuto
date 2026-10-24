@@ -49,14 +49,36 @@ def _tags(rows: list[dict]) -> None:
         r["time_text"] = f"about {_plain_seconds(r['est_seconds_per_image'])} per photo"
 
 
+_THINKS: dict[tuple[str, str], bool] = {}  # (Ollama address, model tag) -> thinks; kept per run
+THINK_LOOKUP_TIMEOUT_S = 2
+
+
 def _mark_thinkers(ctx: WebCtx, rows: list[dict]) -> None:
-    """Set `thinks` on the downloaded models Ollama says think before they answer (slower)."""
-    client = selection.ollama_client(ctx.cfg)
+    """Set `thinks` on the downloaded models Ollama says think before they answer (slower).
+
+    Answers are kept per (address, model), so a page load does not ask Ollama again. Models that
+    are not asked about are shown as normal; the first failed lookup ends the asking for this
+    page load, and failures are not kept.
+    """
+    url = ctx.cfg.llm.ollama.url
+    client = None
+    failed = False
     for r in rows:
-        try:
-            r["thinks"] = bool(r.get("pulled") and client.supports_thinking(r["tag"]))
-        except Exception:
-            r["thinks"] = False  # a hint is never worth breaking the page for
+        r["thinks"] = False
+        if not r.get("pulled"):
+            continue
+        key = (url, r["tag"])
+        if key not in _THINKS:
+            if failed:
+                continue
+            try:
+                client = client or selection.ollama_client(ctx.cfg)
+                client.timeout = min(getattr(client, "timeout", 300), THINK_LOOKUP_TIMEOUT_S)
+                _THINKS[key] = bool(client.supports_thinking(r["tag"]))
+            except Exception:
+                failed = True  # a hint is never worth breaking the page for
+                continue
+        r["thinks"] = _THINKS[key]
 
 
 def helper_steps(os_name: str) -> list[str]:

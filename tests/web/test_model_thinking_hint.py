@@ -27,3 +27,32 @@ def test_settings_survives_a_failed_capability_lookup(web, ollama):
     ollama.supports_thinking = boom
     r = web.get("/settings")
     assert r.status_code == 200 and HINT not in r.text
+
+
+def test_thinking_answers_are_kept_between_page_loads(web, ollama):
+    ollama.pulled = ["gemma3:4b", "gemma3:12b"]
+    asked = []
+
+    def supports(tag):
+        asked.append(tag)
+        return tag == "gemma3:12b"
+
+    ollama.supports_thinking = supports
+    assert web.get("/settings").text.count(HINT) == 1
+    first = len(asked)
+    assert first >= 1
+    assert web.get("/settings").text.count(HINT) == 1
+    assert len(asked) == first
+
+
+def test_lookups_stop_after_the_first_failure(web, ollama):
+    ollama.pulled = ["gemma3:4b", "gemma3:12b"]
+    asked = []
+
+    def boom(tag):
+        asked.append(tag)
+        raise RuntimeError("down")
+
+    ollama.supports_thinking = boom
+    assert HINT not in web.get("/settings").text
+    assert len(asked) == 1  # not one call per model

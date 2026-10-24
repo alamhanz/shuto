@@ -51,8 +51,9 @@ Shutterstock rules. A progress bar shows how long it will take, and you can canc
 
 If the AI helper is not running, a box explains how to fix it in **Settings**.
 
-While the AI is working, the **Check all photos** button is greyed out and shows how many photos
-are still with the AI. It works again when the AI is done.
+While the AI is working, the **Check all photos** button is greyed out and says
+the AI is running. When you sent photos back and the AI is rewriting them, it also shows how
+many are done. It works again when the AI is done.
 
 If you use a thinking model (for example qwen3-vl:8b), Settings notes that it thinks before it
 answers, so it is slower (about a minute per photo).

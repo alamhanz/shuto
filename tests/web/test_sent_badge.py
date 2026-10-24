@@ -46,3 +46,13 @@ def test_unsent_photo_never_shows_new_text_chip(web, described):  # noqa: F811
     photo = _photos(web, described, Status.DESCRIBED)[0]
     web.state.store.update_photo(photo.id, draft={"state": "ready"})
     assert "New text to check" not in web.get(f"/batch/{described}/review?show=all").text
+
+
+def test_new_text_chip_is_hidden_once_the_photo_is_submitted(web, described):  # noqa: F811
+    photo = _photos(web, described, Status.DESCRIBED)[0]
+    web.state.store.set_status(photo.id, Status.UPLOADED, force=True)
+    web.state.store.update_photo(photo.id, draft={"state": "ready"})
+    assert "New text to check" in web.get(f"/batch/{described}/review?show=all").text
+    web.state.store.set_status(photo.id, Status.SUBMITTED, force=True)
+    page = web.get(f"/batch/{described}/review?show=all").text
+    assert 'class="chip sent"' in page and "New text to check" not in page

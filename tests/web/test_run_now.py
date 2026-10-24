@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import re
 from urllib.parse import unquote
 
 from shuto.core.models import Status
 
-from .test_send_back_flow import _bulk, _finish, gate  # noqa: F401
+from .test_send_back_flow import _bulk, gate  # noqa: F401
 from .test_web_batch import _photos, batch, described, web  # noqa: F401
 
 
@@ -35,10 +36,11 @@ def test_ticked_send_back_starts_the_ai(web, described, gate):  # noqa: F811
     ids = _good_ids(web, described, 2)
     r = _bulk(web, described, "ready", ids, run_now_shown="1", run_now="on")
     assert "wait for the AI" not in _note(r)
-    assert web.state.runner.active_job(described) is not None
+    job_id = web.state.runner.active_job(described)
+    assert job_id is not None
     assert web.state.store.get_setting("ui.send_back_run_now") is True
     gate.gate.set()
-    assert _finish(web, described).state == "done"
+    assert web.state.runner.wait(job_id, timeout=60).state == "done"
     assert not _photos(web, described, Status.READY)
 
 
@@ -112,17 +114,19 @@ def test_pressing_check_disables_the_button_at_once(web, batch, gate):  # noqa: 
     r = web.post(f"/batch/{batch}/check", {})
     assert r.status_code == 200 and 'id="check-action"' in r.text
     assert 'hx-swap-oob="true"' in r.text and "The AI is running" in r.text
+    job_id = int(re.search(r'id="job-(\d+)"', r.text).group(1))
     gate.gate.set()
-    _finish(web, batch)
+    assert web.state.runner.wait(job_id, timeout=60).state == "done"
 
 
 def test_review_has_no_run_button_while_a_job_runs(web, described, gate):  # noqa: F811
     _bulk(web, described, "ready", _good_ids(web, described, 2))
+    job_id = web.state.runner.active_job(described)
     assert gate.entered.wait(10)
     page = web.get(f"/batch/{described}/review?show=good").text
     assert "The AI is working on 2 photos" in page and "Run the AI now" not in page
     gate.gate.set()
-    _finish(web, described)
+    assert web.state.runner.wait(job_id, timeout=60).state == "done"
 
 
 def test_review_offers_both_ways_to_start_the_ai(web, described):  # noqa: F811

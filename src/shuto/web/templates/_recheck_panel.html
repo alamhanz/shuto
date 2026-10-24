@@ -1,0 +1,62 @@
+{% from "_ui.html" import icon with context %}
+{#- "Check again with AI" for a photo Shutterstock already has. Needs `recheck` (routes/recheck.py::panel). -#}
+{% if recheck.too_late %}
+<p class="hint" id="recheck-panel">Shutterstock is already reviewing (or has) this photo, so its text can only be changed on the Shutterstock site.</p>
+{% elif recheck.can %}
+<div id="recheck-panel" class="stack"{% if recheck.state == 'waiting' and recheck.busy %} hx-get="/photo/{{ photo.id }}" hx-trigger="every 3s" hx-select="#recheck-panel" hx-target="#recheck-panel" hx-swap="outerHTML"{% endif %}>
+  <h2>Check again with AI</h2>
+  {% if recheck.state == 'ready' %}
+  <p class="hint">The AI wrote new text. Compare it with the old text, change it if you like, then choose. Nothing changes until you press "Use the new text".</p>
+  <div class="photo-layout">
+    <section aria-label="Old text">
+      <h3>Old text</h3>
+      <p>{{ meta.description }}</p>
+      <p class="hint">Keywords: {{ keywords_text }}</p>
+    </section>
+    <section aria-label="New text">
+      <h3>New text</h3>
+      {% for m in recheck.gr.messages or [] %}<p class="flash warn" role="alert">{{ icon('alert') }}<span>{{ m }}</span></p>{% endfor %}
+      <form method="post" action="/photo/{{ photo.id }}/draft/use" class="stack">
+        <input type="hidden" name="csrf_token" value="{{ csrf }}">
+        <input type="hidden" name="back" value="{{ show }}">
+        <div class="field">
+          <label for="new-description">New description</label>
+          <textarea id="new-description" name="description" rows="3" maxlength="200">{{ recheck.new.description or "" }}</textarea>
+        </div>
+        <div class="field">
+          <label for="new-keywords">New keywords</label>
+          <textarea id="new-keywords" name="keywords" rows="5">{{ recheck.new_keywords }}</textarea>
+          <p class="field-help">Separate with commas.</p>
+        </div>
+        <fieldset>
+          <legend>Categories (choose up to 2)</legend>
+          {% for c in categories %}<label class="inline"><input type="checkbox" name="categories" value="{{ c }}"{% if c in (recheck.new.categories or []) %} checked{% endif %}> {{ c }}</label>{% endfor %}
+        </fieldset>
+        <fieldset>
+          <legend>Commercial or Editorial</legend>
+          <label class="inline"><input type="radio" name="editorial" value="no"{% if not recheck.new.editorial %} checked{% endif %}> Commercial</label>
+          <label class="inline"><input type="radio" name="editorial" value="yes"{% if recheck.new.editorial %} checked{% endif %}> Editorial</label>
+        </fieldset>
+        <div class="row">
+          <button type="submit">Use the new text</button>
+          <button type="submit" class="secondary" formaction="/photo/{{ photo.id }}/draft/drop">Keep the old text</button>
+        </div>
+        <p class="hint">Using the new text updates the Shutterstock info file (CSV). The photo stays as it is on Shutterstock; you upload the new file there yourself.</p>
+      </form>
+    </section>
+  </div>
+  {% elif recheck.state == 'waiting' %}
+  <p role="status"><span class="spin">{{ icon('spinner') }}</span> {% if recheck.busy %}The AI is writing new text...{% else %}The new text is waiting for the AI.{% endif %}</p>
+  {% elif recheck.state == 'failed' %}
+  <p class="flash warn" role="alert">{{ icon('alert') }}<span>The AI could not write new text. {{ recheck.error.what }} {{ recheck.error.todo }} The old text is kept.</span></p>
+  {% endif %}
+  {% if recheck.state != 'ready' and not (recheck.state == 'waiting' and recheck.busy) %}
+  <form hx-post="/photo/{{ photo.id }}/recheck" hx-target="#job-area" hx-swap="innerHTML">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    <button type="submit" class="secondary"{% if recheck.busy %} disabled{% endif %}>{% if recheck.state == 'failed' %}Try again{% else %}Check again with AI{% endif %}</button>
+    {% if recheck.busy %}<span class="hint">The AI is running.</span>{% endif %}
+  </form>
+  <p class="hint">The AI writes new text. You choose whether to use it. Shutterstock already has the photo; only its text in the Shutterstock info file (CSV) changes.</p>
+  {% endif %}
+</div>
+{% endif %}

@@ -134,6 +134,7 @@ class Photo:
     detected: dict[str, Any] | None = None
     guardrail: dict[str, Any] | None = None
     filters: dict[str, Any] | None = None
+    draft: dict[str, Any] | None = None  # new text from "Check again with AI", for a sent photo
     release_ids: list[str] = field(default_factory=list)
     submit_name: str | None = None
     prepared_path: str | None = None

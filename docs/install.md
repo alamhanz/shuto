@@ -49,8 +49,13 @@ Ollama or downloads an AI model for you; shuto asks you first, inside the app.
 
 Open shuto, go to **Settings**, then **Updates**, and press **Update now** when a new version is
 ready. shuto closes, installs the update and opens again by itself (1-3 minutes). A small banner
-also tells you when a new version is ready; shuto looks once a day, and you can turn that off in
-the same place. If an update fails, shuto goes back to the version you had.
+also tells you when a new version is ready; shuto looks when it opens and again every few hours while it stays
+open, and you can turn that off in the same place. If an update fails, shuto goes back to the version you had.
+
+Updating from 0.6.3 or older to 0.6.4 upgrades shuto's database, and the older version cannot open it.
+Before it does, shuto saves a copy next to the database (for example `shuto.db.v2.bak`). To go back to
+an older version, install it, then replace `shuto.db` with that `.bak` copy. See "Going back to an
+older version" in [details](details.md).
 
 Versions before 0.3.0 do not have this button: run the install line once to get it. You can also
 always run the same install line again. It replaces shuto with the latest version and keeps your

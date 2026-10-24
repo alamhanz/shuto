@@ -17,7 +17,7 @@ from shuto.system import openfolder
 from shuto.web import ux
 from shuto.web.routes.batch_support import ai_facts, batch_page, batch_url, count_by_status
 from shuto.web.state import Ctx, PostForm
-from shuto.workflow import delivering, exporting, ftps_login, importing, reports, resend
+from shuto.workflow import delivering, exporting, ftps_login, importing, recheck, reports, resend
 
 router = APIRouter()
 
@@ -31,6 +31,11 @@ def _mb(n: int) -> str:
 
 def _export_names(photos: list[Photo]) -> list[str]:
     return [Path(f).name for f in sorted({p.export_file for p in photos if p.export_file})]
+
+
+def _new_text(photos: list[Photo]) -> list[Photo]:
+    """Sent photos whose new text (Check again with AI) waits for the owner's choice."""
+    return [p for p in photos if p.status in recheck.RECHECKABLE and recheck.has_new_text(p)]
 
 
 def _resend_choices(photos: list[Photo]) -> dict[str, list[Photo]]:
@@ -59,6 +64,7 @@ def upload_page(request: Request, batch_id: str, ctx: Ctx):
         login_ok=bool(login["user_set"] and login["password_set"]),
         exports=_export_names(photos),
         resend=_resend_choices(photos),
+        new_text=_new_text(photos),
         resend_page="upload",
         sent=counts.get("uploaded", 0) + counts.get("exported", 0),
         waiting=counts.get("imported", 0) + counts.get("ready", 0),
@@ -156,6 +162,7 @@ def submit_page(request: Request, batch_id: str, ctx: Ctx):
         "submit",
         exports=_export_names(photos),
         resend=_resend_choices(photos),
+        new_text=_new_text(photos),
         resend_page="submit",
         waiting=counts.get("exported", 0),
         finished=sum(counts.get(k, 0) for k in ("submitted", "accepted", "rejected")),

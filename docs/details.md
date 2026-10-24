@@ -336,6 +336,29 @@ described before 0.4.0 simply show as "not checked" for theme and rules. **Going
 afterwards will not work:** the older version cannot open the upgraded database. Keep a copy of
 the workspace folder first if you may want to go back.
 
+## Going back to an older version
+
+0.6.4 upgrades the database to a newer layout (schema v3, one extra column for the "Check again
+with AI" draft). 0.6.3 and older cannot open it. Before shuto changes the database, it saves a
+copy next to it, once, named after the old layout: for example `shuto.db.v2.bak` in your workspace
+folder. An existing copy is never replaced. If shuto cannot save the copy, it stops and tells you,
+and the database is left as it was.
+
+To go back: close shuto, install the older version, then replace `shuto.db` with the `.bak` copy
+(copy it and rename it to `shuto.db`). Anything you did in the newer version is not in the copy.
+
+## Run the AI right away and Check again with AI
+
+- **Run the AI right away** (Send back to AI): the choice is saved in the `ui.send_back_run_now`
+  setting. While any job runs on a batch, the AI buttons are disabled.
+- **Check again with AI** for sent photos (uploaded or CSV made) writes only a draft
+  (`photos.draft_json`, schema v3). Status, text and the prepared copy do not change until you
+  press **Use the new text**. Drafts that are waiting are worked off after the running job; each is
+  tried once per run.
+- Thinking models: shuto adds 4096 tokens of room for thinking, retries once with more when the
+  answer was cut off while thinking, and then shows a plain hint.
+- The update check runs when shuto opens and again on the first page load after 3 hours.
+
 <details>
 <summary><strong>For developers</strong></summary>
 
@@ -353,7 +376,7 @@ the workspace folder first if you may want to go back.
 
 ## Status and roadmap
 
-shuto is an early version (0.6.3). The pipeline, command line and local web app work end to end,
+shuto is an early version (0.6.4). The pipeline, command line and local web app work end to end,
 and the tests run on Linux, macOS and Windows.
 
 Known limits:

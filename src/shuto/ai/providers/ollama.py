@@ -10,11 +10,12 @@ import urllib.request
 from collections.abc import Callable
 from typing import Any
 
-from shuto.ai.catalog import NUM_CTX_TARGET
+from shuto.ai.catalog import NUM_CTX_TARGET, SMALL_CONTEXT_TOKENS, context_tokens
 from shuto.ai.providers.base import LLMError, LLMRequest
 
 DEFAULT_URL = "http://127.0.0.1:11434"
 DEFAULT_NUM_CTX = NUM_CTX_TARGET  # Ollama's own default (2048/4096) cuts the start of a long prompt
+THINKING_HEADROOM = 4096  # extra num_predict for models that may think (num_predict is only a cap)
 
 
 def _close(resp: Any) -> None:
@@ -28,6 +29,7 @@ class OllamaClient:
         self.url = url.rstrip("/")
         self.timeout = timeout
         self._thinking: dict[str, bool] = {}
+        self._always: dict[str, bool] = {}
 
     def _not_running(self) -> LLMError:
         return LLMError(
@@ -149,6 +151,11 @@ class OllamaClient:
             self._thinking[model] = "thinking" in (caps.get("capabilities") or [])
         return self._thinking[model]
 
+    def always_thinks(self, model: str) -> bool:
+        """True once this model sent thinking although `think: false` was asked (some builds
+        only think and ignore the switch)."""
+        return self._always.get(model, False)
+
     def chat(
         self,
         model: str,
@@ -159,7 +166,8 @@ class OllamaClient:
         timeout: float | None = None,
     ) -> dict:
         body: dict[str, Any] = {"model": model, "messages": messages, "stream": False}
-        if self.supports_thinking(model):
+        think_off = self.supports_thinking(model)
+        if think_off:
             body["think"] = False  # else the hidden thinking eats the whole token budget
         if format is not None:
             body["format"] = format
@@ -167,7 +175,10 @@ class OllamaClient:
             body["options"] = options
         if keep_alive:
             body["keep_alive"] = keep_alive
-        return self._json("/api/chat", body, timeout)
+        resp = self._json("/api/chat", body, timeout)
+        if think_off and (resp.get("message") or {}).get("thinking"):
+            self._always[model] = True
+        return resp
 
 
 class OllamaProvider:
@@ -201,20 +212,21 @@ class OllamaProvider:
                 "images": [base64.b64encode(req.image_jpeg).decode("ascii")],
             }
         )
-        resp = self.client.chat(
-            self.model,
-            messages,
-            format=schema,
-            options={
-                "temperature": req.temperature,
-                "num_predict": req.max_tokens,
-                "num_ctx": self.num_ctx,
-            },
-            keep_alive=self.keep_alive,
-            timeout=req.timeout_s,
-        )
+        extra = THINKING_HEADROOM if self.client.supports_thinking(self.model) else 0
+        resp = self._chat(messages, schema, req, req.max_tokens + extra)
         message = resp.get("message") or {}
         text = message.get("content", "") or ""
+        if not text.strip() and message.get("thinking") and resp.get("done_reason") == "length":
+            # the thinking ate the budget: one more try with more room, then give up for good
+            resp = self._chat(messages, schema, req, req.max_tokens + 2 * THINKING_HEADROOM)
+            message = resp.get("message") or {}
+            text = message.get("content", "") or ""
+            if not text.strip() and message.get("thinking"):
+                raise LLMError(
+                    f"{self.model} thinks before it answers and ran out of room. Pick a model "
+                    "without thinking (for example minicpm-v:8b or gemma3:4b) in Settings.",
+                    retryable=False,
+                )
         if not text.strip() and message.get("thinking"):
             raise LLMError(
                 f"{self.model} used all its tokens on thinking and wrote no answer "
@@ -226,4 +238,27 @@ class OllamaProvider:
             None,
             int(resp.get("prompt_eval_count") or 0),
             int(resp.get("eval_count") or 0),
+        )
+
+    def _num_ctx(self) -> int:
+        """The context size to ask for: more room when the model thinks although told not to
+        (capped at its catalogue window; left alone on small-memory machines)."""
+        if not self.client.always_thinks(self.model) or self.num_ctx <= SMALL_CONTEXT_TOKENS:
+            return self.num_ctx
+        bumped = self.num_ctx + THINKING_HEADROOM
+        window = context_tokens(self.model)
+        return min(bumped, window) if window else bumped
+
+    def _chat(self, messages: list[dict], schema: dict, req: LLMRequest, num_predict: int) -> dict:
+        return self.client.chat(
+            self.model,
+            messages,
+            format=schema,
+            options={
+                "temperature": req.temperature,
+                "num_predict": num_predict,
+                "num_ctx": self._num_ctx(),
+            },
+            keep_alive=self.keep_alive,
+            timeout=req.timeout_s,
         )

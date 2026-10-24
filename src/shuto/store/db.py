@@ -26,6 +26,7 @@ _JSON_FIELDS = {
     "detected": "detected_json",
     "guardrail": "guardrail_json",
     "filters": "filters_json",
+    "draft": "draft_json",
     "release_ids": "release_ids",
 }
 _PLAIN_FIELDS = {
@@ -110,7 +111,36 @@ class Store:
 
     def migrate(self) -> None:
         with closing(self._connect()) as conn:
+            self._backup_before_upgrade(conn)
             schema.migrate(conn, self.path)
+
+    def _backup_before_upgrade(self, conn: sqlite3.Connection) -> None:
+        """Copy an existing database once to `<name>.v<old>.bak` before it moves to a newer schema.
+
+        An older shuto refuses a newer database, so this copy is the way back. New and
+        in-memory databases are skipped, an existing backup is never overwritten, and a failed
+        copy stops the migration.
+        """
+        if str(self.path) == ":memory:" or not self.path.is_file():
+            return
+        version = conn.execute("PRAGMA user_version").fetchone()[0]
+        if not 1 <= version < schema.SCHEMA_VERSION:
+            return
+        backup = self.path.with_name(f"{self.path.name}.v{version}.bak")
+        if backup.exists():
+            return
+        partial = backup.with_name(backup.name + ".part")
+        try:
+            partial.unlink(missing_ok=True)
+            with closing(sqlite3.connect(partial)) as target:
+                conn.backup(target)
+            partial.replace(backup)
+        except (OSError, sqlite3.Error) as exc:
+            partial.unlink(missing_ok=True)
+            raise RuntimeError(
+                f"Could not save a backup of your database before updating it ({backup}): {exc}. "
+                "Nothing was changed. Free some disk space or check the folder, then try again."
+            ) from exc
 
     @staticmethod
     def _event(

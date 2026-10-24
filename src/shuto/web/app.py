@@ -19,6 +19,7 @@ from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from shuto.core.config import Config
+from shuto.update import core as updates_core
 from shuto.web.routes import (
     accounts,
     batch,
@@ -32,6 +33,7 @@ from shuto.web.routes import (
     models,
     photo,
     preferences,
+    recheck,
     review,
     settings,
     updates,
@@ -61,12 +63,20 @@ ROUTERS = (
     legacy,
     files,
     photo,
+    recheck,
 )
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
 CSP = (
     "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; "
     "object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'"
 )
+
+
+def _launch_update_check(state: WebState) -> None:
+    try:
+        updates_core.launch_check(state.store)
+    except Exception:  # noqa: BLE001  (a failed look must never hurt the app)
+        pass
 
 
 def create_app(
@@ -81,6 +91,8 @@ def create_app(
     async def lifespan(_app: FastAPI):
         # Jobs still queued/running now belong to a closed app; finished photos were kept.
         state.store.fail_unfinished_jobs("shuto was closed before this finished")
+        # Look for a new release right at launch, off the page path (a slow network can't stall it).
+        threading.Thread(target=_launch_update_check, args=(state,), daemon=True).start()
         yield
         state.runner.shutdown()
 

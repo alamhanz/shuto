@@ -11,8 +11,8 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from shuto.ai import selection
 from shuto.ai.model_choice import ModelChoiceRequired
 from shuto.core.errors import PipelineError
-from shuto.core.jobs import JobContext
-from shuto.core.models import Status
+from shuto.core.jobs import JobBusy, JobContext
+from shuto.core.models import Job, Status
 from shuto.web import ux
 from shuto.web.routes.batch_support import batch_page, batch_url, count_by_status
 from shuto.web.state import Ctx, PostForm, WebCtx
@@ -21,6 +21,7 @@ from shuto.workflow import check_batch, checks, speed
 router = APIRouter()
 
 SPEED_CHOICES = ("tries", "model", "keep")
+AI_JOB_KINDS = ("check", "redo", "describe")  # jobs that write text; they hold the AI buttons
 
 
 def start_live(ctx: WebCtx, batch_id: str):
@@ -33,6 +34,53 @@ def start_live(ctx: WebCtx, batch_id: str):
     if live is not None:
         ctx.state.live[batch_id] = live
     return live
+
+
+def ai_busy(ctx: WebCtx, batch_id: str) -> Job | None:
+    """The batch's queued or running job (any kind), or None when nothing runs."""
+    job_id = ctx.runner.active_job(batch_id)
+    job = ctx.runner.get(job_id) if job_id else None
+    if job is not None and job.state not in ("queued", "running"):
+        return None  # it has just ended; the runner has not dropped it yet
+    return job
+
+
+def check_action(
+    ctx: WebCtx, request: Request, batch_id: str, facts: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    """What the "Check all N photos" button on the Check page shows right now.
+
+    state: idle (press it) | busy (the AI is running) | other (another task runs) |
+    problems (cannot run, see `problems`) | done (nothing left to check).
+    """
+    photos = ctx.store.list_photos(batch_id)
+    counts = count_by_status(photos)
+    n = counts.get("imported", 0) + counts.get("ready", 0)
+    out: dict[str, Any] = {
+        "state": "idle",
+        "n": n,
+        "problems": [],
+        "estimate": None,
+        "done": None,
+        "total": 0,
+    }
+    job = ai_busy(ctx, batch_id)
+    if job is not None:
+        if job.kind in AI_JOB_KINDS:
+            out["state"] = "busy"
+            if job.kind == "redo" and job.total:
+                out["done"], out["total"] = min(job.done, job.total), job.total
+        else:
+            out["state"] = "other"
+        return out
+    if not n:
+        out["state"] = "done"
+        return out
+    facts = facts or check_facts(ctx, request, batch_id, counts)
+    out["problems"], out["estimate"] = facts["problems"], facts["estimate"]
+    if out["problems"]:
+        out["state"] = "problems"
+    return out
 
 
 def check_facts(ctx: WebCtx, request: Request, batch_id: str, counts: dict[str, int]):
@@ -80,6 +128,7 @@ def check_page(request: Request, batch_id: str, ctx: Ctx):
         batch_id,
         "check",
         to_check=counts.get("imported", 0) + counts.get("ready", 0),
+        check=check_action(ctx, request, batch_id, facts),
         next_step=ux.next_action(batch_id, counts) if stage != "check" else None,
         review_href=batch_url(batch_id, "review"),
         **facts,
@@ -111,7 +160,10 @@ def speed_choice(request: Request, batch_id: str, choice: str, form: PostForm, c
 @router.post("/batch/{batch_id}/check", response_class=HTMLResponse)
 def check_start(request: Request, batch_id: str, form: PostForm, ctx: Ctx):
     cfg, store = ctx.cfg, ctx.store
-    ctx.get_batch_or_404(batch_id)
+    batch = ctx.get_batch_or_404(batch_id)
+    running = ai_busy(ctx, batch_id)
+    if running is not None:  # a second press, or a page opened before the job started
+        return ctx.job_fragment(request, running.id or 0)
     n = len(store.list_photos(batch_id, [Status.IMPORTED, Status.READY]))
     if not n:
         return ctx.message_fragment(request, "There are no new photos to check.")
@@ -150,4 +202,17 @@ def check_start(request: Request, batch_id: str, form: PostForm, ctx: Ctx):
             text += f" {d.failed} could not be written; press Check again to retry them."
         return text
 
-    return ctx.start_job(request, "check", batch_id, run, total=check_batch.CHECK_SCALE)
+    try:
+        job_id = ctx.runner.submit("check", batch_id, run, total=check_batch.CHECK_SCALE)
+    except JobBusy as exc:
+        return ctx.message_fragment(request, str(exc))
+    # The button is disabled at once, without waiting for the next poll.
+    button = ctx.render(
+        request,
+        "_check_action.html",
+        batch=batch,
+        check=check_action(ctx, request, batch_id),
+        oob=True,
+    )
+    job_part = ctx.job_fragment(request, job_id)
+    return HTMLResponse(bytes(job_part.body) + bytes(button.body))

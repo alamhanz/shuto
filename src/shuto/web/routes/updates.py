@@ -83,7 +83,11 @@ def updates_check(request: Request, form: PostForm, ctx: Ctx):
 def updates_settings(form: PostForm, ctx: Ctx):
     on = str(form.get("update_check") or "") == "on"
     settings_ui.set_ui_setting(ctx.store, "update_check", on)
-    notice = "shuto will check for new versions once a day." if on else "Automatic checks are off."
+    notice = (
+        "shuto will check for new versions when it opens and every few hours."
+        if on
+        else "Automatic checks are off."
+    )
     return ctx.go("/settings#updates", notice, None)
 
 

@@ -68,11 +68,13 @@ from shuto.update.release import (  # noqa: F401  (re-exported: other packages u
     wheel_url,
 )
 
-CHECK_TTL_S = 24 * 3600
+CHECK_TTL_S = 3 * 3600
 LOOPBACK = {"127.0.0.1", "::1", "localhost"}
 HELPER_SCRIPT = Path(__file__).with_name("_helper.py")
 
 _FETCH_LOCK = threading.Lock()
+_LAUNCH_LOCK = threading.Lock()
+_launch_checked = False
 
 
 @dataclass(frozen=True)
@@ -98,7 +100,7 @@ def cached_latest(
     now: Callable[[], float] = time.time,
     fetch: Callable[[], Latest | None] | None = None,
 ) -> Latest | None:
-    """The latest release, checked at most once a day (a failed check counts as a check)."""
+    """The latest release, checked at most every CHECK_TTL_S (a failed check counts as a check)."""
     fetch = fetch or fetch_latest
     with _FETCH_LOCK:
         cache = settings_ui.get_ui_setting(store, "update_cache")
@@ -118,6 +120,27 @@ def cached_latest(
             },
         )
         return found
+
+
+def launch_check(
+    store,
+    *,
+    now: Callable[[], float] = time.time,
+    fetch: Callable[[], Latest | None] | None = None,
+) -> bool:
+    """The first check after the app starts: ignores how old the saved check is.
+
+    Runs once per process, and only when automatic checks are on. Returns True if it checked.
+    """
+    global _launch_checked
+    with _LAUNCH_LOCK:
+        if _launch_checked:
+            return False
+        _launch_checked = True
+    if not settings_ui.get_ui_setting(store, "update_check", True):
+        return False
+    cached_latest(store, force=True, now=now, fetch=fetch)
+    return True
 
 
 # --------------------------------------------------------------------------- can we update?

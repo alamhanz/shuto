@@ -1,0 +1,20 @@
+{% from "_ui.html" import button, icon with context %}
+{%- set bid = batch.id|urlencode -%}
+{%- set n = check.n -%}
+<div id="check-action"{% if oob %} hx-swap-oob="true"{% endif %}{% if check.state in ('busy', 'other') %} hx-get="/batch/{{ bid }}/ai-status?place=check" hx-trigger="every 2s" hx-swap="outerHTML"{% endif %}>
+  {% if check.state == 'busy' %}
+  <button type="button" class="btn primary" disabled aria-disabled="true"><span class="spin">{{ icon('spinner') }}</span> The AI is running{% if check.done is not none %} ({{ check.done }} of {{ check.total }} done){% endif %}</button>
+  <p class="hint" role="status">You can leave this page. The AI keeps going, and the button works again when it is done.</p>
+  {% elif check.state == 'other' %}
+  <button type="button" class="btn primary" disabled aria-disabled="true">Check all {{ n }} photo{{ '' if n == 1 else 's' }}</button>
+  <p class="hint" role="status">Another task is running for this batch.</p>
+  {% elif check.state == 'done' %}
+  <p class="flash ok" role="status">{{ icon('check') }}<span>All photos are checked. <a href="/batch/{{ bid }}/review">Go to Review</a></span></p>
+  {% else %}
+  <form hx-post="/batch/{{ bid }}/check" hx-target="#job-area" hx-swap="innerHTML"
+        hx-confirm="Check {{ n }} photo{{ '' if n == 1 else 's' }}?{% if check.estimate %} This will take {{ check.estimate }}.{% endif %} You can stop it at any time.">
+    <input type="hidden" name="csrf_token" value="{{ csrf }}">
+    {{ button('Check all ' ~ n ~ ' photo' ~ ('' if n == 1 else 's'), attrs={'disabled': 'disabled'} if check.problems else {}) }}
+  </form>
+  {% endif %}
+</div>

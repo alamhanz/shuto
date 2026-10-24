@@ -130,7 +130,7 @@ def test_check_without_photos_or_busy(web, batch):
     started = web.state.runner.submit("x", batch, lambda ctx: release.wait(30))
     try:
         r = web.post(f"/batch/{batch}/check")
-        assert "already has job" in r.text
+        assert f'id="job-{started}"' in r.text  # the running job is shown, no second one starts
     finally:
         release.set()
     web.state.runner.wait(started)

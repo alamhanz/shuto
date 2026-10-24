@@ -12,7 +12,7 @@ from shuto.core.errors import PipelineError
 from shuto.core.jobs import JobBusy, JobContext
 from shuto.core.models import UPLOADED_STATES, Photo, Status
 from shuto.web import ux
-from shuto.web.routes.batch import start_live
+from shuto.web.routes.batch import ai_busy, check_action, start_live
 from shuto.web.routes.batch_support import (
     FILTERS,
     ai_facts,
@@ -30,6 +30,8 @@ from shuto.workflow import review as workflow_review
 
 router = APIRouter()
 
+WAITING_FOR_AI = (Status.IMPORTED, Status.READY)
+RUN_NOW_KEY = "ui.send_back_run_now"  # "Run the AI right away" on Send back; remembered
 WHY_FILTERS = ("quality", "copies", "theme", "rules")  # why a photo was set aside
 WHY_LABELS = {
     "quality": "Quality",
@@ -162,6 +164,7 @@ def review_page(
         why_counts=why_counts,
         why_labels=WHY_LABELS,
         waiting=waiting,
+        run_now=bool(ctx.store.get_setting(RUN_NOW_KEY, True)),
         not_approved=waiting
         + counts.get("described", 0)
         + counts.get("needs_review", 0)
@@ -182,10 +185,7 @@ def _count_text(n: int, word: str = "photo") -> str:
 
 def _running_job(ctx: WebCtx, batch_id: str) -> tuple[Any, bool]:
     """The batch's running job, and whether it picks up photos sent back (check and redo do)."""
-    job_id = ctx.runner.active_job(batch_id)
-    job = ctx.runner.get(job_id) if job_id else None
-    if job is not None and job.state not in ("queued", "running"):
-        job = None  # it has just ended; the runner has not dropped it yet
+    job = ai_busy(ctx, batch_id)
     return job, job is not None and job.kind in ("check", "redo")
 
 
@@ -277,9 +277,15 @@ def start_redo_job(ctx: WebCtx, batch_id: str) -> int:
 
 
 def send_back_and_run(
-    ctx: WebCtx, request: Request, batch_id: str, ids: list[int]
+    ctx: WebCtx, request: Request, batch_id: str, ids: list[int], run_now: bool | None = None
 ) -> tuple[str | None, str | None]:
-    """Send photos back and make sure the AI runs on them. Returns (notice, error) texts."""
+    """Send photos back and, unless `run_now` is False, make sure the AI runs on them.
+
+    `run_now` None means the saved choice (ticked until the owner unticks it).
+    Returns (notice, error) texts.
+    """
+    if run_now is None:
+        run_now = bool(ctx.store.get_setting(RUN_NOW_KEY, True))
     s = redo.send_back(ctx.cfg, ctx.store, batch_id, ids)
     left_out = len(s.on_shutterstock)
     parts: list[str] = []
@@ -290,7 +296,18 @@ def send_back_and_run(
         parts.append(f"{_count_text(len(s.sent))} sent back.")
         block = ctx.model_block(request)
         job, drains = _running_job(ctx, batch_id)
-        if block:
+        if not run_now:
+            if job is not None and drains:
+                parts.append("The AI is already running for this batch and will include them.")
+            else:
+                waiting = sum(
+                    1 for p in ctx.store.list_photos(batch_id) if p.status in WAITING_FOR_AI
+                )
+                parts.append(
+                    "They wait for the AI: press Run the AI now here, or "
+                    f"Check all {_count_text(waiting)} on the Check page."
+                )
+        elif block:
             parts.append(
                 f"The AI cannot run now: {block} The photos wait; fix that in Settings, then "
                 "press Run the AI now."
@@ -324,8 +341,18 @@ def send_back_and_run(
 
 
 @router.get("/batch/{batch_id}/ai-status", response_class=HTMLResponse)
-def ai_status(request: Request, batch_id: str, ctx: Ctx, seen: str = "0", show: str = ""):
+def ai_status(
+    request: Request, batch_id: str, ctx: Ctx, seen: str = "0", show: str = "", place: str = ""
+):
     batch = ctx.get_batch_or_404(batch_id)
+    if place == "check":  # the Check page polls here to keep its button in step with the job
+        return ctx.render(
+            request,
+            "_check_action.html",
+            batch=batch,
+            check=check_action(ctx, request, batch_id),
+            review_href=batch_url(batch_id, "review"),
+        )
     ai = ai_working(ctx, batch_id, _seen_of(seen), filter_of(show))
     return ctx.render(request, "_ai_working.html", batch=batch, ai=ai)
 
@@ -420,7 +447,11 @@ def batch_bulk(request: Request, batch_id: str, form: PostForm, ctx: Ctx):
                     cfg, ctx.store, photo_ids=ids, include_needs_review=True
                 )
             else:
-                notice, error = send_back_and_run(ctx, request, batch_id, ids)
+                run_now = None
+                if form.get("run_now_shown"):
+                    run_now = form.get("run_now") == "on"
+                    ctx.store.set_setting(RUN_NOW_KEY, run_now)
+                notice, error = send_back_and_run(ctx, request, batch_id, ids, run_now)
                 return ctx.back(path, notice=notice, error=error)
         else:
             raise HTTPException(status_code=400, detail="Unknown bulk action.")

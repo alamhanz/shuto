@@ -4,7 +4,7 @@
 {% block stepper %}{% include "_batch_stepper.html" %}{% endblock %}
 {% block content %}
 <h1>Check your photos</h1>
-{% if to_check %}
+{% if to_check or check.state == 'busy' %}
 <div class="panel">
   <p>shuto will check <strong>{{ to_check }}</strong> new photo{{ '' if to_check == 1 else 's' }} in three parts:</p>
   <ol>
@@ -23,11 +23,7 @@
   {% if active_job %}
   <div id="active-job" hx-get="/jobs/{{ active_job }}" hx-trigger="load" hx-target="#job-area" hx-swap="innerHTML"></div>
   {% endif %}
-  <form hx-post="/batch/{{ batch.id|urlencode }}/check" hx-target="#job-area" hx-swap="innerHTML"
-        hx-confirm="Check {{ to_check }} photo{{ '' if to_check == 1 else 's' }}?{% if estimate %} This will take {{ estimate }}.{% endif %} You can stop it at any time.">
-    <input type="hidden" name="csrf_token" value="{{ csrf }}">
-    {{ button('Check all ' ~ to_check ~ ' photo' ~ ('' if to_check == 1 else 's'), attrs={'disabled': 'disabled'} if problems else {}) }}
-  </form>
+  {% include "_check_action.html" %}
   <p class="hint">Your photos stay on this computer. Nothing is sent to Shutterstock yet.</p>
 </div>
 {% else %}

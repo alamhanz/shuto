@@ -124,12 +124,60 @@ def test_cached_latest_ttl_force_and_failures(store):
     clock["t"] += updates.CHECK_TTL_S + 1
     updates.cached_latest(store, **kw)
     assert len(calls) == 3
-    # a failed check is cached too, so offline means one try a day
+    # a failed check is cached too, so offline means one try per interval
     clock["t"] += updates.CHECK_TTL_S + 1
     assert updates.cached_latest(store, now=kw["now"], fetch=lambda: None) is None
     assert updates.last_check_failed(store)
     assert updates.cached_latest(store, now=kw["now"], fetch=fetch) is None
     assert len(calls) == 3
+
+
+def _counting_fetch(calls):
+    def fetch():
+        calls.append(1)
+        return Latest("0.3.0", updates.wheel_url("0.3.0"), TAG, 0.0)
+
+    return fetch
+
+
+def test_check_interval_is_three_hours():
+    assert updates.CHECK_TTL_S == 3 * 3600
+
+
+def test_launch_check_forces_once_per_process(store, monkeypatch):
+    monkeypatch.setattr(updates, "_launch_checked", False)
+    calls = []
+    fetch = _counting_fetch(calls)
+    now = lambda: 5000.0  # noqa: E731
+    updates.cached_latest(store, now=now, fetch=fetch)  # fresh cache from a minute ago
+    assert len(calls) == 1
+    assert updates.launch_check(store, now=now, fetch=fetch) is True
+    assert len(calls) == 2
+    assert updates.launch_check(store, now=now, fetch=fetch) is False
+    assert len(calls) == 2
+    updates.cached_latest(store, now=now, fetch=fetch)  # within 3 h: no refetch
+    assert len(calls) == 2
+    later = lambda: 5000.0 + updates.CHECK_TTL_S + 1  # noqa: E731
+    updates.cached_latest(store, now=later, fetch=fetch)
+    assert len(calls) == 3
+
+
+def test_launch_check_off_means_no_fetch(store, monkeypatch):
+    monkeypatch.setattr(updates, "_launch_checked", False)
+    settings_ui.set_ui_setting(store, "update_check", False)
+    calls = []
+    assert updates.launch_check(store, fetch=_counting_fetch(calls)) is False
+    assert calls == []
+
+
+def test_launch_check_failure_counts_as_a_check(store, monkeypatch):
+    monkeypatch.setattr(updates, "_launch_checked", False)
+    now = lambda: 100.0  # noqa: E731
+    assert updates.launch_check(store, now=now, fetch=lambda: None) is True
+    assert updates.last_check_failed(store)
+    calls = []
+    assert updates.cached_latest(store, now=now, fetch=_counting_fetch(calls)) is None
+    assert calls == []
 
 
 def test_cached_latest_fetches_once_for_concurrent_callers(store):

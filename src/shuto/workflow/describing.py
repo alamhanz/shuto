@@ -14,7 +14,7 @@ from shuto.ai import catalog as local_models
 from shuto.ai import describe, estimate, hardware, machine, prompts, selection, speedcheck
 from shuto.ai import filters as filters_mod
 from shuto.ai import recommend as ai_recommend
-from shuto.ai.providers.base import LLMError, VisionLLM
+from shuto.ai.providers.base import LLMCancelled, LLMError, VisionLLM
 from shuto.core import models, paths
 from shuto.core import progress as core_progress
 from shuto.core import text as core_text
@@ -251,6 +251,7 @@ class DescribeRun:
             facts=facts,
             condensed=selection.use_condensed_prompt(use),
             max_tries=tries,
+            cancel=self.cancel,
         )
 
     def _save_result(self, photo: Photo, res: Any, use: VisionLLM, tries: int) -> Status:
@@ -324,8 +325,11 @@ class DescribeRun:
                     raise
                 return self._flag_unreadable(photo, why)
             res = self._describe(photo, use, image, tries_now)
+        except LLMCancelled:
+            return photo, None, None  # stopped mid-answer: nothing was written, old text stays
         except LLMError as exc:
-            self._log_call(use, pid, ok=False, error=str(exc)[:500])
+            kind = f"[{exc.kind}] " if exc.kind else ""  # the rating counts only kind "model"
+            self._log_call(use, pid, ok=False, error=f"{kind}{exc}"[:500])
             if self.as_draft:
                 self._fail_draft(pid, str(exc))
             if self.abort.failed(exc):

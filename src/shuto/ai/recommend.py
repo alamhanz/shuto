@@ -6,11 +6,12 @@ and call OllamaClient.pull() themselves after explicit user confirmation.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Literal
 
-from shuto.ai import catalog
+from shuto.ai import catalog, machine, rating
 from shuto.ai import estimate as est
 from shuto.ai.benchmark import bench_key
 from shuto.ai.catalog import DISK_HEADROOM_GB, QUALITY_LABELS, ApiModel, LocalModel
@@ -22,7 +23,8 @@ from shuto.ai.hardware import (
     set_env_hint,
 )
 
-OS_RESERVED_RAM_GB = 4  # RAM kept for the system when sizing a model for the CPU
+OS_RESERVED_RAM_GB = rating.OS_RESERVED_RAM_GB  # RAM kept for the system on the CPU
+UNKNOWN_SECONDS = 60.0  # sort position of a model with no speed figures (never shown as a time)
 
 
 @dataclass
@@ -32,8 +34,9 @@ class Recommendation:
     reason: str
     pulled: bool
     est_seconds_per_image: float
-    basis: Literal["benchmark", "heuristic"]
+    basis: Literal["benchmark", "heuristic", "measured", "unknown"]
     mode: str = "cpu"  # "gpu" when the model fits in GPU/unified memory, else "cpu"
+    rating: rating.ModelRating | None = None
 
 
 def gpu_fit(m: LocalModel, profile: HardwareProfile) -> bool:
@@ -46,18 +49,8 @@ def ram_spare_gb(m: LocalModel, profile: HardwareProfile) -> float:
     return profile.ram_gb - OS_RESERVED_RAM_GB - m.min_ram_gb
 
 
-_FALLBACK = {
-    "gpu_8": ["gpu_8", "gpu_6"],
-    "gpu_24": ["gpu_24", "gpu_12"],
-    "apple_64": ["apple_64", "apple_32"],
-}
-
-
 def _heuristic_s(m: LocalModel, tier: str) -> float | None:
-    for key in _FALLBACK.get(tier, [tier]):
-        if key in m.est_s:
-            return m.est_s[key]
-    return None
+    return rating.tier_seconds(m, tier)
 
 
 def assess(m: LocalModel, profile: HardwareProfile, benchmarks: dict | None = None):
@@ -86,21 +79,34 @@ def assess(m: LocalModel, profile: HardwareProfile, benchmarks: dict | None = No
     return fits, mode, reason, float(secs), basis
 
 
+def _recommendation(
+    m: LocalModel,
+    profile: HardwareProfile,
+    have: set[str],
+    benchmarks: dict | None,
+    facts: dict[str, rating.Facts] | None,
+) -> Recommendation:
+    fits, _mode, reason, _secs, _basis = assess(m, profile, benchmarks)
+    tag = normalize_tag(m.tag)
+    r = rating.rate(m, profile, (facts or {}).get(tag), benchmarks)
+    secs = r.seconds if r.seconds is not None else UNKNOWN_SECONDS
+    basis = "heuristic" if r.basis == "estimate" else r.basis
+    return Recommendation(
+        m, fits and r.memory != "no_room", reason, tag in have, secs, basis, r.mode, r
+    )
+
+
 def recommend(
     profile: HardwareProfile,
     catalog: tuple[list[LocalModel], list[ApiModel]] | list[LocalModel],
     pulled: list[str],
     benchmarks: dict | None = None,
+    facts: dict[str, rating.Facts] | None = None,
 ) -> list[Recommendation]:
     """Fitting models first, then quality descending, then speed ascending."""
     models = catalog[0] if isinstance(catalog, tuple) else catalog
     have = {normalize_tag(p) for p in pulled}
-    recs = []
-    for m in models:
-        fits, mode, reason, secs, basis = assess(m, profile, benchmarks)
-        recs.append(
-            Recommendation(m, fits, reason, normalize_tag(m.tag) in have, secs, basis, mode)
-        )
+    recs = [_recommendation(m, profile, have, benchmarks, facts) for m in models]
     recs.sort(key=lambda r: (not r.fits, -r.model.quality, r.est_seconds_per_image))
     return recs
 
@@ -138,9 +144,38 @@ class ModelRow:
     reason: str
     notes: str
     verify: bool
+    rating: str = "ok"
+    rating_label: str = ""
+    rating_reason: str = ""
+    thinks: bool = False  # keeps thinking although told not to
+    catalogued: bool = True
 
     def to_dict(self) -> dict:
         return asdict(self)
+
+
+def suggest_model(
+    exclude: str = "",
+    *,
+    profile: HardwareProfile | None = None,
+    facts: dict[str, rating.Facts] | None = None,
+) -> str | None:
+    """The best model rated Good for this computer (never `exclude`), or None when no model is
+    Good or the computer cannot be read. Uses the model list's speed figures."""
+    try:
+        rows = top_models(
+            profile or machine.hardware_profile(),
+            catalog.load_catalog(),
+            [],
+            None,
+            None,
+            None,
+            facts,
+        )
+    except Exception:
+        return None
+    skip = normalize_tag(exclude) if exclude else ""
+    return next((r.tag for r in rows if r.rating == "good" and normalize_tag(r.tag) != skip), None)
 
 
 def top_models(
@@ -149,22 +184,37 @@ def top_models(
     pulled: list[str],
     benchmarks: dict | None = None,
     disk_free_gb: float | None = None,
-    n: int = 8,
+    n: int | None = 8,
+    facts: dict[str, rating.Facts] | None = None,
+    extra_models: Sequence[LocalModel] = (),
 ) -> list[ModelRow]:
-    """Top n models by quality+speed score among those this machine can run.
+    """The best n models, rated Good first, then OK, then Not recommended, best score first.
 
-    If fewer than n can run, the best of the rest are appended with fits_hardware=False.
-    disk_free_gb is the free space where Ollama stores models (None = unknown -> assume fits).
+    `extra_models` are installed models that are not on the model list: they are rated from
+    what shuto has seen of them. n=None returns every model. disk_free_gb is the free space
+    where Ollama stores models (None = unknown -> assume fits).
     """
-    recs = recommend(profile, catalog, pulled, benchmarks)
+    recs = recommend(profile, catalog, pulled, benchmarks, facts)
+    have = {normalize_tag(p) for p in pulled}
+    recs += [_recommendation(m, profile, have, benchmarks, facts) for m in extra_models]
+    extra_tags = {normalize_tag(m.tag) for m in extra_models}
     scored = sorted(
         recs,
-        key=lambda r: (not r.fits, -combined_score(r.model.quality, r.est_seconds_per_image)),
-    )[:n]
+        key=lambda r: (
+            rating.RATING_ORDER[r.rating.rating if r.rating else "ok"],
+            not r.fits,
+            -combined_score(r.model.quality, r.est_seconds_per_image),
+        ),
+    )
+    if n is not None:
+        scored = scored[:n]
     rows = []
     for i, r in enumerate(scored, 1):
         m = r.model
+        rt = r.rating
+        assert rt is not None
         fits_disk = r.pulled or disk_free_gb is None or m.size_gb + DISK_HEADROOM_GB <= disk_free_gb
+        unknown = rt.basis == "unknown"
         rows.append(
             ModelRow(
                 rank=i,
@@ -174,19 +224,52 @@ def top_models(
                 basis=r.basis,
                 quality=m.quality,
                 tier_label=f"{QUALITY_LABELS.get(m.quality, 'good')} quality / "
-                f"{speed_label(r.est_seconds_per_image)}",
+                + ("speed not measured" if unknown else speed_label(r.est_seconds_per_image)),
                 score=combined_score(m.quality, r.est_seconds_per_image),
                 mode=r.mode,
                 fits_hardware=r.fits,
                 fits_disk=fits_disk,
                 pulled=r.pulled,
-                recommended=(i == 1 and r.fits),
+                recommended=(i == 1 and rt.rating != "not_recommended" and r.fits),
                 reason=r.reason,
                 notes=m.notes,
                 verify=m.verify,
+                rating=rt.rating,
+                rating_label=rating.RATING_LABELS[rt.rating],
+                rating_reason=rt.reason,
+                thinks=rt.thinks,
+                catalogued=normalize_tag(m.tag) not in extra_tags,
             )
         )
     return rows
+
+
+OK_SHOWN_WITHOUT_GOOD = 3  # OK models shown when no model is Good
+
+
+def visible_rows(
+    rows: Sequence[ModelRow], selected: str | None, show_all: bool = False
+) -> tuple[list[ModelRow], bool]:
+    """The rows to show and whether no model is Good for this computer.
+
+    Normally only Good models show. If none is Good, the best few OK ones show instead. The model
+    in use (`selected`, a normalized tag) always shows, and so does a downloaded model that is
+    not on shuto's list unless it is Not recommended. `show_all` shows everything.
+    """
+    no_good = not any(r.rating == "good" for r in rows)
+    if show_all:
+        return list(rows), no_good
+    ok_left = OK_SHOWN_WITHOUT_GOOD if no_good else 0
+    keep = []
+    for r in rows:
+        wanted = r.rating == "good"
+        if not wanted and r.rating == "ok" and ok_left > 0:
+            wanted, ok_left = True, ok_left - 1
+        if not wanted and r.pulled and not r.catalogued and r.rating != "not_recommended":
+            wanted = True
+        if wanted or (selected is not None and normalize_tag(r.tag) == selected):
+            keep.append(r)
+    return keep, no_good and any(r.rating == "ok" for r in keep)
 
 
 # ---------------------------------------------------------------- disk advice

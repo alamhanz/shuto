@@ -262,9 +262,9 @@ def test_doctor_and_list_models(cfg, store):
     cfg.llm.provider = "ollama"
     client = FakeOllama(pulled=["moondream:latest"])
     report = workflow_models.doctor(cfg, store, client=client)
-    assert report.selected is None and len(report.rows) == 8
+    assert report.selected is None and len(report.rows) == len(local_models.load_catalog()[0])
     assert report.ollama.running and report.hardware["tier"] == "cpu"
-    rows = workflow_models.list_models(cfg, client=client)
+    rows = workflow_models.list_models(cfg, client=client, n=8)
     assert [r.rank for r in rows] == list(range(1, 9))
     workflow_models.use_model(cfg, store, "moondream")
     assert workflow_models.doctor(cfg, store, client=client).selected == "ollama:moondream"

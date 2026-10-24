@@ -127,6 +127,7 @@ def _ask(
     filters: FilterSpec | None,
     facts: dict | None,
     condensed: bool,
+    cancel: Callable[[], bool] | None,
 ) -> _Asked:
     """Build the prompt and make the first model call."""
     system, user = build_prompt(
@@ -150,6 +151,7 @@ def _ask(
         max_tokens=max_tokens,
         temperature=temperature,
         timeout_s=timeout_s,
+        cancel=cancel,
     )
     if schema is None:
         result = describe_structured(llm, req, retries=retries)
@@ -413,6 +415,7 @@ def describe_photo(
     facts: dict | None = None,
     condensed: bool = False,
     max_tries: int = rules.MAX_TRIES,
+    cancel: Callable[[], bool] | None = None,
 ) -> DescribeResult:
     """Describe one photo. At most ``max_tries`` model calls: the first answer, then repairs
     while a hard problem remains, each one a little warmer; it stops early when valid or when
@@ -433,6 +436,7 @@ def describe_photo(
         filters=filters,
         facts=facts,
         condensed=condensed,
+        cancel=cancel,
     )
     known_place = (facts or {}).get("place")
     location = asked.out.location.model_dump()

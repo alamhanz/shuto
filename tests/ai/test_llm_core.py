@@ -125,6 +125,9 @@ class FakeResp:
         return json.dumps(self._payload).encode()
 
     def __iter__(self):
+        if not self._lines and isinstance(self._payload, dict) and "message" in self._payload:
+            # a whole chat reply is streamed as one finished chunk
+            return iter([json.dumps({**self._payload, "done": True}).encode() + b"\n"])
         return iter(self._lines)
 
     def close(self):
@@ -158,7 +161,7 @@ def test_ollama_chat_and_provider(monkeypatch):
     body = json.loads(seen[1].data)
     assert seen[1].full_url == "http://127.0.0.1:11434/api/chat"
     assert "think" not in body
-    assert body["model"] == "qwen3-vl:8b" and body["stream"] is False
+    assert body["model"] == "qwen3-vl:8b" and body["stream"] is True
     assert body["format"] == PHOTO_OUTPUT_SCHEMA
     assert body["options"] == {"temperature": 0.2, "num_predict": 1500, "num_ctx": 8192}
     assert body["keep_alive"] == "10m"

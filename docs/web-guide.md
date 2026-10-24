@@ -1,6 +1,6 @@
 # shuto web guide
 
-This guide matches shuto version 0.6.4. Screens may differ slightly in other versions.
+This guide matches shuto version 0.6.5. Screens may differ slightly in other versions.
 
 shuto is a web page that runs on your own computer. Open it by double-clicking the **shuto**
 icon (or go to <http://127.0.0.1:8765>). The menu at the top has **Home**, **Add photos**,
@@ -47,6 +47,8 @@ Your original photos are only read, never changed.
 Click **Check all photos**. shuto does three things in one go: it looks at quality (sharp,
 bright and big enough), the AI writes a title, description and keywords, and shuto checks the
 Shutterstock rules. A progress bar shows how long it will take, and you can cancel.
+Cancel stops the AI within a second or two, even in the middle of a photo; that photo keeps
+its old text. A slow model is only given up on when it sends nothing for 5 minutes.
 <!-- screenshot: the check step with a progress bar (images/web-check.png) -->
 
 If the AI helper is not running, a box explains how to fix it in **Settings**.
@@ -55,8 +57,19 @@ While the AI is working, the **Check all photos** button is greyed out and says
 the AI is running. When you sent photos back and the AI is rewriting them, it also shows how
 many are done. It works again when the AI is done.
 
-If you use a thinking model (for example qwen3-vl:8b), Settings notes that it thinks before it
-answers, so it is slower (about a minute per photo).
+Every model card says how well the model suits this computer: **Good**, **OK** or **Not
+recommended**, with one line of reason. Only Good models are listed (the first one in the setup
+is marked **Best match**). If none is Good, the best OK ones are listed with a note. Tick **Show
+models that are not recommended for this computer** to see the rest; the tick is not remembered,
+so the next visit starts with the short list again. The model you use is always shown. If it is
+Not recommended, a warning says why and suggests a better one, but shuto never switches by
+itself. Using or downloading a Not recommended model asks you to confirm first.
+
+Models you downloaded yourself that are not on shuto's list show up too, if they can look at
+photos, marked "Not on shuto's model list". They count as OK until shuto has seen a few photos
+done with them. After a few photos, the rating uses how long your photos really took.
+A model that keeps thinking before it answers, even though shuto asks it not to, is never rated
+Good, because it is slow and sometimes stops without an answer.
 
 ### Your photo rules
 

@@ -355,6 +355,34 @@ To go back: close shuto, install the older version, then replace `shuto.db` with
   (`photos.draft_json`, schema v3). Status, text and the prepared copy do not change until you
   press **Use the new text**. Drafts that are waiting are worked off after the running job; each is
   tried once per run.
+- Model rating (`ai/rating.py`). The worst of these rules wins:
+  - Memory: the model's need (list value or what Ollama reports for a loaded model) against the
+    graphics card (largest single card minus 0.5 GiB), the unified memory on Apple Silicon, or
+    RAM minus 4 GiB. Up to 85% of it is "fits", up to 100% "tight" (OK at most). Too big for the
+    card means it runs on the processor and is rated by CPU speed. More than the RAM: Not
+    recommended. A card whose memory cannot be read counts as no card.
+  - Speed per photo: the median of the last 3 or more good calls (last 10 calls, 90 days;
+    only failures the model causes count, see below), else the speed test, else the list
+    estimate. Good is 20 s or less, OK is 60 s or less, slower is Not recommended. The band last
+    shown for a model is remembered while shuto runs, and a new band needs the speed to be 20%
+    past the limit in either direction, so ratings do not flap. The first time, a measured speed
+    leaves the estimate's band only when it is 20% past the limit.
+  - Thinks anyway: the model list says so (`always_thinks`), or the Ollama client saw thinking
+    although `think: false` was sent (remembered for the whole run, per Ollama address and model),
+    or the median answer per try is over 800 tokens (a photo's logged tokens are divided by
+    1 + its retries, so a model that often needs repairs is not mistaken for a thinker). Three good calls
+    with a median of 800 tokens or less clear the list flag. Such a model is never Good, its
+    estimate is multiplied by 4, its OK limit is 40 s, and with tight memory it is Not
+    recommended. A model that obeys `think: false` (qwen3.5:4b) is rated like any other.
+  - Also: quality below 3 or a context of 4096 or less is OK at most; a model with unconfirmed
+    numbers (`verify`) or not on the list is OK at most until measured; 3 failures in the last
+    10 calls, or a loaded model seen outside graphics card memory, is Not recommended.
+  - Which failures count: each failed `llm_calls` row starts its `error` text with a kind in
+    brackets (`LLMError.kind`). `[model]` counts: a stall or timeout, running out of room,
+    a crash, an unusable answer. `[connection]` (Ollama not running, connection lost), `[missing]`
+    (HTTP 404, model not downloaded), `[other]` and cancels do not, and are left out of the
+    last 10 calls. Rows from before this had no kind and are judged by their text. No new column,
+    so the database schema is unchanged.
 - Thinking models: shuto adds 4096 tokens of room for thinking, retries once with more when the
   answer was cut off while thinking, and then shows a plain hint.
 - The update check runs when shuto opens and again on the first page load after 3 hours.
@@ -376,7 +404,7 @@ To go back: close shuto, install the older version, then replace `shuto.db` with
 
 ## Status and roadmap
 
-shuto is an early version (0.6.4). The pipeline, command line and local web app work end to end,
+shuto is an early version (0.6.5). The pipeline, command line and local web app work end to end,
 and the tests run on Linux, macOS and Windows.
 
 Known limits:

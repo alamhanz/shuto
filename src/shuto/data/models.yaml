@@ -5,6 +5,11 @@
 # est_s = heuristic seconds/image (warm model, ~1024 px image, ~600 output tokens), replaced by a
 # measured value once `shuto models bench` has run. Missing tier keys fall back (gpu_8 -> gpu_6,
 # gpu_24 -> gpu_12, apple_64 -> apple_32, then cpu).
+# mem_gb = memory in GB the model needs at 8192 context (weights, vision part, working memory);
+# the rating (ai/rating.py) compares it with the graphics card or the free RAM.
+# thinks = the model can think before it answers. always_thinks = it keeps thinking even when
+# shuto asks it not to (much slower: the rating adds a speed penalty and never rates it Good).
+# verify = numbers not confirmed; such a model is rated at most OK until shuto has measured it.
 # context_tokens = the model's context window; 4096 or less gets the short prompt (see
 # local_models.SMALL_CONTEXT_TOKENS).
 # Sample image: src/shuto/data/sample.jpg is a CC0 street photo from Wikimedia Commons
@@ -16,6 +21,7 @@ local:
   - tag: moondream
     params_b: 1.9
     size_gb: 1.7
+    mem_gb: 2.3
     min_ram_gb: 4
     min_vram_gb: 0
     quality: 1
@@ -26,6 +32,7 @@ local:
   - tag: llava-phi3
     params_b: 3.8
     size_gb: 2.9
+    mem_gb: 3.8
     min_ram_gb: 6
     min_vram_gb: 4
     quality: 2
@@ -37,6 +44,7 @@ local:
   - tag: granite3.2-vision
     params_b: 2.0
     size_gb: 2.4
+    mem_gb: 3.2
     min_ram_gb: 6
     min_vram_gb: 4
     quality: 2
@@ -47,6 +55,7 @@ local:
   - tag: qwen2.5vl:3b
     params_b: 3.8
     size_gb: 3.2
+    mem_gb: 3.9
     min_ram_gb: 8
     min_vram_gb: 4
     quality: 3
@@ -57,6 +66,7 @@ local:
   - tag: gemma3:4b
     params_b: 4.3
     size_gb: 3.3
+    mem_gb: 4.6
     min_ram_gb: 8
     min_vram_gb: 4
     quality: 3
@@ -67,17 +77,34 @@ local:
   - tag: qwen3-vl:4b
     params_b: 4.0
     size_gb: 3.3
+    mem_gb: 4.6
     min_ram_gb: 8
     min_vram_gb: 4
     quality: 3
     json_reliability: high
     est_s: {cpu: 70, gpu_6: 7, gpu_12: 4.5, apple_16: 10, apple_32: 6}
     context_tokens: 262144
+    thinks: true
+    always_thinks: true
     notes: Good structured output for its size
+    verify: true
+  - tag: qwen3.5:4b
+    params_b: 4.2
+    size_gb: 3.3
+    mem_gb: 4.5
+    min_ram_gb: 8
+    min_vram_gb: 4
+    quality: 3
+    json_reliability: high
+    est_s: {cpu: 70, gpu_6: 7, gpu_12: 4.5, apple_16: 10, apple_32: 6}
+    context_tokens: 262144
+    thinks: true
+    notes: Small and quick; thinks only when allowed to
     verify: true
   - tag: qwen2.5vl:7b
     params_b: 8.3
     size_gb: 6.0
+    mem_gb: 6.9
     min_ram_gb: 12
     min_vram_gb: 6
     quality: 4
@@ -88,6 +115,7 @@ local:
   - tag: minicpm-v:8b
     params_b: 8.0
     size_gb: 5.5
+    mem_gb: 6.3
     min_ram_gb: 12
     min_vram_gb: 6
     quality: 4
@@ -98,17 +126,21 @@ local:
   - tag: qwen3-vl:8b
     params_b: 8.0
     size_gb: 6.1
+    mem_gb: 6.9
     min_ram_gb: 12
     min_vram_gb: 6
     quality: 4
     json_reliability: high
     est_s: {cpu: 190, gpu_6: 15, gpu_12: 8, apple_16: 22, apple_32: 12}
     context_tokens: 262144
-    notes: Best default when it fits (8 GB+ GPU or 16 GB+ Apple)
+    thinks: true
+    always_thinks: true
+    notes: Strong, but thinks before it answers and is slow; needs a big GPU or 16 GB+ Apple
     verify: true
   - tag: llama3.2-vision:11b
     params_b: 10.7
     size_gb: 7.8
+    mem_gb: 9.5
     min_ram_gb: 16
     min_vram_gb: 10
     quality: 4
@@ -119,6 +151,7 @@ local:
   - tag: gemma3:12b
     params_b: 12.2
     size_gb: 8.1
+    mem_gb: 9.6
     min_ram_gb: 16
     min_vram_gb: 10
     quality: 4
@@ -129,6 +162,7 @@ local:
   - tag: gemma3:27b
     params_b: 27.4
     size_gb: 17.0
+    mem_gb: 20
     min_ram_gb: 32
     min_vram_gb: 20
     quality: 5
@@ -139,6 +173,7 @@ local:
   - tag: mistral-small3.2:24b
     params_b: 24.0
     size_gb: 15.0
+    mem_gb: 17.5
     min_ram_gb: 32
     min_vram_gb: 18
     quality: 5
@@ -150,12 +185,15 @@ local:
   - tag: qwen3-vl:32b
     params_b: 32.0
     size_gb: 20.0
+    mem_gb: 24
     min_ram_gb: 40
     min_vram_gb: 24
     quality: 5
     json_reliability: high
     est_s: {cpu: 900, gpu_24: 20, apple_64: 28}
     context_tokens: 262144
+    thinks: true
+    always_thinks: true
     notes: Best local quality; needs 24 GB+ GPU or 64 GB Apple
     verify: true
 

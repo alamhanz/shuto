@@ -7,9 +7,9 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from shuto.ai import catalog as local_models
+from shuto.ai import hardware, selection
 from shuto.ai import model_choice as ai_choice
 from shuto.ai import recommend as ai_recommend
-from shuto.ai import selection
 from shuto.cli._io import (
     COMMON,
     _confirm,
@@ -25,21 +25,32 @@ from shuto.workflow import models as workflow_models
 
 if TYPE_CHECKING:
     from shuto.cli import Ctx
+    from shuto.store import Store
 
 
-def print_models_table(rows: Sequence[ai_recommend.ModelRow]) -> None:
+def print_models_table(
+    rows: Sequence[ai_recommend.ModelRow],
+    *,
+    show_all: bool = False,
+    selected: str | None = None,
+) -> None:
+    """The models rated for this computer. Without `show_all` only Good ones (or the best OK
+    ones when none is Good) and the model in use are listed."""
+    shown, _ = ai_recommend.visible_rows(rows, selected, show_all)
     body = [
         (
             r.rank,
             r.tag + (" *" if r.recommended else ""),
             f"{r.size_gb:g} GB",
-            f"{r.est_seconds_per_image:g} s ({r.basis})",
+            "not measured"
+            if r.basis == "unknown"
+            else f"{r.est_seconds_per_image:g} s ({r.basis})",
             r.tier_label,
-            yes_no(r.fits_hardware),
+            r.rating_label.removesuffix(" for this computer"),
             yes_no(r.fits_disk),
             yes_no(r.pulled),
         )
-        for r in rows
+        for r in shown
     ]
     out(
         table(
@@ -49,14 +60,23 @@ def print_models_table(rows: Sequence[ai_recommend.ModelRow]) -> None:
                 "download",
                 "est. per image",
                 "quality / speed",
-                "fits hw",
+                "rating",
                 "fits disk",
                 "pulled",
             ],
             body,
         )
     )
-    out("* = best score for this machine. Estimates are heuristics until `shuto models bench`.")
+    out("* = best match for this machine. Estimates are heuristics until `shuto models bench`.")
+    for r in shown:
+        if r.rating == "not_recommended":
+            out(f"{r.tag} is not recommended for this computer: {r.rating_reason}")
+    hidden = len(rows) - len(shown)
+    if hidden:
+        out(
+            f"Hidden: {hidden} model{'' if hidden == 1 else 's'} not recommended for this "
+            "computer (see --all)."
+        )
     out("Pick one with: shuto models use <model>   (nothing is downloaded until you confirm).")
 
 
@@ -86,16 +106,16 @@ def ollama_guidance(os_name: str) -> str:
 def no_model_message() -> str:
     return (
         "No local model chosen yet. shuto never picks one silently.\n"
-        "See the top 8 for this machine with `shuto models list`, then choose with "
+        "See the models that suit this machine with `shuto models list`, then choose with "
         "`shuto models use <model>`."
     )
 
 
-def show_model_choice(cfg: Config) -> None:
+def show_model_choice(cfg: Config, store: Store | None = None) -> None:
     out(no_model_message())
     out()
     try:
-        print_models_table(workflow_models.list_models(cfg))
+        print_models_table(workflow_models.list_models(cfg, store))
     except Exception as exc:
         out(f"(could not detect hardware: {exc})")
 
@@ -134,9 +154,13 @@ def cmd_models(ctx: Ctx) -> int:
     sub = getattr(a, "models_cmd", None) or "list"
     cfg = ctx.cfg
     if sub == "list":
-        rows = workflow_models.list_models(cfg)
-        print_models_table(rows)
+        rows = workflow_models.list_models(cfg, ctx.store)
         sel = _selected_or_none(ctx)
+        print_models_table(
+            rows,
+            show_all=a.all,
+            selected=hardware.normalize_tag(sel[7:]) if sel and sel.startswith("ollama:") else None,
+        )
         out(f"Current choice: {sel or '(none)'}")
         return 0
     if sub == "use":
@@ -175,7 +199,8 @@ def _selected_or_none(ctx: Ctx) -> str | None:
 def _add_models(sub: argparse._SubParsersAction) -> None:
     s = add_command(sub, "models", "list, choose, download and benchmark local models")
     ms = s.add_subparsers(dest="models_cmd")
-    ms.add_parser("list", parents=[COMMON], help="top 8 local models for this machine")
+    m = ms.add_parser("list", parents=[COMMON], help="local models rated for this machine")
+    m.add_argument("--all", action="store_true", help="also show models not recommended")
     m = ms.add_parser("pull", parents=[COMMON], help="download a model with Ollama (asks first)")
     m.add_argument("tag")
     m.add_argument("--yes", action="store_true", help="skip the confirmation")

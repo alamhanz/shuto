@@ -159,7 +159,7 @@ def test_run_command_with_yes(config_file, photos_dir, capsys):
     assert "Imported 5" in out and "Described 3" in out
 
 
-def test_doctor_without_choice_shows_top8(config_file, capsys, monkeypatch):
+def test_doctor_without_choice_shows_the_best_models(config_file, capsys, monkeypatch):
     config_file.write_text(
         yaml.safe_dump(
             {"workspace": str(config_file.parent / "ws"), "llm": {"provider": "ollama"}}
@@ -171,8 +171,9 @@ def test_doctor_without_choice_shows_top8(config_file, capsys, monkeypatch):
     out = capsys.readouterr().out
     assert "Model:     (not chosen)" in out and "shuto models use" in out
     lines = [ln for ln in out.splitlines() if ln[:1].isdigit() and "GB" in ln]
-    assert len(lines) == 8
-    assert "download" in out and "est. per image" in out and "fits disk" in out
+    assert 1 <= len(lines) <= 3  # only the best choices; the rest are hidden
+    assert "Hidden:" in out and "see --all" in out
+    assert "download" in out and "est. per image" in out and "rating" in out
 
 
 def test_describe_without_choice_is_friendly(config_file, photos_dir, capsys, monkeypatch):

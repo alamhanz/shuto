@@ -37,6 +37,7 @@ class OllamaStatus:
     version: str | None
     url: str
     pulled: list[str] = field(default_factory=list)
+    entries: list[dict] = field(default_factory=list)  # Ollama's /api/tags rows, as listed
 
 
 @dataclass
@@ -329,15 +330,17 @@ def ollama_status(client: Any, which: Callable[[str], str | None] = shutil.which
     version: str | None = None
     running = False
     pulled: list[str] = []
+    entries: list[dict] = []
     try:
         version = client.version() or None
         running = True
-        names = [m.get("name") or m.get("model", "") for m in client.tags()]
+        entries = list(client.tags())
+        names = [m.get("name") or m.get("model", "") for m in entries]
         pulled = [n for n in names if n]
     except Exception:
         pass
     installed = bool(which("ollama")) or running
-    return OllamaStatus(installed, running, version, url, pulled)
+    return OllamaStatus(installed, running, version, url, pulled, entries)
 
 
 # ---------------------------------------------------------------- disk

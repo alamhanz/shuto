@@ -105,9 +105,9 @@ def settings_advice(request: Request, tag: str, ctx: Ctx, return_to: str = "/set
 
 
 @router.post("/settings/use")
-def settings_use(form: PostForm, ctx: Ctx):
+def settings_use(request: Request, form: PostForm, ctx: Ctx):
     notice, error = apply_model(ctx, str(form.get("spec") or ""))
-    return ctx.go("/settings", notice, error)
+    return ctx.go("/settings", notice, error, request)
 
 
 @router.post("/settings/pull", response_class=HTMLResponse)

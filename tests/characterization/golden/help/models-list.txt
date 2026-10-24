@@ -1,6 +1,7 @@
-usage: shuto models list [-h] [--config CONFIG] [-v]
+usage: shuto models list [-h] [--config CONFIG] [-v] [--all]
 
 options:
   -h, --help       show this help message and exit
   --config CONFIG  path to shuto.yaml
   -v, --verbose
+  --all            also show models not recommended

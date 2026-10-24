@@ -5,7 +5,7 @@ from __future__ import annotations
 import queue
 import threading
 from collections.abc import Callable
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any, Protocol
 
 from shuto.core.models import Job
@@ -202,7 +202,10 @@ class JobRunner:
             # "done" can start the next job without hitting JobBusy.
             with self._lock:
                 self.store.update_job(
-                    job_id, state=state, error=error, finished_at=datetime.now().isoformat()
+                    job_id,
+                    state=state,
+                    error=error,
+                    finished_at=datetime.now(UTC).isoformat(timespec="seconds"),
                 )
                 if batch_id is not None:
                     self._active.pop(batch_id, None)

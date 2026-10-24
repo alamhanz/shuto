@@ -44,6 +44,9 @@ class LocalModel:
     notes: str = ""
     verify: bool = False
     context_tokens: int = 0  # the model's context window (0 = not known)
+    mem_gb: float = 0.0  # memory needed at NUM_CTX_TARGET (0 = not known, the rating estimates it)
+    thinks: bool = False  # can think before it answers
+    always_thinks: bool = False  # keeps thinking although told not to (slow)
 
 
 @dataclass
@@ -103,14 +106,17 @@ def effective_num_ctx(
 
 
 def small_model_warning(tag: str, rows: list[ModelRow], catalog: list[LocalModel] | None = None):
-    """Plain-words warning for a small-context model, naming a bigger one that fits; else None."""
+    """Plain-words warning for a small-context model, naming the best bigger one that is not
+    rated Not recommended (rows are best first); else None."""
     if not is_small_context(tag, catalog):
         return None
     pick = next(
         (
             r.tag
             for r in rows
-            if r.fits_hardware and r.tag != tag and not is_small_context(r.tag, catalog)
+            if r.rating != "not_recommended"
+            and r.tag != tag
+            and not is_small_context(r.tag, catalog)
         ),
         None,
     )
@@ -138,6 +144,9 @@ def _local(d: dict) -> LocalModel:
         notes=str(d.get("notes", "")),
         verify=bool(d.get("verify", False)),
         context_tokens=int(d.get("context_tokens", 0) or 0),
+        mem_gb=float(d.get("mem_gb", 0) or 0),
+        thinks=bool(d.get("thinks", False)),
+        always_thinks=bool(d.get("always_thinks", False)),
     )
 
 

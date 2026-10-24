@@ -95,10 +95,10 @@ def _no_launch_update_check():
 
 
 @pytest.fixture(autouse=True)
-def _fresh_thinking_hints():
-    from shuto.web.routes import model_support
+def _fresh_model_facts():
+    from shuto.workflow import models as workflow_models
 
-    model_support._THINKS.clear()
+    workflow_models.clear_caches()
 
 
 @pytest.fixture

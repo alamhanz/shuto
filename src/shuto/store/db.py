@@ -26,6 +26,7 @@ _JSON_FIELDS = {
     "detected": "detected_json",
     "guardrail": "guardrail_json",
     "filters": "filters_json",
+    "draft": "draft_json",
     "release_ids": "release_ids",
 }
 _PLAIN_FIELDS = {

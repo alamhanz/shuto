@@ -25,15 +25,32 @@ from shuto.ingest import imaging
 from shuto.metadata import rules as metadata_rules
 from shuto.places.context import photo_context
 from shuto.store import Store
-from shuto.workflow import checks, importing, reports
+from shuto.workflow import checks, importing, recheck, reports
 
 
 def _count(store: Store, batch_id: str, only_ids: Iterable[int] | None) -> int:
     return len(_describe_targets(store, batch_id, only_ids))
 
 
-def _describe_targets(store: Store, batch_id: str, only_ids: Iterable[int] | None) -> list[Photo]:
-    """The photos for the AI; never more than MAX_BATCH_PHOTOS in one run (safety net)."""
+def _draft_waiting(photo: Photo) -> bool:
+    return photo.status in recheck.RECHECKABLE and (photo.draft or {}).get("state") == "waiting"
+
+
+def _describe_targets(
+    store: Store, batch_id: str, only_ids: Iterable[int] | None, as_draft: bool = False
+) -> list[Photo]:
+    """The photos for the AI; never more than MAX_BATCH_PHOTOS in one run (safety net).
+
+    With `as_draft` these are the sent photos whose new text is waiting (`only_ids` narrows them).
+    """
+    if as_draft:
+        wanted = None if only_ids is None else set(only_ids)
+        found = [
+            p
+            for p in store.list_photos(batch_id)
+            if _draft_waiting(p) and (wanted is None or p.id in wanted)
+        ]
+        return found[: importing.MAX_BATCH_PHOTOS]
     if only_ids is None:
         return store.list_photos(batch_id, [Status.READY])[: importing.MAX_BATCH_PHOTOS]
     wanted = set(only_ids)
@@ -166,6 +183,7 @@ class DescribeRun:
     side: int
     cancel: Cancel | None = None
     live: speedcheck.LiveRun | None = None
+    as_draft: bool = False  # write the result as a draft; the photo itself is not touched
     abort: AbortPolicy = field(default_factory=AbortPolicy)
     lock: threading.Lock = field(default_factory=threading.Lock)
 
@@ -174,6 +192,9 @@ class DescribeRun:
         store = self.store
         pid = photo.id
         assert pid is not None
+        if self.as_draft:
+            self._fail_draft(pid, why)
+            return photo, None, why
         meta = {
             "filename": photo.orig_name,
             "description": "",
@@ -194,6 +215,12 @@ class DescribeRun:
         with self.lock:
             self.summary.errors.append((pid, why))
         return photo, Status.NEEDS_REVIEW, None
+
+    def _fail_draft(self, pid: int, why: str) -> None:
+        """The new text could not be written: say so on the draft; the old text is untouched."""
+        self.store.update_photo(
+            pid, draft={"state": "failed", "error": why[:500], "at": core_text.now_iso()}
+        )
 
     def _log_call(self, use: VisionLLM, pid: int, **fields: Any) -> None:
         self.store.log_llm_call(LLMCall(use.name, use.model, photo_id=pid, **fields))
@@ -242,6 +269,22 @@ class DescribeRun:
         if res.issues:
             meta["metadata_issues"] = [i.to_dict() for i in res.issues]
         found = res.filters.to_dict() if res.filters else None
+        if self.as_draft:
+            status = checks._status_for(res.metadata, res.guardrails, found)
+            store.update_photo(
+                pid,
+                draft={
+                    "state": "ready",
+                    "metadata": meta,
+                    "guardrail": res.guardrails.to_dict(),
+                    "detected": res.detected,
+                    "filters": found,
+                    "metadata_source": f"llm:{use.name}/{use.model}",
+                    "status_hint": status.value,
+                    "at": core_text.now_iso(),
+                },
+            )
+            return status
         _drop_prepared(store, photo)
         if photo.status != Status.READY:
             store.set_status(pid, Status.READY)
@@ -283,10 +326,14 @@ class DescribeRun:
             res = self._describe(photo, use, image, tries_now)
         except LLMError as exc:
             self._log_call(use, pid, ok=False, error=str(exc)[:500])
+            if self.as_draft:
+                self._fail_draft(pid, str(exc))
             if self.abort.failed(exc):
                 self.summary.aborted = str(exc)
             return photo, None, str(exc)
         except Exception as exc:
+            if self.as_draft:
+                self._fail_draft(pid, f"{type(exc).__name__}: {exc}")
             return photo, None, f"{type(exc).__name__}: {exc}"
         self.abort.succeeded()
         r = res.llm
@@ -344,8 +391,12 @@ def describe_batch(
     progress: Progress | None = None,
     cancel: Cancel | None = None,
     live: speedcheck.LiveRun | None = None,
+    as_draft: bool = False,
 ) -> DescribeSummary:
     """Describe `ready` photos (or the given ids, which are sent back to `ready` first).
+
+    With `as_draft` it does the sent photos (in the given ids) whose new text is waiting: the
+    result is only saved as a draft on the photo, and nothing else about the photo changes.
 
     Culled photos never reach the model. Result per photo: described / needs_review / blocked.
     Stops early when the provider is unreachable or several calls in a row fail.
@@ -354,7 +405,7 @@ def describe_batch(
     """
     progress = progress or core_progress.noop
     llm = llm or selection.resolve_llm(cfg, store)
-    photos = _describe_targets(store, batch_id, only_ids)
+    photos = _describe_targets(store, batch_id, only_ids, as_draft)
     summary = DescribeSummary()
     if not photos:
         return summary
@@ -373,6 +424,7 @@ def describe_batch(
         side=cfg.llm.image_max_side or llm.default_image_side,
         cancel=cancel,
         live=live,
+        as_draft=as_draft,
     )
     conc = max(1, cfg.llm.concurrency or llm.default_concurrency)
     done = 0
@@ -415,6 +467,8 @@ def describe_waiting(
 ) -> DescribeSummary:
     """Describe every `ready` photo, and the ones sent back while this runs.
 
+    After that it writes the new text (as drafts) for sent photos that were checked again.
+
     Each round takes the `ready` photos not tried yet in this call; it ends when none are left,
     when `cancel` says so or when the provider is down. A photo that failed stays `ready` and is
     not tried twice. The progress total grows when photos are added while it runs.
@@ -423,10 +477,16 @@ def describe_waiting(
     llm = llm or selection.resolve_llm(cfg, store)
     summary = DescribeSummary()
     failed: set[int] = set()  # still `ready` after an attempt: not tried again in this call
+    drafted: set[int] = set()  # sent photos whose new text was tried in this call
     handled = 0
     while not (cancel and cancel()) and not summary.aborted:
         ids = [p.id for p in _describe_targets(store, batch_id, None) if p.id not in failed]
         ids = [i for i in ids if i is not None]
+        as_draft = False
+        if not ids:  # then the sent photos checked again (their new text is only a draft)
+            drafts = _describe_targets(store, batch_id, None, True)
+            ids = [p.id for p in drafts if p.id is not None and p.id not in drafted]
+            as_draft = True
         if not ids:
             break
         base, total = handled, handled + len(ids)
@@ -437,9 +497,20 @@ def describe_waiting(
             progress(_base + done, _total, name)
 
         part = describe_batch(
-            cfg, store, batch_id, ids, llm, progress=part_progress, cancel=cancel, live=live
+            cfg,
+            store,
+            batch_id,
+            ids,
+            llm,
+            progress=part_progress,
+            cancel=cancel,
+            live=live,
+            as_draft=as_draft,
         )
         _merge(summary, part)
         handled = total
-        failed |= {pid for pid, _ in part.errors}
+        if as_draft:
+            drafted.update(ids)
+        else:
+            failed |= {pid for pid, _ in part.errors}
     return summary

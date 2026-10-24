@@ -19,6 +19,7 @@ from shuto.web.routes.batch_support import (
     is_sent,
     photo_path,
 )
+from shuto.web.routes.recheck import panel as recheck_panel
 from shuto.web.routes.review import send_back_and_run
 from shuto.web.state import Ctx, PostForm, WebCtx, split_lines
 from shuto.workflow import describing, resend
@@ -147,6 +148,8 @@ def photo_page(request: Request, photo_id: int, ctx: Ctx, back: str | None = Non
         can_result=photo.status in (Status.EXPORTED, Status.SUBMITTED),
         releases_text="\n".join(photo.release_ids),
         include_gps=ctx.cfg.prepare.include_gps,
+        batch_job=ctx.runner.active_job(photo.batch_id) if photo.batch_id else None,
+        **recheck_panel(ctx, photo),
     )
 
 

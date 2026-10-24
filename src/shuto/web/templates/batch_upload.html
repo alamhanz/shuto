@@ -4,6 +4,7 @@
 {% block stepper %}{% include "_batch_stepper.html" %}{% endblock %}
 {% block content %}
 <h1>Upload to Shutterstock</h1>
+{% include "_new_text_note.html" %}
 {% if n %}
 <div class="panel">
   <p><strong>{{ n }}</strong> approved photo{{ '' if n == 1 else 's' }} ({{ size }}) will be sent. shuto first makes a copy of each photo with its title and keywords saved inside, then uploads the copies and writes the Shutterstock info file (CSV). Your originals are never changed.</p>

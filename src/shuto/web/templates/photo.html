@@ -113,7 +113,7 @@
       <form hx-post="/photo/{{ photo.id }}/regenerate" hx-target="#job-area" hx-swap="innerHTML"
             hx-confirm="Ask the AI to write this text again? It replaces the current text.">
         <input type="hidden" name="csrf_token" value="{{ csrf }}">
-        <button type="submit" class="secondary">Ask the AI again</button>
+        <button type="submit" class="secondary"{% if batch_job %} disabled{% endif %}>Ask the AI again</button>{% if batch_job %} <span class="hint">The AI is running.</span>{% endif %}
       </form>
       {% endif %}
       {% if can_ready and photo.status.value in ['culled', 'duplicate', 'near_duplicate', 'already_uploaded'] %}
@@ -124,6 +124,7 @@
       </form>
       {% endif %}
     </div>
+    {% include "_recheck_panel.html" %}
 
     {% if can_result %}
     <h2>Shutterstock result</h2>

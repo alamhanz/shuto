@@ -22,7 +22,7 @@ def test_migrate_idempotent(store):
     store.migrate()
     store.migrate()
     with sqlite3.connect(store.path) as c:
-        assert c.execute("PRAGMA user_version").fetchone()[0] == 2
+        assert c.execute("PRAGMA user_version").fetchone()[0] == 3
         assert c.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
     Store(store.path)  # reopen
 
@@ -281,8 +281,9 @@ def test_v1_database_migrates_in_place(tmp_path):
     assert store.get_photo(photo.id).filters == {"v": 1, "verdict": "ok"}
     store.migrate()  # no-op the second time
     Store(db)
-    assert _version(db) == 2
+    assert _version(db) == 3
     assert _columns(db).count("filters_json") == 1
+    assert _columns(db).count("draft_json") == 1
 
 
 def test_migration_is_atomic(tmp_path, monkeypatch):
@@ -306,7 +307,7 @@ def test_migration_is_atomic(tmp_path, monkeypatch):
     assert _version(db) == 1
     assert "filters_json" not in _columns(db)
     assert Store(db).find_by_sha("abc") is not None  # a later start migrates fine
-    assert _version(db) == 2
+    assert _version(db) == 3
 
 
 def test_migrate_with_column_already_present(tmp_path):
@@ -315,16 +316,77 @@ def test_migrate_with_column_already_present(tmp_path):
     with sqlite3.connect(db) as c:
         c.execute("ALTER TABLE photos ADD COLUMN filters_json TEXT")
     Store(db)
-    assert _version(db) == 2
+    assert _version(db) == 3
 
 
 def test_newer_database_refused(tmp_path):
     db = tmp_path / "new" / "shuto.db"
     db.parent.mkdir()
     with sqlite3.connect(db) as c:
-        c.execute("PRAGMA user_version=3")
+        c.execute("PRAGMA user_version=4")
     with pytest.raises(RuntimeError, match="newer"):
         Store(db)
+
+
+def _make_v2_db(path):
+    """A database as 0.6.3 left it: v2 (filters column, no draft column), with real rows."""
+    _make_v1_db(path)
+    with sqlite3.connect(path) as c:
+        c.execute("ALTER TABLE photos ADD COLUMN filters_json TEXT")
+        c.execute("PRAGMA user_version=2")
+        c.execute("UPDATE photos SET filters_json='{\"v\": 1}'")
+        c.execute('UPDATE photos SET metadata_json=\'{"description": "x"}\'')
+        c.execute("INSERT INTO settings(key, value_json) VALUES ('onboarded', 'true')")
+
+
+def test_v2_database_gets_the_draft_column_and_keeps_everything(tmp_path):
+    db = tmp_path / "old" / "shuto.db"
+    _make_v2_db(db)
+    assert "draft_json" not in _columns(db)
+    store = Store(db)
+    assert _version(db) == 3 and _columns(db).count("draft_json") == 1
+    photo = store.find_by_sha("abc")
+    assert photo.status is Status.DESCRIBED and photo.draft is None
+    assert photo.filters == {"v": 1} and photo.metadata == {"description": "x"}
+    assert store.get_setting("onboarded") is True
+    store.update_photo(photo.id, draft={"state": "waiting"})
+    assert store.get_photo(photo.id).draft == {"state": "waiting"}
+    store.update_photo(photo.id, draft=None)
+    assert store.get_photo(photo.id).draft is None
+    Store(db)  # opening again changes nothing
+    assert _version(db) == 3 and _columns(db).count("draft_json") == 1
+
+
+def test_v2_to_v3_migration_is_atomic(tmp_path, monkeypatch):
+    db = tmp_path / "old" / "shuto.db"
+    _make_v2_db(db)
+    real_connect = sqlite3.connect
+
+    class Boom(sqlite3.Connection):
+        def execute(self, sql, *a):
+            if sql.startswith("PRAGMA user_version=3"):
+                raise sqlite3.OperationalError("disk gone")
+            return super().execute(sql, *a)
+
+    monkeypatch.setattr(
+        "shuto.store.db.sqlite3.connect",
+        lambda *a, **kw: real_connect(*a, factory=Boom, **kw),
+    )
+    with pytest.raises(sqlite3.OperationalError):
+        Store(db)
+    monkeypatch.undo()
+    assert _version(db) == 2 and "draft_json" not in _columns(db)
+    assert Store(db).find_by_sha("abc") is not None
+    assert _version(db) == 3
+
+
+def test_v2_database_with_the_column_already_there(tmp_path):
+    db = tmp_path / "old" / "shuto.db"
+    _make_v2_db(db)
+    with sqlite3.connect(db) as c:
+        c.execute("ALTER TABLE photos ADD COLUMN draft_json TEXT")
+    Store(db)
+    assert _version(db) == 3 and _columns(db).count("draft_json") == 1
 
 
 def test_filters_roundtrip_and_none_default(store):

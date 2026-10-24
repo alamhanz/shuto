@@ -355,6 +355,24 @@ To go back: close shuto, install the older version, then replace `shuto.db` with
   (`photos.draft_json`, schema v3). Status, text and the prepared copy do not change until you
   press **Use the new text**. Drafts that are waiting are worked off after the running job; each is
   tried once per run.
+- Model rating (`ai/rating.py`). The worst of these rules wins:
+  - Memory: the model's need (list value or what Ollama reports for a loaded model) against the
+    graphics card (largest single card minus 0.5 GiB), the unified memory on Apple Silicon, or
+    RAM minus 4 GiB. Up to 85% of it is "fits", up to 100% "tight" (OK at most). Too big for the
+    card means it runs on the processor and is rated by CPU speed. More than the RAM: Not
+    recommended. A card whose memory cannot be read counts as no card.
+  - Speed per photo: the median of the last 3 or more good calls (last 10 calls, 90 days;
+    cancelled calls ignored), else the speed test, else the list estimate. Good is 20 s or less,
+    OK is 60 s or less, slower is Not recommended. A measured speed leaves the band of the
+    estimate only when it is 20% past the limit, so ratings do not flap.
+  - Thinks anyway: the model list says so (`always_thinks`), or the Ollama client saw thinking
+    although `think: false` was sent, or the median answer is over 800 tokens. Three good calls
+    with a median of 800 tokens or less clear the list flag. Such a model is never Good, its
+    estimate is multiplied by 4, its OK limit is 40 s, and with tight memory it is Not
+    recommended. A model that obeys `think: false` (qwen3.5:4b) is rated like any other.
+  - Also: quality below 3 or a context of 4096 or less is OK at most; a model with unconfirmed
+    numbers (`verify`) or not on the list is OK at most until measured; 3 failures in the last
+    10 calls, or a loaded model seen outside graphics card memory, is Not recommended.
 - Thinking models: shuto adds 4096 tokens of room for thinking, retries once with more when the
   answer was cut off while thinking, and then shows a plain hint.
 - The update check runs when shuto opens and again on the first page load after 3 hours.

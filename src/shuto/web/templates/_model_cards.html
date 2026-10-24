@@ -1,8 +1,18 @@
-{#- Needs: cards, providers, selected, use_action, return_to, show_bench -#}
+{#- Needs: cards, providers, selected, use_action, return_to, show_bench, filter_action (+ filter_step) -#}
 {% from "_ui.html" import chip, icon, field %}
+{% set rating_chip = {'good': 'ok', 'ok': 'neutral', 'not_recommended': 'danger'} %}
 {% if conflict %}{% include "_ollama_conflict.html" %}{% endif %}
+<div id="model-cards">
+{% if gpu_unknown %}
+<p class="snip" role="note">shuto can't read how much memory your graphics card has, so it rates models as if they run on the processor.</p>
+{% endif %}
+{% if selected_warning %}
+<p class="flash warn" role="alert">{{ icon('alert') }}<span>{{ selected_warning }}</span></p>
+{% endif %}
 {% if not cards %}
 <p class="flash warn">{{ icon('alert') }}<span>No AI model on this list fits this computer. Use an online AI below.</span></p>
+{% elif no_good and not show_all %}
+<p class="flash warn" role="note">{{ icon('alert') }}<span>No model is a good fit for this computer. These are the best choices, but each photo takes a while. An online AI is faster.</span></p>
 {% endif %}
 {% if small_warning %}
 <p class="flash warn" role="note">{{ icon('alert') }}<span>{{ small_warning }}</span></p>
@@ -11,28 +21,37 @@
 <p class="snip">Model list last updated: {{ list_updated }}</p>
 {% if list_old %}<p class="flash warn" role="note">{{ icon('alert') }}<span>This list is more than six months old, so better AI models may exist by now. A newer version of shuto will have a fresher list.</span></p>{% endif %}
 {% endif %}
+{% if hidden_count or show_all %}
+<form method="get" action="{{ filter_action }}" class="row" hx-get="{{ filter_action }}" hx-trigger="change" hx-target="#model-cards" hx-select="#model-cards" hx-swap="outerHTML" hx-push-url="true">
+  {% if filter_step %}<input type="hidden" name="step" value="{{ filter_step }}">{% endif %}
+  <label><input type="checkbox" name="all" value="1"{% if show_all %} checked{% endif %}> Show models that are not recommended for this computer</label>
+  <button type="submit" class="secondary">Show</button>
+</form>
+{% if hidden_count %}<p class="snip">{{ hidden_count }} more model{{ '' if hidden_count == 1 else 's' }} {{ 'is' if hidden_count == 1 else 'are' }} hidden because {{ 'it is' if hidden_count == 1 else 'they are' }} slow, basic or too big for this computer.</p>{% endif %}
+{% endif %}
 <div class="cards">
   {% for r in cards %}
+  {% set use_class = 'btn primary' if r.recommended else 'btn secondary' %}
   <article class="card" id="row-{{ loop.index }}" aria-labelledby="m-{{ loop.index }}">
     <div class="body">
       <h3 id="m-{{ loop.index }}">{{ r.tag }}</h3>
       <p class="chips">
+        {{ chip(rating_chip[r.rating], r.rating_label) }}
         {% for t in r.tags %}{{ chip('neutral', t) }}{% endfor %}
         {% if selected == 'ollama:' ~ r.tag %}{{ chip('ok', 'In use') }}{% endif %}
         {% if r.pulled %}{{ chip('ok', 'Already downloaded') }}{% elif pulling == r.tag %}{{ chip('neutral', 'Downloading now') }}{% endif %}
       </p>
-      <p>{{ r.time_text }} &middot; {{ "%.1f"|format(r.size_gb) }} GB download</p>
-      <p>Works on this computer: <strong>{{ "yes" if r.fits_hardware else "no" }}</strong>
+      <p>{{ r.rating_reason }}</p>
+      <p>{{ r.time_text }} &middot; {{ "%.1f"|format(r.size_gb) }} GB download
         {% if not r.pulled %}&middot; Enough free space: <strong>{{ "yes" if r.fits_disk else "no" }}</strong>{% endif %}</p>
-      {% if r.thinks %}<p class="snip">This model thinks before it answers, so it is slower (about a minute per photo).</p>{% endif %}
       {% if r.notes %}<p class="snip">{{ r.notes }}</p>{% endif %}
       <div class="row">
         {% if r.pulled %}
-        <form method="post" action="{{ use_action }}">
+        <form method="post" action="{{ use_action }}"{% if r.rating == 'not_recommended' %} hx-post="{{ use_action }}" hx-confirm="{{ r.confirm_use }}"{% endif %}>
           <input type="hidden" name="csrf_token" value="{{ csrf }}">
           <input type="hidden" name="spec" value="{{ r.tag }}">
-          {% if selected == 'ollama:' ~ r.tag %}<button type="button" class="btn primary" disabled>In use</button>
-          {% else %}<button type="submit" class="btn primary"{% if not r.fits_hardware %} disabled{% endif %}>Use this</button>{% endif %}
+          {% if selected == 'ollama:' ~ r.tag %}<button type="button" class="{{ use_class }}" disabled>In use</button>
+          {% else %}<button type="submit" class="{{ use_class }}"{% if not r.fits_hardware %} disabled{% endif %}>Use this</button>{% endif %}
         </form>
         {% if show_bench %}
         <form hx-post="/settings/benchmark" hx-target="#job-area" hx-swap="innerHTML" hx-confirm="Run {{ r.tag }} twice on a sample photo to measure its speed? This can take a minute.">
@@ -41,21 +60,24 @@
           <button type="submit" class="secondary">Measure speed</button>
         </form>
         {% endif %}
+        {% if r.catalogued %}
         <form method="get" action="/settings/model/remove" hx-post="/settings/model/remove" hx-vals='{"confirm": "yes"}' hx-confirm="{% if selected == 'ollama:' ~ r.tag %}{{ r.tag }} is the AI model shuto uses now. After removing it, shuto can't write titles and keywords until you choose or download another model. Remove it anyway? {% else %}Remove {{ r.tag }} from this computer? {% endif %}This frees about {{ '%.1f'|format(r.size_gb) }} GB. You can download it again later.">
           <input type="hidden" name="tag" value="{{ r.tag }}">
           <input type="hidden" name="return_to" value="{{ return_to }}">
           <button type="submit" class="danger">Remove from this computer</button>
         </form>
+        {% endif %}
         {% elif pulling == r.tag %}
         <p class="hint">Downloading now. Progress is shown on this page.</p>
         {% else %}
-        <button type="button" class="btn primary" hx-get="/settings/advice" hx-vals='{"tag": "{{ r.tag }}", "return_to": "{{ return_to }}"}' hx-target="#advice-{{ r.rank }}" hx-swap="innerHTML"{% if not r.fits_hardware %} disabled{% endif %}>Download ({{ "%.0f"|format(r.size_gb) }} GB)...</button>
+        <button type="button" class="{{ use_class }}" hx-get="/settings/advice" hx-vals='{"tag": "{{ r.tag }}", "return_to": "{{ return_to }}"}' hx-target="#advice-{{ r.rank }}" hx-swap="innerHTML"{% if r.rating == 'not_recommended' %} hx-confirm="{{ r.confirm_download }}"{% endif %}{% if not r.fits_hardware %} disabled{% endif %}>Download ({{ "%.0f"|format(r.size_gb) }} GB)...</button>
         {% endif %}
       </div>
       <div id="advice-{{ r.rank }}"></div>
     </div>
   </article>
   {% endfor %}
+</div>
 </div>
 
 <details id="online"{% if open_online %} open{% endif %}>

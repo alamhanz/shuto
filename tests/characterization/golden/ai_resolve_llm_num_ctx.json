@@ -23,6 +23,10 @@
     "ollama",
     8192
   ],
+  "qwen3.5:4b": [
+    "ollama",
+    8192
+  ],
   "qwen2.5vl:7b": [
     "ollama",
     8192

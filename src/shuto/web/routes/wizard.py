@@ -42,7 +42,7 @@ def welcome(request: Request, ctx: Ctx, step: int = 1):
         extra.update(report=report, ollama=report.ollama, os_name=report.hardware.get("os"))
         extra["helper_steps"] = helper_steps(report.hardware.get("os", ""))
         if step in (3, 6):
-            extra.update(model_context(ctx, report))
+            extra.update(model_context(ctx, report, request.query_params.get("all") == "1"))
         if step == 3:
             extra["model_status"] = ctx.model_status(request)
             extra["later"] = bool(request.query_params.get("later"))
@@ -72,7 +72,7 @@ def welcome_nav(request: Request, ctx: Ctx):
 
 
 @router.post("/welcome/{step}")
-def welcome_post(step: int, form: PostForm, ctx: Ctx):
+def welcome_post(step: int, request: Request, form: PostForm, ctx: Ctx):
     if not 1 <= step <= len(WIZARD_STEPS):
         raise HTTPException(status_code=404, detail="Unknown step.")
     here, nxt = f"/welcome?step={step}", f"/welcome?step={step + 1}"
@@ -93,4 +93,4 @@ def welcome_post(step: int, form: PostForm, ctx: Ctx):
         settings_ui.set_ui_setting(ctx.store, "onboarded", True)
         target = "/add" if form.get("then") == "add" else "/"
         return ctx.go(target, None, None)
-    return ctx.go(here if error else nxt, notice, error)
+    return ctx.go(here if error else nxt, notice, error, request)

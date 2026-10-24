@@ -136,7 +136,7 @@ def _describe_flow(
     try:
         sel = selection.resolve_selection(cfg, store, provider, model)
     except ai_choice.ModelChoiceRequired:
-        show_model_choice(cfg)
+        show_model_choice(cfg, store)
         return 2
     problems = selection.describe_preflight(cfg, sel)
     if problems:

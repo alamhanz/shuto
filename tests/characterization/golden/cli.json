@@ -378,6 +378,19 @@
               "nargs": 0,
               "required": false,
               "type": null
+            },
+            {
+              "flags": [
+                "--all"
+              ],
+              "dest": "all",
+              "kind": "_StoreTrueAction",
+              "default": false,
+              "suppressed_default": false,
+              "choices": null,
+              "nargs": 0,
+              "required": false,
+              "type": null
             }
           ],
           "commands": {}

@@ -112,6 +112,10 @@ class OllamaClient:
         """Remove a downloaded model from this computer (Ollama frees its files)."""
         _close(self._open("/api/delete", {"model": tag}, timeout=60, method="DELETE"))
 
+    def show(self, model: str, timeout: float = 10) -> dict:
+        """What Ollama knows about a downloaded model (its capabilities among other things)."""
+        return self._json("/api/show", {"model": model}, timeout=timeout)
+
     def ps(self, timeout: float = 10) -> list[dict]:
         return list(self._json("/api/ps", timeout=timeout).get("models", []))
 

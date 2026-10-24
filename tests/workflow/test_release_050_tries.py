@@ -397,9 +397,9 @@ def test_settings_warns_about_a_small_model(web):  # noqa: F811
 
 def test_small_model_warning_names_a_bigger_fitting_model():
     rows = [
-        type("R", (), {"tag": "moondream", "fits_hardware": True})(),
-        type("R", (), {"tag": "gemma3:12b", "fits_hardware": False})(),
-        type("R", (), {"tag": "gemma3:4b", "fits_hardware": True})(),
+        type("R", (), {"tag": "moondream", "rating": "ok"})(),
+        type("R", (), {"tag": "gemma3:12b", "rating": "not_recommended"})(),
+        type("R", (), {"tag": "gemma3:4b", "rating": "good"})(),
     ]
     text = local_models.small_model_warning("moondream", rows)
     assert "gemma3:4b" in text and "gemma3:12b" not in text

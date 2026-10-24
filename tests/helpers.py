@@ -85,6 +85,9 @@ class FakeOllama:
         self.pull_calls: list[str] = []
         self.delete_calls: list[str] = []
         self.sizes: dict[str, int] = {}  # bytes, as Ollama reports them
+        self.loaded: list[dict] = []  # what /api/ps lists
+        self.capabilities: dict[str, list[str]] = {}  # tag -> /api/show capabilities
+        self.details: dict[str, dict] = {}  # tag -> /api/tags details
 
     def version(self):
         if not self.running:
@@ -92,7 +95,16 @@ class FakeOllama:
         return "0.0-test"
 
     def tags(self):
-        return [{"name": n, "size": self.sizes.get(n, 0)} for n in self.pulled]
+        return [
+            {"name": n, "size": self.sizes.get(n, 0), "details": self.details.get(n, {})}
+            for n in self.pulled
+        ]
+
+    def ps(self, timeout=10):
+        return list(self.loaded)
+
+    def show(self, model, timeout=10):
+        return {"capabilities": self.capabilities.get(model, ["completion"])}
 
     def delete(self, tag):
         self.delete_calls.append(tag)

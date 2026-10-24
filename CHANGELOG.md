@@ -4,6 +4,18 @@ Release notes are also published on the GitHub Releases page. Newest first.
 
 ## 0.6.5
 
+### Added
+- Downloaded models that are not on shuto's list now show in Settings and the setup if they can
+  look at photos. They are marked "Not on shuto's model list" and rated OK until shuto has seen
+  a few photos done with them. The list also gains qwen3.5:4b.
+
+### Changed
+- The AI model list is stricter: each model is rated Good, OK or Not recommended for this
+  computer (memory, speed, models that keep thinking, failed photos), and only Good ones show
+  unless you tick "Show models that are not recommended for this computer". Using or
+  downloading a Not recommended model asks you to confirm. `shuto models list --all` shows
+  every model.
+
 ### Fixed
 - Slow AI models no longer fail with "The AI took too long to answer". shuto now reads the
   answer as it is written and only gives up when the AI sends nothing for 5 minutes (it was

@@ -7,6 +7,7 @@ from shuto.ai import benchmark as ai_benchmark
 from shuto.ai import catalog as lm
 from shuto.ai import hardware as hw
 from shuto.ai import model_choice as ai_choice
+from shuto.ai import rating as ai_rating
 from shuto.ai import recommend as ai_recommend
 from shuto.ai.providers.base import LLMError
 from shuto.ai.providers.fake import FakeProvider
@@ -66,9 +67,12 @@ def test_cpu_8gb_runs_only_small():
 
 def test_gpu_fit_uses_tier_estimate_with_fallback():
     recs = ai_recommend.recommend(prof("gpu_8", 8, 16), CAT, [])
-    r = {x.model.tag: x for x in recs}["qwen3-vl:8b"]
-    assert r.mode == "gpu" and r.est_seconds_per_image == 15  # gpu_8 falls back to gpu_6
+    r = {x.model.tag: x for x in recs}["qwen2.5vl:7b"]
+    assert r.mode == "gpu" and r.est_seconds_per_image == 14  # gpu_8 falls back to gpu_6
     assert r.basis == "heuristic"
+    # a model that thinks anyway: the estimate is multiplied (15 s x 4)
+    slow = {x.model.tag: x for x in recs}["qwen3-vl:8b"]
+    assert slow.est_seconds_per_image == 60
 
 
 def test_benchmark_overrides_heuristic():
@@ -82,13 +86,17 @@ def test_benchmark_overrides_heuristic():
     assert r.basis == "heuristic"
 
 
-def test_top_models_is_eight_and_ranked_by_score():
+def test_top_models_is_eight_ranked_by_rating_then_score():
     rows = ai_recommend.top_models(prof("gpu_12", 12, 32), CAT, [], disk_free_gb=100)
     assert len(rows) == 8 and [r.rank for r in rows] == list(range(1, 9))
     assert all(r.fits_hardware for r in rows)
-    scores = [r.score for r in rows]
-    assert scores == sorted(scores, reverse=True)
-    assert rows[0].recommended and not rows[1].recommended
+    order = [ai_rating.RATING_ORDER[r.rating] for r in rows]
+    assert order == sorted(order)
+    for first, second in zip(rows, rows[1:], strict=False):
+        if first.rating == second.rating:
+            assert first.score >= second.score
+    assert rows[0].rating == "good" and rows[0].recommended and not rows[1].recommended
+    assert len(ai_recommend.top_models(prof("gpu_12", 12, 32), CAT, [], n=None)) == len(CAT[0])
     d = rows[0].to_dict()
     assert {"tag", "size_gb", "est_seconds_per_image", "tier_label", "fits_disk"} <= d.keys()
     assert "quality" in d["tier_label"]

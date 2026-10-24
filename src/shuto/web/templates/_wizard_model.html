@@ -1,13 +1,13 @@
 {% from "_ui.html" import icon %}
 <h1>Choose an AI model</h1>
-<p>The model is the AI that writes your titles and keywords. These fit this computer best. Downloads are large, and nothing is downloaded until you confirm.</p>
+<p>The model is the AI that writes your titles and keywords. These are the models that suit this computer best. Downloads are large, and nothing is downloaded until you confirm.</p>
 {% if chosen %}<p class="flash ok" role="status">{{ icon('check') }}<span>In use now: <strong>{% if selected.startswith('ollama:') %}{{ selected[7:] }} (on this computer){% else %}{{ selected }}{% endif %}</strong></span></p>{% endif %}
 <details id="storage"{% if request.query_params.get('storage') %} open{% endif %}>
   <summary>Where to keep AI models</summary>
   {% with return_to="/welcome?step=3" %}{% include "_models_dir.html" %}{% endwith %}
 </details>
 <div id="job-resume">{% if job and job.kind not in ('pull', 'models_dir') %}{% with active=job_active, result=job_result, next_href="/welcome?step=3" %}{% include "_job.html" %}{% endwith %}{% endif %}</div>
-{% with use_action="/welcome/3", return_to="/welcome?step=3", show_bench=false, open_online=request.query_params.get('online') %}
+{% with use_action="/welcome/3", return_to="/welcome?step=3", show_bench=false, open_online=request.query_params.get('online'), filter_action="/welcome", filter_step=3 %}
 {% include "_model_cards.html" %}
 {% endwith %}
 {% if model_status.state == 'unknown' %}<p class="flash warn" role="note">{{ icon('alert') }}<span>{{ model_status.message }}</span></p>{% endif %}

@@ -336,7 +336,7 @@ def test_settings_page_shows_sections_models_and_providers(web, monkeypatch):
     for anchor in ("model", "shutterstock", "style", "computer", "advanced"):
         assert f'id="{anchor}"' in text
     assert text.count('<article class="card" id="row-') <= 8 and 'id="row-1"' in text
-    assert "Works on this computer" in text and "Use this" in text
+    assert "for this computer</span>" in text and "Use this" in text
     for prov in ("Anthropic", "Gemini", "Bedrock"):
         assert prov in text
     assert "Access key:" in text and "Set</span>" in text and "Not set</span>" in text
@@ -949,7 +949,7 @@ def test_bundled_model_list_has_a_date():
 def test_remove_button_only_for_downloaded_models_not_in_use(web, cfg, ollama):
     ollama.pulled = ["gemma3:4b", "gemma3:12b"]
     web.post("/settings/use", {"spec": "gemma3:4b"})
-    html = web.get("/settings").text
+    html = web.get("/settings?all=1").text
     assert "Remove from this computer</button>" in html
     assert "Remove gemma3:12b from this computer?" in html
     # the model in use can be removed too, but its confirm text carries the warning

@@ -7,8 +7,9 @@ model depends on your hardware and how much quality you need.
 
 - `shuto doctor` shows your OS, CPU, RAM, GPU and VRAM (NVIDIA, Apple Silicon unified memory,
   AMD where detectable), whether Ollama is running, and which models are already pulled.
-- `shuto models` (or `shuto init`, or the Settings page in the web UI) shows the **top 8**
-  models that fit your machine, ranked by a mix of quality and speed. Each row shows the size
+- `shuto models` (or `shuto init`, or the Settings page in the web UI) shows the models
+  rated **Good** for your machine (or the best OK ones; `--all` shows every model), ranked by
+  rating, then a mix of quality and speed. Each row shows the size
   on disk, the estimated seconds per image, whether it is already pulled, and whether it fits
   your free disk space.
 - `shuto models pull TAG` downloads a model (after you confirm) and `shuto models use TAG`

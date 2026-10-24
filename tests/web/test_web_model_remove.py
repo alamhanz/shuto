@@ -117,7 +117,7 @@ def test_confirm_page_is_read_only_and_posts_to_remove(web, ollama):
 
 def test_settings_remove_button_works_without_javascript(web, ollama):
     _two_models(web, ollama)
-    html = web.get("/settings").text
+    html = web.get("/settings?all=1").text
     assert 'method="get" action="/settings/model/remove"' in html
     assert "Remove gemma3:12b from this computer?" in html  # hx-confirm kept for JS users
 

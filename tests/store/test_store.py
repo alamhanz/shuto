@@ -508,3 +508,21 @@ def test_batch_events_filters_kind_and_batch(store):
     assert [e["detail"] for e in store.batch_events("2026-W01", ["note"])] == [{"x": 1}]
     assert store.batch_events("2026-W01", []) == []
     assert store.batch_events("2026-W01", ("nothing",)) == []
+
+
+def test_recent_llm_calls_keeps_the_window_per_model_and_the_age_limit(store):
+    for i in range(12):
+        store.log_llm_call(LLMCall("ollama", "m:1b", None, 1, 100 + i, float(i)))
+    store.log_llm_call(LLMCall("ollama", "other:1b", None, 1, 1, 9.0, ok=False, error="boom"))
+    store.log_llm_call(LLMCall("gemini", "m:1b", None, 1, 1, 1.0))
+    old = LLMCall("ollama", "old:1b", None, 1, 1, 1.0, at="2020-01-01T00:00:00+00:00")
+    store.log_llm_call(old)
+    got = store.recent_llm_calls("ollama")
+    mine = [r for r in got if r["model"] == "m:1b"]
+    assert [r["seconds"] for r in mine] == [float(i) for i in range(11, 1, -1)]  # newest first
+    assert mine[0]["output_tokens"] == 111 and mine[0]["ok"] is True
+    (other,) = [r for r in got if r["model"] == "other:1b"]
+    assert other["ok"] is False and other["error"] == "boom"
+    assert {r["model"] for r in got} == {"m:1b", "other:1b"}  # no other provider, nothing old
+    few = [r for r in store.recent_llm_calls("ollama", per_model=3) if r["model"] == "m:1b"]
+    assert len(few) == 3

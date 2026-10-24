@@ -4,7 +4,7 @@ list, choose, download and benchmark local models
 
 positional arguments:
   {list,pull,use,bench}
-    list                top 8 local models for this machine
+    list                local models rated for this machine
     pull                download a model with Ollama (asks first)
     use                 remember your choice: TAG or PROVIDER:MODEL
     bench               time one model on a sample image

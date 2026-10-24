@@ -130,5 +130,5 @@ def settings_page(request: Request, ctx: Ctx):
         job_active=bool(active),
         model_status=ctx.model_status(request),
         ms=storage_context(ctx),
-        **model_context(ctx, report),
+        **model_context(ctx, report, request.query_params.get("all") == "1"),
     )

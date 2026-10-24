@@ -30,7 +30,7 @@ def expected_seconds_per_photo(cfg: Config, model: str) -> float | None:
 
 
 def faster_model_options(cfg: Config, model: str) -> tuple[float, list[speedcheck.ModelOption]]:
-    """(expected seconds for `model`, models that fit this machine and are faster than it).
+    """(expected seconds for `model`, models rated for this machine that are faster than it).
 
     Installed ones come with `installed=True`; the others must be downloaded in Settings first.
     """
@@ -42,7 +42,13 @@ def faster_model_options(cfg: Config, model: str) -> tuple[float, list[speedchec
     here = next((r for r in recs if r.model.tag == model), None)
     current = float(here.est_seconds_per_image) if here else 0.0
     faster = [
-        r for r in recs if r.fits and r.model.tag != model and r.est_seconds_per_image < current
+        r
+        for r in recs
+        if r.fits
+        and r.rating is not None
+        and r.rating.rating != "not_recommended"
+        and r.model.tag != model
+        and r.est_seconds_per_image < current
     ]
     faster.sort(key=lambda r: (not r.pulled, -r.model.quality, r.est_seconds_per_image))
     options = [

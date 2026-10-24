@@ -15,7 +15,7 @@
 {% if report.selection_unreadable %}<p class="flash warn" role="note">{{ icon('alert') }}<span>shuto can't tell which AI model is set. Choose one below.</span></p>{% endif %}
 {% if model_status.state == 'unknown' %}<p class="flash warn" role="note">{{ icon('alert') }}<span>{{ model_status.message }}</span></p>{% endif %}
 <p class="snip">Times are a rough guess until you press "Measure speed" on a downloaded model.</p>
-{% with use_action="/settings/use", return_to="/settings", show_bench=true, open_online=false %}
+{% with use_action="/settings/use", return_to="/settings", show_bench=true, open_online=false, filter_action="/settings" %}
 {% include "_model_cards.html" %}
 {% endwith %}
 <div id="job-resume">{% if job and job.kind not in ('pull', 'models_dir') %}{% with active=job_active, result=None %}{% include "_job.html" %}{% endwith %}{% endif %}</div>

@@ -10,6 +10,8 @@ from fastapi.responses import HTMLResponse
 from shuto.ai import catalog as local_models
 from shuto.ai import estimate, hardware, selection
 from shuto.ai import model_choice as ai_choice
+from shuto.ai import rating as ai_rating
+from shuto.ai import recommend as ai_recommend
 from shuto.ai.providers import API_KEY_SECRETS, API_PROVIDERS
 from shuto.core import secrets as shuto_secrets
 from shuto.core.jobs import JobBusy, JobContext
@@ -35,7 +37,8 @@ def _tags(rows: list[dict]) -> None:
     """Add the plain-words tags ("Best match", "Faster", "Higher quality") to model cards."""
     if not rows:
         return
-    fastest = min(rows, key=lambda r: r["est_seconds_per_image"])
+    measured = [r for r in rows if r["basis"] != "unknown"]
+    fastest = min(measured, key=lambda r: r["est_seconds_per_image"]) if measured else None
     best = max(rows, key=lambda r: r["quality"])
     for r in rows:
         tags = []
@@ -46,39 +49,18 @@ def _tags(rows: list[dict]) -> None:
         if r is best and len(rows) > 1:
             tags.append("Higher quality")
         r["tags"] = tags
-        r["time_text"] = f"about {_plain_seconds(r['est_seconds_per_image'])} per photo"
+        r["time_text"] = (
+            "speed not measured yet"
+            if r["basis"] == "unknown"
+            else f"about {_plain_seconds(r['est_seconds_per_image'])} per photo"
+        )
 
 
-_THINKS: dict[tuple[str, str], bool] = {}  # (Ollama address, model tag) -> thinks; kept per run
-THINK_LOOKUP_TIMEOUT_S = 2
-
-
-def _mark_thinkers(ctx: WebCtx, rows: list[dict]) -> None:
-    """Set `thinks` on the downloaded models Ollama says think before they answer (slower).
-
-    Answers are kept per (address, model), so a page load does not ask Ollama again. Models that
-    are not asked about are shown as normal; the first failed lookup ends the asking for this
-    page load, and failures are not kept.
-    """
-    url = ctx.cfg.llm.ollama.url
-    client = None
-    failed = False
-    for r in rows:
-        r["thinks"] = False
-        if not r.get("pulled"):
-            continue
-        key = (url, r["tag"])
-        if key not in _THINKS:
-            if failed:
-                continue
-            try:
-                client = client or selection.ollama_client(ctx.cfg)
-                client.timeout = min(getattr(client, "timeout", 300), THINK_LOOKUP_TIMEOUT_S)
-                _THINKS[key] = bool(client.supports_thinking(r["tag"]))
-            except Exception:
-                failed = True  # a hint is never worth breaking the page for
-                continue
-        r["thinks"] = _THINKS[key]
+def _confirm_text(r: dict, verb: str) -> str:
+    return (
+        f"This model is not recommended for this computer: {r['rating_reason']} "
+        f"It may be very slow or stop without an answer. {verb} it anyway?"
+    )
 
 
 def helper_steps(os_name: str) -> list[str]:
@@ -180,10 +162,19 @@ def model_is_downloaded(ctx: WebCtx, tag: str) -> bool:
     return hardware.normalize_tag(tag) in have
 
 
-def model_context(ctx: WebCtx, report) -> dict:
-    rows = [r.to_dict() for r in report.rows]
+def model_context(ctx: WebCtx, report, show_all: bool = False) -> dict:
+    """What the model cards need. Only Good models show unless `show_all`
+    (see recommend.visible_rows)."""
+    all_rows = [r.to_dict() for r in report.rows]
+    in_use = None
+    if report.selected and report.selected.startswith("ollama:"):
+        in_use = hardware.normalize_tag(report.selected[7:])
+    shown, no_good = ai_recommend.visible_rows(report.rows, in_use, show_all)
+    rows = [r.to_dict() for r in shown]
     _tags(rows)
-    _mark_thinkers(ctx, rows)
+    for r in rows:
+        r["confirm_use"] = _confirm_text(r, "Use")
+        r["confirm_download"] = _confirm_text(r, "Download")
     providers = []
     for prov in API_PROVIDERS:
         entry = selection.api_model(prov)
@@ -204,7 +195,22 @@ def model_context(ctx: WebCtx, report) -> dict:
     small_warning = None
     if report.selected and report.selected.startswith("ollama:"):
         small_warning = local_models.small_model_warning(report.selected[7:], report.rows)
+    selected_warning = None
+    row = next((r for r in all_rows if in_use and hardware.normalize_tag(r["tag"]) == in_use), None)
+    if row is not None and row["rating"] == "not_recommended":
+        selected_warning = (
+            f"{row['tag']} is not recommended for this computer: {row['rating_reason']} "
+            "shuto keeps using it."
+        )
+        better = ai_rating.best_good(report.rows)
+        if better:
+            selected_warning += f" For better speed choose {better}."
     return {
+        "selected_warning": selected_warning,
+        "show_all": show_all,
+        "hidden_count": len(all_rows) - len(rows),
+        "no_good": no_good,
+        "gpu_unknown": report.gpu_unknown,
         "small_warning": small_warning,
         "list_updated": list_updated,
         "list_old": list_old,

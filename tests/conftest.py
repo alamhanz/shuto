@@ -40,6 +40,23 @@ def _no_real_ollama_conflict(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _plenty_of_disk(monkeypatch):
+    """Tests see 500 GB free unless they say otherwise, whatever the CI runner has left."""
+    from collections import namedtuple
+
+    from shuto.ai import catalog, hardware
+
+    real = hardware.free_gb
+    usage = namedtuple("usage", "total used free")(1000 * 1024**3, 500 * 1024**3, 500 * 1024**3)
+
+    def free_gb(path, usage_fn=lambda _p: usage, **kw):
+        return real(path, usage_fn, **kw)
+
+    monkeypatch.setattr(hardware, "free_gb", free_gb)
+    monkeypatch.setattr(catalog, "free_gb", free_gb)
+
+
+@pytest.fixture(autouse=True)
 def _no_real_registry(monkeypatch):
     """Tests never read the real Windows registry: the 'saved' user value is the test's env."""
     import os

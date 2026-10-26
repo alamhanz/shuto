@@ -242,6 +242,23 @@ For how the check looks in the web app, see [web-guide.md](web-guide.md).
 
 </details>
 
+## Quality check at full size
+
+Shutterstock reviewers look at your photo at 100% zoom. shuto does the same: during culling it
+measures the original file at full size and looks for a photo that is soft, or that was
+enlarged by a digital zoom. This is **only a warning**. The photo stays where it is, and it gets
+a **May be rejected for quality** chip in the review. Open the photo to see the **Quality**
+block, with a 100% crop of the sharpest area ("What Shutterstock sees"). If the crop looks soft
+to you, think twice before sending it.
+
+- **Photos from before this version** have no full-size numbers yet. In **Settings > Quality
+  check**, press **Measure earlier photos**. It changes nothing else.
+- **Record what Shutterstock decides.** On the photo page, or on the batch Submit page, choose
+  Accepted, **Data licensing only** or Rejected. For a rejection you can tick several reasons,
+  including the quality ones. This is how shuto learns: Settings > **Quality check** shows a
+  table of what shuto warned against what Shutterstock decided. The more results you record,
+  the better the limits can be tuned.
+
 ## Theme and your own rules
 
 After the quality check, every photo goes through three filter layers. All three are answered
@@ -404,7 +421,7 @@ To go back: close shuto, install the older version, then replace `shuto.db` with
 
 ## Status and roadmap
 
-shuto is an early version (0.6.5). The pipeline, command line and local web app work end to end,
+shuto is an early version (0.7.0). The pipeline, command line and local web app work end to end,
 and the tests run on Linux, macOS and Windows.
 
 Known limits:

@@ -2,6 +2,23 @@
 
 Release notes are also published on the GitHub Releases page. Newest first.
 
+## 0.7.0
+
+### Added
+- shuto now looks at your photos at full size (100% zoom), the way a Shutterstock reviewer
+  does, and warns about photos that may be rejected for quality: soft at full size or enlarged
+  by a digital zoom. This is only a warning. Nothing is set aside because of it.
+- Photos with such a warning get a **May be rejected for quality** chip in the review. The photo
+  page has a new **Quality** block with a 100% crop ("What Shutterstock sees").
+- **Measure earlier photos** in Settings, under **Quality check**: runs the full-size check on
+  photos you imported before this version. Nothing else about them changes.
+- You can now record the Shutterstock result with several reasons, including quality reasons,
+  and mark a photo as **Data licensing only** (accepted for data licensing, not for sale). This
+  works on the photo page and in the batch Submit page. `shuto reject` accepts `--reason` more
+  than once.
+- A table in Settings > **Quality check** compares what shuto warned with what Shutterstock
+  decided. Please record your results: they are used to tune the quality limits.
+
 ## 0.6.5
 
 ### Added

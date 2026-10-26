@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+from pathlib import Path
 
 from PIL import Image
 
@@ -58,9 +59,86 @@ def test_measure_skips_current_rows_and_missing_files(web, batch, cfg):  # noqa:
 
     os.remove(first.src_path)
     seen = []
+    assert first.id not in [p.id for p in quality.missing(store, batch)]  # cannot be measured
     done = quality.measure_missing(cfg, store, batch, progress=lambda n, t, m="": seen.append(t))
-    assert done == 0 and seen == [1]
+    assert done == 0 and seen == []
     assert "quality" not in store.get_photo(first.id).cull
+
+
+def test_measure_cancel_stops_before_the_next_photo(web, batch, cfg):  # noqa: F811
+    web.run_job(f"/batch/{batch}/cull")
+    store = web.state.store
+    _without_quality(web, batch)
+    total = len(quality.missing(store, batch))
+    assert total > 1
+    calls = []
+
+    def cancel():
+        calls.append(1)
+        return len(calls) > 1  # the first photo goes through, then Cancel
+
+    assert quality.measure_missing(cfg, store, batch, cancel=cancel) == 1
+    assert len(quality.missing(store, batch)) == total - 1
+
+
+def test_measure_unreadable_photo_is_logged_and_not_retried(web, batch, cfg, caplog):  # noqa: F811
+    web.run_job(f"/batch/{batch}/cull")
+    store = web.state.store
+    _without_quality(web, batch)
+    bad = store.list_photos(batch)[0]
+    Path(bad.src_path).write_bytes(b"not a picture")
+    with caplog.at_level("WARNING"):
+        done = quality.measure_missing(cfg, store, batch)
+    assert done == len(store.list_photos(batch)) - 1
+    assert bad.src_path in caplog.text
+    assert not quality.missing(store, batch)
+    assert store.get_photo(bad.id).cull["quality"]["failed"] is True
+    page = web.get(f"/photo/{bad.id}").text
+    assert "could not read this photo at full size" in page
+
+
+def test_measure_keeps_cull_data_written_meanwhile(web, batch, cfg, monkeypatch):  # noqa: F811
+    web.run_job(f"/batch/{batch}/cull")
+    store = web.state.store
+    _without_quality(web, batch)
+    first = store.list_photos(batch)[0]
+    real = quality.cull_mod.evaluate
+
+    def evaluate(path, *a, **kw):
+        store.update_photo(first.id, cull={**store.get_photo(first.id).cull, "marker": 1})
+        return real(path, *a, **kw)
+
+    monkeypatch.setattr(quality.cull_mod, "evaluate", evaluate)
+    quality.measure_missing(cfg, store, batch)
+    cull = store.get_photo(first.id).cull
+    assert cull["marker"] == 1 and cull["quality"]["version"] == 1
+
+
+def test_crop_temp_files_do_not_stay(web, batch, cfg):  # noqa: F811
+    web.run_job(f"/batch/{batch}/cull")
+    first = web.state.store.list_photos(batch)[0]
+    assert web.get(f"/photo/{first.id}/crop").status_code == 200
+    assert not list(cfg.workspace_path("crops").glob("*.tmp"))
+
+
+def test_result_without_reason_is_allowed_on_the_web(web, batch):  # noqa: F811
+    store = web.state.store
+    first = store.list_photos(batch)[0]
+    store.set_status(first.id, Status.SUBMITTED, force=True)
+    assert "leave all boxes empty" in web.get(f"/photo/{first.id}").text
+    r = web.post(f"/photo/{first.id}/result", {"outcome": "reject"}, follow_redirects=False)
+    assert r.status_code in (302, 303)
+    assert store.get_photo(first.id).status == Status.REJECTED
+    assert store.list_rejections(first.id) == []
+
+
+def test_batch_results_ignores_odd_ids(web, batch):  # noqa: F811
+    r = web.post(
+        f"/batch/{batch}/results",
+        {"result_ids": ["²", "x"], "outcome_2": "accept"},
+        follow_redirects=True,
+    )
+    assert r.status_code == 200 and "Choose a result" in r.text
 
 
 def test_measure_unknown_batch_is_404(web):  # noqa: F811

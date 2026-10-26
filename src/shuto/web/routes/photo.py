@@ -30,6 +30,8 @@ router = APIRouter()
 RESULT_STATUSES = (Status.EXPORTED, Status.SUBMITTED, Status.REJECTED)
 # Reasons offered as tick boxes; "quality_mild" is set by the "Data licensing only" button.
 RESULT_REASONS = [(c, REASON_LABELS[c]) for c in REASON_CODES if c != "quality_mild"]
+# Flip to True to make the web forms ask for a reason when a photo is marked Rejected.
+RESULT_NEEDS_REASON = False
 OUTCOME_VALUES = {"accept": "accepted", "data_licensing": "data_licensing", "reject": "rejected"}
 OUTCOME_NOTICES = {
     "accepted": "Accepted.",
@@ -156,6 +158,7 @@ def photo_page(request: Request, photo_id: int, ctx: Ctx, back: str | None = Non
         checked_with_older_rules=_older_rules(ctx, photo),
         can_ready=photo.status != Status.READY and Status.READY in ALLOWED.get(photo.status, ()),
         can_result=photo.status in RESULT_STATUSES,
+        result_needs_reason=RESULT_NEEDS_REASON,
         result_reasons=RESULT_REASONS,
         reason_labels=REASON_LABELS,
         releases_text="\n".join(photo.release_ids),
@@ -253,6 +256,7 @@ def photo_result(photo_id: int, form: PostForm, ctx: Ctx):
             [str(v) for v in form.getlist("reasons")],
             str(form.get("note") or "").strip() or None,
             cfg=ctx.cfg,
+            require_reason=RESULT_NEEDS_REASON,
         )
     except PipelineError as exc:
         return ctx.back(path, error=str(exc))

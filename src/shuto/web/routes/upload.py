@@ -16,7 +16,12 @@ from shuto.deliver.report import report_filename
 from shuto.system import openfolder
 from shuto.web import ux
 from shuto.web.routes.batch_support import ai_facts, batch_page, batch_url, count_by_status
-from shuto.web.routes.photo import OUTCOME_VALUES, RESULT_REASONS, RESULT_STATUSES
+from shuto.web.routes.photo import (
+    OUTCOME_VALUES,
+    RESULT_NEEDS_REASON,
+    RESULT_REASONS,
+    RESULT_STATUSES,
+)
 from shuto.web.state import Ctx, PostForm
 from shuto.workflow import delivering, exporting, ftps_login, importing, recheck, reports, resend
 
@@ -166,6 +171,7 @@ def submit_page(request: Request, batch_id: str, ctx: Ctx):
         new_text=_new_text(photos),
         resend_page="submit",
         result_photos=[p for p in photos if p.status in RESULT_STATUSES[:2]],
+        result_needs_reason=RESULT_NEEDS_REASON,
         result_reasons=RESULT_REASONS,
         waiting=counts.get("exported", 0),
         finished=sum(counts.get(k, 0) for k in ("submitted", "accepted", "rejected")),
@@ -193,13 +199,15 @@ def batch_results(batch_id: str, form: PostForm, ctx: Ctx):
     ctx.get_batch_or_404(batch_id)
     here = batch_url(batch_id, "submit")
     rows: list[tuple[int, str, list[str]]] = []
-    for pid in (int(v) for v in form.getlist("result_ids") if str(v).isdigit()):
+    for pid in (int(v) for v in form.getlist("result_ids") if str(v).isdecimal()):
         outcome = OUTCOME_VALUES.get(str(form.get(f"outcome_{pid}") or ""))
         if outcome is not None:
             rows.append((pid, outcome, [str(v) for v in form.getlist(f"reasons_{pid}")]))
     if not rows:
         return ctx.back(here, error="Choose a result for at least one photo.")
-    done, refused = resend.record_results(ctx.store, rows, batch_id=batch_id, cfg=ctx.cfg)
+    done, refused = resend.record_results(
+        ctx.store, rows, batch_id=batch_id, cfg=ctx.cfg, require_reason=RESULT_NEEDS_REASON
+    )
     error = next(iter(refused.values()), None)
     if not done:
         return ctx.back(here, error=error)

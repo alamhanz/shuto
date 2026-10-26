@@ -300,7 +300,7 @@ class ImportRun:
                 scores = []
                 for i in group:
                     try:
-                        scores.append(cull_mod.evaluate(scan[i].path))
+                        scores.append(cull_mod.evaluate(scan[i].path, quality=False))
                     except Exception:
                         scores.append(cull_mod.CullResult(ok=False))
                 best = cull_mod.pick_best(scores)

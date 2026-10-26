@@ -3,6 +3,9 @@ what Shutterstock decided."""
 
 from __future__ import annotations
 
+import logging
+import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -16,6 +19,8 @@ from shuto.ingest import cull as cull_mod
 from shuto.ingest.imaging import open_image
 from shuto.ingest.quality import QUALITY_VERSION
 from shuto.store import Store
+
+log = logging.getLogger(__name__)
 
 RESULT_STATUSES = (Status.ACCEPTED, Status.REJECTED)
 OUTCOME_TEXT = {
@@ -35,8 +40,14 @@ def _needs_measuring(photo: Photo) -> bool:
 
 
 def missing(store: Store, batch_id: str | None = None) -> list[Photo]:
-    """Photos that `measure_missing` would look at, whatever their status."""
-    return [p for p in store.list_photos(batch_id) if _needs_measuring(p)]
+    """Photos that `measure_missing` would look at, whatever their status.
+
+    Photos whose original file is gone are left out: they cannot be measured, so counting them
+    would keep the "photos have no numbers" hint from ever reaching zero.
+    """
+    return [
+        p for p in store.list_photos(batch_id) if _needs_measuring(p) and Path(p.src_path).is_file()
+    ]
 
 
 def measure_missing(
@@ -65,12 +76,21 @@ def measure_missing(
             continue
         try:
             res = cull_mod.evaluate(photo.src_path, thresholds)
-        except Exception:  # noqa: BLE001  (an unreadable photo is skipped, the rest go on)
+            quality: dict[str, Any] = res.quality
+            warnings = res.warnings
+        except Exception as exc:  # noqa: BLE001  (an unreadable photo is skipped, the rest go on)
+            log.warning("Could not measure %s: %s", photo.src_path, exc)
+            # remembered, so the photo is not tried again and again
+            quality, warnings = {"version": QUALITY_VERSION, "failed": True}, []
+        # the photo may have been checked or edited while the loop ran: merge into fresh data
+        fresh = store.get_photo(photo.id)
+        if fresh is None or not _needs_measuring(fresh):
             continue
         store.update_photo(
-            photo.id, cull={**(photo.cull or {}), "quality": res.quality, "warnings": res.warnings}
+            photo.id, cull={**(fresh.cull or {}), "quality": quality, "warnings": warnings}
         )
-        done += 1
+        if not quality.get("failed"):
+            done += 1
     return done
 
 
@@ -81,9 +101,10 @@ def _shown_problems(quality: dict[str, Any]) -> list[str]:
 def calibration_rows(store: Store) -> list[dict[str, Any]]:
     """One row per photo with a recorded Shutterstock result, next to shuto's own numbers."""
     rows = []
+    reasons = store.rejection_codes_by_photo()
     for photo in store.list_photos(None, RESULT_STATUSES):
         assert photo.id is not None
-        codes = [r.reason_code for r in store.list_rejections(photo.id)]
+        codes = reasons.get(photo.id, [])
         if photo.status == Status.REJECTED:
             outcome = "rejected"
         elif "quality_mild" in codes:
@@ -91,7 +112,7 @@ def calibration_rows(store: Store) -> list[dict[str, Any]]:
         else:
             outcome = "accepted"
         quality = (photo.cull or {}).get("quality") or {}
-        measured = quality.get("version") == QUALITY_VERSION
+        measured = quality.get("version") == QUALITY_VERSION and not quality.get("failed")
         rows.append(
             {
                 "id": photo.id,
@@ -152,9 +173,15 @@ def crop_best_tile(cfg: Config, photo: Photo) -> Path | None:
             box = (left, top, left + side_w, top + side_h)
             crop = im.crop(box).convert("RGB")
         dest.parent.mkdir(parents=True, exist_ok=True)
-        tmp = dest.with_suffix(".tmp")
-        crop.save(tmp, format="JPEG", quality=90)
-        tmp.replace(dest)
+        # a name of its own per request, so two first requests cannot trip over each other
+        fd, name = tempfile.mkstemp(suffix=".tmp", prefix=dest.stem, dir=dest.parent)
+        tmp = Path(name)
+        try:
+            with os.fdopen(fd, "wb") as f:
+                crop.save(f, format="JPEG", quality=90)
+            tmp.replace(dest)
+        finally:
+            tmp.unlink(missing_ok=True)
     except Exception:  # noqa: BLE001  (unreadable photo: no crop)
         return None
     return dest

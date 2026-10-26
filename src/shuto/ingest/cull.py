@@ -47,7 +47,10 @@ class CullResult:
     warnings: list[str] = field(default_factory=list)  # shown quality problems (phase 1: warn only)
 
 
-def evaluate(path_or_bytes: str | Path | bytes, t: CullThresholds | None = None) -> CullResult:
+def evaluate(
+    path_or_bytes: str | Path | bytes, t: CullThresholds | None = None, *, quality: bool = True
+) -> CullResult:
+    """Check one photo. `quality=False` skips the slow full-size quality numbers."""
     t = t or CullThresholds()
     with open_image(path_or_bytes) as im:
         exif = im.getexif()
@@ -55,7 +58,9 @@ def evaluate(path_or_bytes: str | Path | bytes, t: CullThresholds | None = None)
         megapixels = im.width * im.height / 1_000_000
         gray = small_gray(im, 1024)
         sharpness = float(ImageStat.Stat(gray.filter(_LAPLACIAN)).var[0])
-        report = quality_mod.measure(im, sharpness, exif, t.quality_thresholds())
+        report = (
+            quality_mod.measure(im, sharpness, exif, t.quality_thresholds()) if quality else None
+        )
 
     mean_luma = float(ImageStat.Stat(gray).mean[0])
     hist = gray.histogram()
@@ -90,8 +95,8 @@ def evaluate(path_or_bytes: str | Path | bytes, t: CullThresholds | None = None)
         mean_luma=mean_luma,
         clipped_shadows_pct=shadows,
         clipped_highlights_pct=highlights,
-        quality=quality_mod.to_dict(report),
-        warnings=[p.text for p in report.problems if p.shown],
+        quality=quality_mod.to_dict(report) if report else {},
+        warnings=[p.text for p in report.problems if p.shown] if report else [],
     )
 
 

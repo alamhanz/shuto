@@ -7,7 +7,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from shuto.core import paths
+from shuto.core import paths, status_text
 from shuto.core import text as core_text
 from shuto.core.config import Config
 from shuto.core.errors import PipelineError
@@ -135,34 +135,81 @@ def mark_submitted(store: Store, batch_id: str, *, cfg: Config | None = None) ->
     return ids
 
 
+OUTCOMES = ("accepted", "rejected", "data_licensing")
+
+
 def record_result(
     store: Store,
     photo_id: int,
-    accepted: bool,
-    reason_code: str | None = None,
+    outcome: str,
+    reason_codes: Iterable[str] = (),
     note: str | None = None,
     *,
     cfg: Config | None = None,
 ) -> Photo:
     """Record Shutterstock's verdict. Rejection reasons feed later describe prompts.
 
-    Pass `cfg` to refresh the batch report afterwards.
+    `outcome` is "accepted", "rejected" (one rejection row per reason code) or "data_licensing"
+    (accepted for data licensing only: status accepted plus a `quality_mild` row). A photo that
+    is already rejected only gets the new reasons added. Pass `cfg` to refresh the batch report.
     """
+    if outcome not in OUTCOMES:
+        raise PipelineError("The result must be one of: " + ", ".join(OUTCOMES))
+    codes = list(dict.fromkeys(reason_codes))
+    bad = [c for c in codes if c not in REASON_CODES]
+    if outcome == "rejected" and bad:
+        raise PipelineError("Reason must be one of: " + ", ".join(REASON_CODES))
     photo = review.get_photo(store, photo_id)
-    if not accepted:
-        if reason_code not in REASON_CODES:
-            raise PipelineError("Reason must be one of: " + ", ".join(REASON_CODES))
-    if photo.status == Status.EXPORTED:
-        store.update_photo(photo_id, submitted_at=core_text.now_iso())
-        store.set_status(photo_id, Status.SUBMITTED)
-    try:
-        store.set_status(photo_id, Status.ACCEPTED if accepted else Status.REJECTED)
-    except InvalidTransition as exc:
-        raise PipelineError(
-            f"Photo {photo_id} is {photo.status.value}; only submitted photos get a result."
-        ) from exc
-    if not accepted and reason_code:
-        store.add_rejection(photo_id, reason_code, note)
+    if outcome == "data_licensing":
+        codes = ["quality_mild"]
+    elif outcome == "accepted":
+        codes = []
+    if photo.status == Status.REJECTED and outcome == "rejected":
+        pass  # already rejected: only the new reasons are added
+    else:
+        if photo.status == Status.EXPORTED:
+            store.update_photo(photo_id, submitted_at=core_text.now_iso())
+            store.set_status(photo_id, Status.SUBMITTED)
+        target = Status.REJECTED if outcome == "rejected" else Status.ACCEPTED
+        try:
+            store.set_status(photo_id, target)
+        except InvalidTransition as exc:
+            raise PipelineError(
+                f"{photo.orig_name} is {status_text.label(photo.status).lower()}; "
+                "only photos you have uploaded get a result."
+            ) from exc
+    for code in codes:
+        store.add_rejection(photo_id, code, note)
     if cfg is not None:
         reports.refresh_report(cfg, store, photo.batch_id)
     return review.get_photo(store, photo_id)
+
+
+def record_results(
+    store: Store,
+    results: Iterable[tuple[int, str, list[str]]],
+    *,
+    batch_id: str,
+    cfg: Config | None = None,
+) -> tuple[int, dict[int, str]]:
+    """Record several results at once: (photo id, outcome, reasons) each.
+
+    Returns how many were recorded and, per refused photo id, the plain-words reason. Photos of
+    other batches and photos that are not uploaded yet are refused; the rest still go through.
+    """
+    done = 0
+    refused: dict[int, str] = {}
+    for pid, outcome, codes in results:
+        photo = store.get_photo(pid)
+        if photo is None or photo.batch_id != batch_id:
+            refused[pid] = "That photo is not in this batch."
+            continue
+        try:
+            record_result(store, pid, outcome, codes)
+        except PipelineError as exc:
+            refused[pid] = str(exc)
+            continue
+        done += 1
+    if cfg is not None and done:
+        reports.refresh_report(cfg, store, batch_id)
+    return done, refused

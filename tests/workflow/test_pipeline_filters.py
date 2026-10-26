@@ -393,7 +393,7 @@ def test_report_duplicate_of_and_rejections(cfg, store, photos_dir):
     for to in (Status.APPROVED, Status.PREPARED, Status.UPLOADED, Status.EXPORTED):
         store.set_status(photo.id, to)
     resend.mark_submitted(store, batch, cfg=cfg)
-    resend.record_result(store, photo.id, False, "focus", "soft", cfg=cfg)
+    resend.record_result(store, photo.id, "rejected", ["focus"], "soft", cfg=cfg)
     header, records = reports.build_report(cfg, store, batch)
     row = next(r for r in records if r[0] == photo.orig_name)
     assert row[header.index("status")] == "rejected"

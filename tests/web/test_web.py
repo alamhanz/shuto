@@ -318,10 +318,12 @@ def test_result_recording(web, described):
     store.set_status(photo.id, Status.UPLOADED)
     store.set_status(photo.id, Status.EXPORTED)
     assert "Shutterstock result" in web.get(f"/photo/{photo.id}").text
-    r = web.post(f"/photo/{photo.id}/result", {"outcome": "reject", "reason": "focus"})
+    r = web.post(
+        f"/photo/{photo.id}/result", {"outcome": "reject", "reasons": ["focus", "quality"]}
+    )
     assert r.status_code == 303
     assert store.get_photo(photo.id).status == Status.REJECTED
-    assert store.list_rejections(photo.id)[0].reason_code == "focus"
+    assert [x.reason_code for x in store.list_rejections(photo.id)] == ["focus", "quality"]
 
 
 # ------------------------------------------------------------------ settings

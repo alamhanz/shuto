@@ -74,7 +74,7 @@ def test_reupload_moves_back_and_next_upload_sends_only_those(cfg, store, upload
 def test_reupload_without_a_copy_and_refusals(cfg, store, uploaded):  # noqa: F811
     a, b, c = store.list_photos(uploaded, [Status.UPLOADED])
     store.set_status(c.id, Status.SUBMITTED, force=True)
-    resend.record_result(store, c.id, True, cfg=cfg)  # accepted by Shutterstock
+    resend.record_result(store, c.id, "accepted", cfg=cfg)  # accepted by Shutterstock
     os.remove(a.prepared_path)
     s = resend.reupload_photos(cfg, store, [a.id, b.id, c.id, 9999], batch_id=uploaded)
     assert s.moved == {a.id: Status.APPROVED, b.id: Status.PREPARED}

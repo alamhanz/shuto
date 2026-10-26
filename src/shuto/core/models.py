@@ -101,8 +101,33 @@ REASON_CODES: tuple[str, ...] = (
     "similar",
     "limited_value",
     "ip",
+    "quality",
+    "quality_mild",
     "other",
 )
+
+# Shutterstock's wording for each reason, for forms and tables.
+REASON_LABELS: dict[str, str] = {
+    "focus": "Focus (out of focus or soft)",
+    "noise": "Noise or grain",
+    "lighting": "Lighting or exposure",
+    "composition": "Composition",
+    "trademark": "Trademarks or logos",
+    "property_release": "Property release needed",
+    "model_release": "Model release needed",
+    "title": "Title or description",
+    "keywords": "Keywords",
+    "editorial_caption": "Editorial caption",
+    "similar": "Too similar to other content",
+    "limited_value": "Limited commercial value",
+    "ip": "Intellectual property",
+    "quality": "Quality Standards - Photo & Video",
+    "quality_mild": "Accepted for data licensing only (quality)",
+    "other": "Other",
+}
+
+# Reasons about the pixels: a better text prompt cannot fix them.
+QUALITY_CODES = frozenset({"focus", "noise", "lighting", "quality", "quality_mild"})
 
 
 @dataclass

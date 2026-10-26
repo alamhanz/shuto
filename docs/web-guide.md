@@ -1,6 +1,6 @@
 # shuto web guide
 
-This guide matches shuto version 0.6.5. Screens may differ slightly in other versions.
+This guide matches shuto version 0.7.0. Screens may differ slightly in other versions.
 
 shuto is a web page that runs on your own computer. Open it by double-clicking the **shuto**
 icon (or go to <http://127.0.0.1:8765>). The menu at the top has **Home**, **Add photos**,
@@ -119,6 +119,10 @@ Here you decide what goes to Shutterstock. Each photo has a label:
   shuto rewrites the Shutterstock info file, and you upload that file again by hand on
   Shutterstock. shuto never submits for you; Submit stays manual.
   <!-- screenshot: editing one photo (images/web-photo.png) -->
+- A photo that is soft when seen at full size (100% zoom) shows a **May be rejected for quality**
+  chip. It is only a warning: the photo stays in its group. Open it and look at the **Quality**
+  block, which shows a 100% crop of the photo ("What Shutterstock sees"). For photos from
+  before this version, press **Measure the photos of this batch** there.
 - Photos with visible logos or recognizable people can usually only be sold as **Editorial**.
   shuto suggests this and writes the caption in the editorial style.
 
@@ -149,8 +153,10 @@ shuto never submits for you. The **Submit** page lists the steps:
 
 <!-- screenshot: the submit step (images/web-submit.png) -->
 
-Later, open a photo and record whether it was **Accepted** or **Rejected** (and why). shuto
-uses the reasons to do better next time.
+Later, record what Shutterstock decided: **Accepted**, **Data licensing only** or **Rejected**.
+For a rejection, tick every reason you were given, including the quality ones. You can do this
+for one photo on its page, or for the whole batch in the results table on the Submit page.
+shuto uses the results to do better next time, so please record them.
 
 If you deleted photos on Shutterstock and want to upload them again, open **Deleted photos on
 Shutterstock?** on the Upload or Submit page, tick them and confirm. See "If you deleted photos
@@ -164,6 +170,9 @@ on Shutterstock" in the details guide.
   Windows and Mac only), and see details of
   this computer. Access keys for online AI (Anthropic, Gemini) and the AWS profile for Bedrock
   go in the **Access key** field; they are saved securely, and **Forget** removes them. **Run setup again** repeats the first-time setup.
+- **Quality check (in Settings):** **Measure earlier photos** runs the full-size quality check
+  on photos from before this version. Below it, a table compares what shuto warned with what
+  Shutterstock decided, so the quality limits can be tuned.
 - **Updates (in Settings):** shows your version and the newest one. When a newer version is
   ready, press **Update now**; shuto closes, updates and opens again by itself, and this page
   reloads. **Check now** looks right away; shuto also looks by itself when it opens and every few hours; the tick box turns that off. It cannot

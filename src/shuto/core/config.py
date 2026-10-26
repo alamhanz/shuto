@@ -53,6 +53,10 @@ class CullConfig(_Section):
     mean_luma_range: tuple[float, float] = (35.0, 220.0)
     max_clipped_shadows_pct: float = 8.0
     max_clipped_highlights_pct: float = 5.0
+    min_detail: float = 400.0
+    min_detail_ratio: float = 0.25
+    max_dark_noise: float = 6.0
+    max_digital_zoom: float = 1.05
 
 
 class OllamaConfig(_Section):

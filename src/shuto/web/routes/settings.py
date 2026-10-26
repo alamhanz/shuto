@@ -19,6 +19,7 @@ from shuto.web.routes.model_support import (
 from shuto.web.state import MODELS_JOB_KEY, Ctx, WebCtx
 from shuto.workflow import ftps_login, reports
 from shuto.workflow import models as workflow_models
+from shuto.workflow import quality as workflow_quality
 
 router = APIRouter()
 
@@ -111,9 +112,13 @@ def settings_page(request: Request, ctx: Ctx):
         for k in usage:
             usage[k] += b["usage"].get(k, 0) or 0
     active = ctx.runner.active_job(MODELS_JOB_KEY)
+    calibration = workflow_quality.calibration_rows(ctx.store)
     return ctx.render(
         request,
         "settings.html",
+        calibration=calibration,
+        calibration_summary=workflow_quality.calibration_summary(calibration),
+        to_measure=len(workflow_quality.missing(ctx.store)),
         report=report,
         hw=report.hardware,
         ollama=report.ollama,

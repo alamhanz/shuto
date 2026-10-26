@@ -120,6 +120,8 @@ def _card(ctx: WebCtx, p: Photo) -> dict[str, Any]:
         "gps": p.has_gps,
         "gps_sent": p.has_gps and ctx.cfg.prepare.include_gps,
         "default_place": bool((meta.get("place") or {}).get("default")),
+        # a culled photo already shows its own quality reason
+        "quality_warning": p.status != Status.CULLED and bool((p.cull or {}).get("warnings")),
     }
 
 

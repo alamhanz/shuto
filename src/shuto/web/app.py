@@ -33,6 +33,7 @@ from shuto.web.routes import (
     models,
     photo,
     preferences,
+    quality,
     recheck,
     review,
     settings,
@@ -63,6 +64,7 @@ ROUTERS = (
     legacy,
     files,
     photo,
+    quality,
     recheck,
 )
 SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}

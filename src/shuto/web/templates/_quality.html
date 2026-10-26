@@ -1,0 +1,25 @@
+{# The full-size quality check of one photo. Needs: cull (the photo's check result), photo. #}
+{% set q = cull.quality or {} %}
+{% if q %}
+<h4>Close-up check</h4>
+<p class="hint">Shutterstock looks at photos at full size (100%). This is a warning only: shuto does not set the photo aside for it.</p>
+{% set shown = (q.problems or [])|selectattr('shown')|list %}
+<ul>
+  {% for p in shown %}<li class="bad">{{ p.text }}</li>
+  {% else %}<li>Nothing found at full size.</li>{% endfor %}
+</ul>
+{% if q.best_tile %}
+<figure class="crop">
+  <img loading="lazy" src="/photo/{{ photo.id }}/crop" alt="The sharpest spot of {{ photo.orig_name }} at 100%" width="384">
+  <figcaption class="hint">What Shutterstock sees: the sharpest spot of this photo at 100%.</figcaption>
+</figure>
+{% endif %}
+<p class="snip">Numbers: detail {{ q.detail_p90|pct }}{% if q.detail_ratio is not none %} ({{ (q.detail_ratio * 100)|pct }}% of the small preview){% endif %}, noise {{ "%.1f"|format(q.flat_noise) }}.</p>
+{% elif photo.batch_id %}
+<p class="hint">Not checked at full size yet.</p>
+<form hx-post="/quality/measure" hx-target="#job-area" hx-swap="innerHTML">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <input type="hidden" name="batch_id" value="{{ photo.batch_id }}">
+  <button type="submit" class="secondary">Measure the photos of this batch</button>
+</form>
+{% endif %}

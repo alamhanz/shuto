@@ -395,6 +395,18 @@
   },
   {
     "methods": [
+      "GET"
+    ],
+    "path": "/photo/{photo_id}/crop"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/quality/measure"
+  },
+  {
+    "methods": [
       "POST"
     ],
     "path": "/photo/{photo_id}/recheck"

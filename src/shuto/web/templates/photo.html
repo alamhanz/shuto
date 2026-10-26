@@ -35,6 +35,7 @@
       <li>Sharpness {{ cull.sharpness|pct }}, brightness {{ cull.mean_luma|pct }} (out of 100)</li>
       {% for r in cull.reasons or [] %}<li class="bad">{{ r }}</li>{% else %}<li>No quality problems found.</li>{% endfor %}
     </ul>
+    {% include "_quality.html" %}
     {% else %}<p class="hint">Not checked yet.</p>{% endif %}
     {% if detected %}
     <h3>What the AI saw</h3>

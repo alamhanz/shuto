@@ -4,7 +4,7 @@
 {% block content %}
 <h1>Settings</h1>
 <nav aria-label="Settings sections"><p class="chips">
-  <a class="chip" href="#model">AI model</a><a class="chip" href="#storage">AI storage</a><a class="chip" href="#shutterstock">Shutterstock login</a><a class="chip" href="#style">Style</a><a class="chip" href="#privacy">Privacy</a><a class="chip" href="#rules">Your photo rules</a><a class="chip" href="#computer">This computer</a><a class="chip" href="#updates">Updates</a><a class="chip" href="#advanced">Advanced</a>
+  <a class="chip" href="#model">AI model</a><a class="chip" href="#storage">AI storage</a><a class="chip" href="#shutterstock">Shutterstock login</a><a class="chip" href="#style">Style</a><a class="chip" href="#privacy">Privacy</a><a class="chip" href="#rules">Your photo rules</a><a class="chip" href="#quality">Quality check</a><a class="chip" href="#computer">This computer</a><a class="chip" href="#updates">Updates</a><a class="chip" href="#advanced">Advanced</a>
 </p></nav>
 <p><a href="/welcome">Run setup again</a></p>
 
@@ -172,6 +172,41 @@
   </fieldset>
   <p><button type="submit" class="btn primary">Save rules</button></p>
 </form>
+</section>
+
+<section id="quality" aria-labelledby="h-quality">
+<h2 id="h-quality">Quality check</h2>
+<p>Shutterstock looks at every photo at full size. shuto measures that too and warns you, but it never sets a photo aside for it. Once you record what Shutterstock decided (on the photo page or the Submit page), this table shows whether shuto's warnings matched.</p>
+<form hx-post="/quality/measure" hx-target="#job-area" hx-swap="innerHTML" class="row">
+  <input type="hidden" name="csrf_token" value="{{ csrf }}">
+  <button type="submit" class="secondary">Measure earlier photos</button>
+  <span class="hint">{% if to_measure %}{{ to_measure }} photo{{ '' if to_measure == 1 else 's' }} checked before this feature {{ 'has' if to_measure == 1 else 'have' }} no full-size numbers yet. Your original files are not changed.{% else %}Every checked photo has its full-size numbers.{% endif %}</span>
+</form>
+{% if calibration %}
+<table class="calibration">
+  <caption class="sr-only">Shutterstock results next to shuto's quality numbers</caption>
+  <thead><tr><th scope="col">Photo</th><th scope="col">Detail</th><th scope="col">Compared with preview</th><th scope="col">Noise</th><th scope="col">shuto said</th><th scope="col">Shutterstock said</th></tr></thead>
+  <tbody>
+  {% for r in calibration %}
+  <tr>
+    <th scope="row"><a href="/photo/{{ r.id }}">{{ r.name }}</a></th>
+    {% if r.measured %}
+    <td>{{ r.detail|pct }}</td><td>{{ (r.ratio * 100)|pct }}%</td><td>{{ "%.1f"|format(r.noise) }}</td>
+    <td>{% if r.problems %}{{ chip('review', 'May be rejected') }}{% else %}{{ chip('ok', 'No warning') }}{% endif %}</td>
+    {% else %}
+    <td colspan="3" class="hint">not measured yet</td><td>{{ chip('neutral', 'Not measured') }}</td>
+    {% endif %}
+    <td>{{ r.verdict }}</td>
+  </tr>
+  {% endfor %}
+  </tbody>
+</table>
+{% if calibration_summary.measured %}
+<p class="hint">Of {{ calibration_summary.measured }} measured photo{{ '' if calibration_summary.measured == 1 else 's' }}, Shutterstock turned down {{ calibration_summary.quality_rejects }} for quality (or took it for data licensing only). shuto warned about {{ calibration_summary.warned_and_rejected }} of those and missed {{ calibration_summary.missed }}. It also warned about {{ calibration_summary.warned_but_fine }} photo{{ '' if calibration_summary.warned_but_fine == 1 else 's' }} that Shutterstock took without a quality complaint.</p>
+{% endif %}
+{% else %}
+<p class="hint">No results recorded yet. When Shutterstock accepts or rejects a photo, record it on the photo page and it shows up here.</p>
+{% endif %}
 </section>
 
 <section id="computer" aria-labelledby="h-computer">

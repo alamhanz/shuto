@@ -7,10 +7,11 @@ from __future__ import annotations
 
 import math
 import statistics
+from array import array
 from dataclasses import dataclass, field
 from typing import Any
 
-from PIL import Image, ImageChops, ImageFilter, ImageOps, ImageStat
+from PIL import Image, ImageChops, ImageFilter, ImageMath, ImageOps, ImageStat
 
 from shuto.core.exif_tags import EXIF_IFD
 
@@ -85,42 +86,76 @@ def _tiles(width: int, height: int, size: int) -> list[tuple[int, int, int, int]
     ]
 
 
+def _grid_stats(img: Image.Image, size: int) -> tuple[list[float], list[float]]:
+    """Mean and variance of every full `size` tile (row-major, as `_tiles`), in one box-reduce.
+
+    Variance is E[x^2] - E[x]^2 (population, like ImageStat). An image smaller than one tile
+    is a single tile.
+    """
+    if img.width < size or img.height < size:
+        stat = ImageStat.Stat(img)
+        return [stat.mean[0]], [stat.var[0]]
+    img = img.crop((0, 0, img.width // size * size, img.height // size * size))
+    flt = img.convert("F")
+    square = ImageMath.lambda_eval(lambda a: a["v"] * a["v"], v=flt)
+    means = array("f", flt.reduce(size).tobytes())
+    squares = array("f", square.reduce(size).tobytes())
+    return list(means), [max(q - m * m, 0.0) for q, m in zip(squares, means, strict=True)]
+
+
+def _grid_means(img: Image.Image, size: int) -> list[float]:
+    """Mean of every full `size` tile of an 8-bit image (row-major), by plain box-reduce."""
+    if img.width < size or img.height < size:
+        return [ImageStat.Stat(img).mean[0]]
+    img = img.crop((0, 0, img.width // size * size, img.height // size * size))
+    return list(img.reduce(size).tobytes())
+
+
+def _coarse_variances(
+    means: list[float], variances: list[float], cols: int, rows: int, k: int
+) -> list[float]:
+    """Variance of each k x k block of tiles, from the per-tile mean and variance."""
+    out = []
+    for by in range(rows // k):
+        for bx in range(cols // k):
+            idx = [(by * k + j) * cols + bx * k + i for j in range(k) for i in range(k)]
+            mean = sum(means[i] for i in idx) / len(idx)
+            second = sum(variances[i] + means[i] * means[i] for i in idx) / len(idx)
+            out.append(max(second - mean * mean, 0.0))
+    return out
+
+
 def _noise(
-    gray: Image.Image, lap_gray: Image.Image, noise_img: Image.Image
-) -> tuple[float, float | None]:
-    rows = []
-    for box in _tiles(*gray.size, _NOISE_TILE):
-        luma = ImageStat.Stat(gray.crop(box)).mean[0]
-        lap_var = ImageStat.Stat(lap_gray.crop(box)).var[0]
-        sigma = ImageStat.Stat(noise_img.crop(box)).stddev[0] / 6.0
-        rows.append((lap_var, luma, sigma))
-    candidates = [r for r in rows if _FLAT_LUMA[0] <= r[1] <= _FLAT_LUMA[1]]
-    candidates.sort(key=lambda r: r[0])
+    lumas: list[float], lap_vars: list[float], noise_vars: list[float]
+) -> tuple[float, float | None, list[int]]:
+    """Median noise sigma over flat tiles and over dark tiles (None when there are none).
+
+    Also returns the indices of the flat tiles (row-major 64-px grid), reused for chroma noise.
+    """
+    sigmas = [math.sqrt(nv) / 6.0 for nv in noise_vars]
+    candidates = [i for i, luma in enumerate(lumas) if _FLAT_LUMA[0] <= luma <= _FLAT_LUMA[1]]
+    candidates.sort(key=lap_vars.__getitem__)
     flat = candidates[: max(1, math.ceil(len(candidates) * _FLAT_SHARE))] if candidates else []
-    flat_noise = statistics.median(r[2] for r in flat) if flat else 0.0
-    dark = [r[2] for r in rows if _DARK_LUMA[0] <= r[1] <= _DARK_LUMA[1]]
-    return flat_noise, (statistics.median(dark) if dark else None)
+    flat_noise = statistics.median(sigmas[i] for i in flat) if flat else 0.0
+    dark = [sigmas[i] for i, luma in enumerate(lumas) if _DARK_LUMA[0] <= luma <= _DARK_LUMA[1]]
+    return flat_noise, (statistics.median(dark) if dark else None), flat
 
 
-def _chroma_noise(cb: Image.Image) -> float:
-    noise_img = cb.filter(_IMMERKAER)
-    lap = cb.filter(_LAPLACIAN)
-    rows = []
-    for box in _tiles(*cb.size, _NOISE_TILE):
-        rows.append(
-            (ImageStat.Stat(lap.crop(box)).var[0], ImageStat.Stat(noise_img.crop(box)).stddev[0])
-        )
-    rows.sort(key=lambda r: r[0])
-    flat = rows[: max(1, math.ceil(len(rows) * _FLAT_SHARE))]
-    return statistics.median(r[1] for r in flat) / 6.0
+def _chroma_noise(cb_half: Image.Image, flat: list[int]) -> float:
+    """Noise sigma of the half-resolution Cb channel over the luma-flat tiles.
+
+    Half resolution (32-px tiles) matches the same area as the 64-px luma tiles and is where
+    the colour information of 4:2:0 JPEGs lives anyway.
+    """
+    if not flat:
+        return 0.0
+    _, noise_vars = _grid_stats(cb_half.filter(_IMMERKAER), _NOISE_TILE // 2)
+    return statistics.median(math.sqrt(noise_vars[i]) for i in flat) / 6.0
 
 
-def _cast(img: Image.Image) -> tuple[tuple[float, float], float]:
-    """Mean Cb/Cr shift of near-neutral pixels and the share of such pixels."""
-    small = img.convert("RGB")
-    if max(small.size) > _CAST_SIZE:
-        small.thumbnail((_CAST_SIZE, _CAST_SIZE), Image.Resampling.BILINEAR)
-    y, cb, cr = small.convert("YCbCr").split()
+def _cast(ycc: Image.Image) -> tuple[tuple[float, float], float]:
+    """Mean Cb/Cr shift and share of the near-neutral pixels of a YCbCr image (~1024 px)."""
+    y, cb, cr = ycc.split()
     lo, hi = _NEUTRAL_LUMA
     near = [255 if abs(v - 128) <= _NEUTRAL_CHROMA else 0 for v in range(256)]
     mid = [255 if lo <= v <= hi else 0 for v in range(256)]
@@ -130,7 +165,7 @@ def _cast(img: Image.Image) -> tuple[tuple[float, float], float]:
         return (0.0, 0.0), 0.0
     cb_shift = ImageStat.Stat(cb, mask=mask).mean[0] - 128.0
     cr_shift = ImageStat.Stat(cr, mask=mask).mean[0] - 128.0
-    return (cb_shift, cr_shift), count / (small.width * small.height)
+    return (cb_shift, cr_shift), count / (ycc.width * ycc.height)
 
 
 def _digital_zoom(exif: Image.Exif | None) -> float | None:
@@ -160,7 +195,12 @@ def measure(
 
     lap = gray.filter(_LAPLACIAN)
     boxes = _tiles(width, height, _DETAIL_TILE)
-    variances = [ImageStat.Stat(lap.crop(box)).var[0] for box in boxes]
+    lap_means, lap_vars = _grid_stats(lap, _NOISE_TILE)
+    if len(boxes) == 1:
+        variances = [ImageStat.Stat(lap.crop(boxes[0])).var[0]]
+    else:
+        cols, rows = width // _NOISE_TILE, height // _NOISE_TILE
+        variances = _coarse_variances(lap_means, lap_vars, cols, rows, _DETAIL_TILE // _NOISE_TILE)
     best = boxes[max(range(len(variances)), key=variances.__getitem__)]
     best_tile = (
         best[0] / width,
@@ -171,11 +211,18 @@ def measure(
     p50 = _percentile(variances, 0.5)
     p90 = _percentile(variances, 0.9)
     ratio = p90 / small_sharpness if small_sharpness > 0 else 0.0
-
-    flat_noise, dark_noise = _noise(gray, lap, gray.filter(_IMMERKAER))
     del lap
-    chroma_noise = _chroma_noise(img.convert("YCbCr").getchannel("Cb"))
-    cast, neutral_share = _cast(img)
+
+    noise_vars = _grid_stats(gray.filter(_IMMERKAER), _NOISE_TILE)[1]
+    flat_noise, dark_noise, flat_tiles = _noise(
+        _grid_means(gray, _NOISE_TILE), lap_vars, noise_vars
+    )
+    half = img.convert("RGB").reduce(2).convert("YCbCr")
+    chroma_noise = _chroma_noise(half.getchannel("Cb"), flat_tiles)
+    ycc = half
+    if max(ycc.size) > _CAST_SIZE * 1.5:
+        ycc = ycc.reduce(max(2, math.ceil(max(ycc.size) / _CAST_SIZE)))
+    cast, neutral_share = _cast(ycc)
     zoom = _digital_zoom(exif)
     megapixels = width * height / 1_000_000
 

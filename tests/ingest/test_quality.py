@@ -105,7 +105,7 @@ def test_twelve_megapixel_is_fast():
     img = make_image("sharp", (4000, 3000))
     start = time.perf_counter()
     _measure(img)
-    assert time.perf_counter() - start < 2 * 4  # loose bound for slow CI
+    assert time.perf_counter() - start < 1.5  # loose bound for slow CI
 
 
 def test_evaluate_adds_quality_without_changing_ok(tmp_path):
@@ -116,3 +116,14 @@ def test_evaluate_adds_quality_without_changing_ok(tmp_path):
     assert res.ok
     assert res.quality["version"] == quality.QUALITY_VERSION
     assert isinstance(res.warnings, list)
+
+
+def test_grid_stats_match_imagestat():
+    img = make_image("sharp", (700, 530)).convert("L")
+    means, variances = quality._grid_stats(img, 64)
+    boxes = quality._tiles(*img.size, 64)
+    assert len(means) == len(variances) == len(boxes) == (700 // 64) * (530 // 64)
+    for box, m, v in zip(boxes, means, variances, strict=True):
+        stat = ImageStat.Stat(img.crop(box))
+        assert abs(m - stat.mean[0]) < 0.01
+        assert abs(v - stat.var[0]) < 0.01 * max(stat.var[0], 1.0)

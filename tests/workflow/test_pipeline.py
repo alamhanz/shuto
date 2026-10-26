@@ -216,6 +216,44 @@ def test_record_result_several_reasons_and_data_licensing(cfg, store, photos_dir
         resend.record_result(store, a, "maybe")
 
 
+def test_record_result_twice_does_not_duplicate_reasons(cfg, store, photos_dir):
+    a, _ = _exported(cfg, store, photos_dir)
+    resend.record_result(store, a, "rejected", ["focus", "noise"], "soft")
+    resend.record_result(store, a, "rejected", ["noise", "lighting"])
+    resend.record_result(store, a, "rejected", ["focus"])
+    assert [r.reason_code for r in store.list_rejections(a)] == ["focus", "noise", "lighting"]
+    assert store.rejection_stats()["noise"] == 1
+
+
+def test_record_result_other_outcome_on_recorded_photo_says_so(cfg, store, photos_dir):
+    a, b = _exported(cfg, store, photos_dir)
+    resend.record_result(store, a, "rejected", ["focus"])
+    with pytest.raises(errors.PipelineError, match="already recorded as rejected.*Reasons can be"):
+        resend.record_result(store, a, "accepted")
+    with pytest.raises(errors.PipelineError, match="already recorded as rejected"):
+        resend.record_result(store, a, "data_licensing")
+    resend.record_result(store, b, "accepted")
+    for outcome in ("rejected", "data_licensing", "accepted"):
+        with pytest.raises(errors.PipelineError, match="already recorded as accepted") as exc:
+            resend.record_result(store, b, outcome, ["focus"])
+        assert "Reasons can be" not in str(exc.value)
+    assert store.list_rejections(b) == []
+
+
+def test_record_result_rejected_without_reason(cfg, store, photos_dir):
+    a, b = _exported(cfg, store, photos_dir)
+    with pytest.raises(errors.PipelineError, match="at least one reason"):
+        resend.record_result(store, a, "rejected")
+    assert store.get_photo(a).status == Status.EXPORTED
+    resend.record_result(store, a, "rejected", require_reason=False)
+    assert store.get_photo(a).status == Status.REJECTED
+    assert store.list_rejections(a) == []
+    done, refused = resend.record_results(
+        store, [(b, "rejected", [])], batch_id=store.get_photo(b).batch_id
+    )
+    assert (done, len(refused)) == (0, 1)
+
+
 def test_record_result_refuses_unsent_photo(cfg, store, photos_dir):
     batch = _setup(cfg, store, photos_dir)
     pid = store.list_photos(batch)[0].id

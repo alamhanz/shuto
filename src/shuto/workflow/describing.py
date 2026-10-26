@@ -19,7 +19,7 @@ from shuto.core import models, paths
 from shuto.core import progress as core_progress
 from shuto.core import text as core_text
 from shuto.core.config import Config
-from shuto.core.models import LLMCall, Photo, Status
+from shuto.core.models import QUALITY_CODES, LLMCall, Photo, Status
 from shuto.core.progress import Cancel, Progress
 from shuto.ingest import imaging
 from shuto.metadata import rules as metadata_rules
@@ -423,7 +423,9 @@ def describe_batch(
         restrictions=checks.load_restrictions(cfg),
         style=prompts.Style.from_config(cfg.style),
         spec=filters_mod.filter_spec(cfg),
-        feedback=prompts.feedback_lines(store.rejection_stats(), store.recent_rejection_examples()),
+        feedback=prompts.feedback_lines(
+            store.rejection_stats(), store.recent_rejection_examples(exclude_codes=QUALITY_CODES)
+        ),
         seen=_seen_in_batch(store, batch_id, photos),
         side=cfg.llm.image_max_side or llm.default_image_side,
         cancel=cancel,

@@ -141,15 +141,20 @@ def _noise(
     return flat_noise, (statistics.median(dark) if dark else None), flat
 
 
-def _chroma_noise(cb_half: Image.Image, flat: list[int]) -> float:
+def _chroma_noise(cb_half: Image.Image, flat: list[int], cols: int, rows: int) -> float:
     """Noise sigma of the half-resolution Cb channel over the luma-flat tiles.
 
     Half resolution (32-px tiles) matches the same area as the 64-px luma tiles and is where
-    the colour information of 4:2:0 JPEGs lives anyway.
+    the colour information of 4:2:0 JPEGs lives anyway. `cols` x `rows` is the luma tile grid;
+    the colour grid is cut to the same size so odd widths and heights keep the tiles aligned.
     """
     if not flat:
         return 0.0
-    _, noise_vars = _grid_stats(cb_half.filter(_IMMERKAER), _NOISE_TILE // 2)
+    half_tile = _NOISE_TILE // 2
+    filtered = cb_half.filter(_IMMERKAER)
+    if cols and rows:
+        filtered = filtered.crop((0, 0, cols * half_tile, rows * half_tile))
+    _, noise_vars = _grid_stats(filtered, half_tile)
     return statistics.median(math.sqrt(noise_vars[i]) for i in flat) / 6.0
 
 
@@ -218,7 +223,9 @@ def measure(
         _grid_means(gray, _NOISE_TILE), lap_vars, noise_vars
     )
     half = img.convert("RGB").reduce(2).convert("YCbCr")
-    chroma_noise = _chroma_noise(half.getchannel("Cb"), flat_tiles)
+    chroma_noise = _chroma_noise(
+        half.getchannel("Cb"), flat_tiles, width // _NOISE_TILE, height // _NOISE_TILE
+    )
     ycc = half
     if max(ycc.size) > _CAST_SIZE * 1.5:
         ycc = ycc.reduce(max(2, math.ceil(max(ycc.size) / _CAST_SIZE)))

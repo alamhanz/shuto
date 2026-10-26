@@ -367,7 +367,7 @@ class WebCtx:
 
     @staticmethod
     def ids_from(form: FormData) -> list[int]:
-        return [int(v) for v in form.getlist("ids") if str(v).isdigit()]
+        return [int(v) for v in form.getlist("ids") if str(v).isdecimal()]
 
 
 def get_ctx(request: Request) -> WebCtx:

@@ -48,7 +48,7 @@
   <h2 id="results-title">Record Shutterstock results</h2>
   <details>
     <summary>Note what Shutterstock said about these photos</summary>
-    <p class="hint">Once Shutterstock has reviewed your photos, choose the result for each one and tick the reasons it gave. Leave a row blank to skip it. shuto uses this to learn which photos get rejected.</p>
+    <p class="hint">Once Shutterstock has reviewed your photos, choose the result for each one and tick the reasons it gave. Leave a row blank to skip it.{% if not result_needs_reason %} A rejected photo can have no reasons ticked.{% endif %} shuto uses this to learn which photos get rejected.</p>
     <form method="post" action="/batch/{{ batch.id|urlencode }}/results" class="stack">
       <input type="hidden" name="csrf_token" value="{{ csrf }}">
       <table>

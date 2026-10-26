@@ -133,7 +133,7 @@
       <input type="hidden" name="csrf_token" value="{{ csrf }}">
       <input type="hidden" name="back" value="{{ show }}">
       <fieldset>
-        <legend>If it was rejected, the reasons (tick all that Shutterstock gave)</legend>
+        <legend>If it was rejected, the reasons (tick all that Shutterstock gave{% if not result_needs_reason %}; you can leave all boxes empty{% endif %})</legend>
         {% for code, text in result_reasons %}<label class="inline"><input type="checkbox" name="reasons" value="{{ code }}"> {{ text }}</label><br>{% endfor %}
       </fieldset>
       <div class="field"><label for="note">Note</label><input id="note" name="note"></div>

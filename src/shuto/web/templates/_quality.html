@@ -1,6 +1,6 @@
 {# The full-size quality check of one photo. Needs: cull (the photo's check result), photo. #}
 {% set q = cull.quality or {} %}
-{% if q %}
+{% if q and not q.failed %}
 <h4>Close-up check</h4>
 <p class="hint">Shutterstock looks at photos at full size (100%). This is a warning only: shuto does not set the photo aside for it.</p>
 {% set shown = (q.problems or [])|selectattr('shown')|list %}
@@ -15,6 +15,9 @@
 </figure>
 {% endif %}
 <p class="snip">Numbers: detail {{ q.detail_p90|pct }}{% if q.detail_ratio is not none %} ({{ (q.detail_ratio * 100)|pct }}% of the small preview){% endif %}, noise {{ "%.1f"|format(q.flat_noise) }}.</p>
+{% elif q %}
+<h4>Close-up check</h4>
+<p class="hint">shuto could not read this photo at full size, so there are no close-up numbers.</p>
 {% elif photo.batch_id %}
 <p class="hint">Not checked at full size yet.</p>
 <form hx-post="/quality/measure" hx-target="#job-area" hx-swap="innerHTML">

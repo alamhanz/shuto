@@ -146,12 +146,15 @@ def record_result(
     note: str | None = None,
     *,
     cfg: Config | None = None,
+    require_reason: bool = True,
 ) -> Photo:
     """Record Shutterstock's verdict. Rejection reasons feed later describe prompts.
 
     `outcome` is "accepted", "rejected" (one rejection row per reason code) or "data_licensing"
     (accepted for data licensing only: status accepted plus a `quality_mild` row). A photo that
-    is already rejected only gets the new reasons added. Pass `cfg` to refresh the batch report.
+    is already rejected only gets the reasons it does not have yet; any other answer for a photo
+    that already has one is refused. A rejection needs at least one reason when `require_reason`.
+    Pass `cfg` to refresh the batch report.
     """
     if outcome not in OUTCOMES:
         raise PipelineError("The result must be one of: " + ", ".join(OUTCOMES))
@@ -159,14 +162,25 @@ def record_result(
     bad = [c for c in codes if c not in REASON_CODES]
     if outcome == "rejected" and bad:
         raise PipelineError("Reason must be one of: " + ", ".join(REASON_CODES))
+    if outcome == "rejected" and require_reason and not codes:
+        raise PipelineError("Tick at least one reason for the rejection.")
     photo = review.get_photo(store, photo_id)
     if outcome == "data_licensing":
         codes = ["quality_mild"]
     elif outcome == "accepted":
         codes = []
-    if photo.status == Status.REJECTED and outcome == "rejected":
-        pass  # already rejected: only the new reasons are added
-    else:
+    if photo.status in (Status.ACCEPTED, Status.REJECTED) and not (
+        photo.status == Status.REJECTED and outcome == "rejected"
+    ):
+        raise PipelineError(
+            f"{photo.orig_name} is already recorded as {photo.status.value}."
+            + (
+                " Reasons can be added to a rejected photo."
+                if photo.status == Status.REJECTED
+                else ""
+            )
+        )
+    if photo.status != Status.REJECTED:
         if photo.status == Status.EXPORTED:
             store.update_photo(photo_id, submitted_at=core_text.now_iso())
             store.set_status(photo_id, Status.SUBMITTED)
@@ -178,8 +192,10 @@ def record_result(
                 f"{photo.orig_name} is {status_text.label(photo.status).lower()}; "
                 "only photos you have uploaded get a result."
             ) from exc
+    have = {r.reason_code for r in store.list_rejections(photo_id)}
     for code in codes:
-        store.add_rejection(photo_id, code, note)
+        if code not in have:
+            store.add_rejection(photo_id, code, note)
     if cfg is not None:
         reports.refresh_report(cfg, store, photo.batch_id)
     return review.get_photo(store, photo_id)
@@ -191,6 +207,7 @@ def record_results(
     *,
     batch_id: str,
     cfg: Config | None = None,
+    require_reason: bool = True,
 ) -> tuple[int, dict[int, str]]:
     """Record several results at once: (photo id, outcome, reasons) each.
 
@@ -205,7 +222,7 @@ def record_results(
             refused[pid] = "That photo is not in this batch."
             continue
         try:
-            record_result(store, pid, outcome, codes)
+            record_result(store, pid, outcome, codes, require_reason=require_reason)
         except PipelineError as exc:
             refused[pid] = str(exc)
             continue

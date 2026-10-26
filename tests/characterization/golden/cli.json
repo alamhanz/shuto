@@ -2118,7 +2118,7 @@
             "--reason"
           ],
           "dest": "reason",
-          "kind": "_StoreAction",
+          "kind": "_AppendAction",
           "default": null,
           "suppressed_default": false,
           "choices": [
@@ -2135,6 +2135,8 @@
             "similar",
             "limited_value",
             "ip",
+            "quality",
+            "quality_mild",
             "other"
           ],
           "nargs": null,

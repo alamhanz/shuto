@@ -1,5 +1,5 @@
 usage: shuto reject [-h] [--config CONFIG] [-v] --reason
-                    {focus,noise,lighting,composition,trademark,property_release,model_release,title,keywords,editorial_caption,similar,limited_value,ip,other}
+                    {focus,noise,lighting,composition,trademark,property_release,model_release,title,keywords,editorial_caption,similar,limited_value,ip,quality,quality_mild,other}
                     [--note NOTE]
                     file
 
@@ -12,5 +12,6 @@ options:
   -h, --help            show this help message and exit
   --config CONFIG       path to shuto.yaml
   -v, --verbose
-  --reason {focus,noise,lighting,composition,trademark,property_release,model_release,title,keywords,editorial_caption,similar,limited_value,ip,other}
+  --reason {focus,noise,lighting,composition,trademark,property_release,model_release,title,keywords,editorial_caption,similar,limited_value,ip,quality,quality_mild,other}
+                        a reason Shutterstock gave; repeat the option for several
   --note NOTE

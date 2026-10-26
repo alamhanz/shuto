@@ -43,6 +43,38 @@
   <p>{{ icon('check') }} {{ finished }} photo{{ '' if finished == 1 else 's' }} marked as submitted. Open a photo from <a href="/batch/{{ batch.id|urlencode }}/review?show=all">Review</a> to note the result.</p>
   {% endif %}
 </section>
+{% if result_photos %}
+<section class="panel" aria-labelledby="results-title">
+  <h2 id="results-title">Record Shutterstock results</h2>
+  <details>
+    <summary>Note what Shutterstock said about these photos</summary>
+    <p class="hint">Once Shutterstock has reviewed your photos, choose the result for each one and tick the reasons it gave. Leave a row blank to skip it. shuto uses this to learn which photos get rejected.</p>
+    <form method="post" action="/batch/{{ batch.id|urlencode }}/results" class="stack">
+      <input type="hidden" name="csrf_token" value="{{ csrf }}">
+      <table>
+        <thead><tr><th>Photo</th><th>Result</th><th>Reasons (if rejected)</th></tr></thead>
+        <tbody>
+        {% for p in result_photos %}
+        <tr>
+          <td><input type="hidden" name="result_ids" value="{{ p.id }}"><img loading="lazy" src="/thumb/{{ p.id }}" alt="" width="64"> {{ p.orig_name }}</td>
+          <td>
+            <select name="outcome_{{ p.id }}" aria-label="Result for {{ p.orig_name }}">
+              <option value="">-</option>
+              <option value="accept">Accepted</option>
+              <option value="data_licensing">Data licensing only</option>
+              <option value="reject">Rejected</option>
+            </select>
+          </td>
+          <td>{% for code, text in result_reasons %}<label class="inline"><input type="checkbox" name="reasons_{{ p.id }}" value="{{ code }}"> {{ text }}</label><br>{% endfor %}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {{ button('Record results') }}
+    </form>
+  </details>
+</section>
+{% endif %}
 {% include "_resend.html" %}
 {% else %}
 {{ empty('Nothing to submit yet', 'Upload your approved photos first.', '/batch/' ~ (batch.id|urlencode) ~ '/upload', 'Go to Upload') }}

@@ -311,6 +311,12 @@
   },
   {
     "methods": [
+      "POST"
+    ],
+    "path": "/batch/{batch_id}/results"
+  },
+  {
+    "methods": [
       "GET"
     ],
     "path": "/batch/{batch_id}/report.csv"

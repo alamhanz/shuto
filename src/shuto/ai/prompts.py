@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+from shuto.core.models import QUALITY_CODES
 from shuto.metadata import editorial, rules
 from shuto.metadata.categories import SHUTTERSTOCK_CATEGORIES
 
@@ -87,6 +88,8 @@ MAX_FACTS_CHARS = 300
 def feedback_lines(stats: dict[str, int], examples: Iterable[dict] = ()) -> list[str]:
     """Turn recent rejection stats/examples (from the store) into prompt lines."""
     lines: list[str] = []
+    stats = {code: n for code, n in stats.items() if code not in QUALITY_CODES}
+    examples = [ex for ex in examples if ex.get("reason_code") not in QUALITY_CODES]
     if stats:
         top = sorted(stats.items(), key=lambda kv: (-kv[1], kv[0]))[:5]
         lines.append(

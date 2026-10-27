@@ -35,6 +35,7 @@
       <li>Sharpness {{ cull.sharpness|pct }}, brightness {{ cull.mean_luma|pct }} (out of 100)</li>
       {% for r in cull.reasons or [] %}<li class="bad">{{ r }}</li>{% else %}<li>No quality problems found.</li>{% endfor %}
     </ul>
+    {% include "_quality.html" %}
     {% else %}<p class="hint">Not checked yet.</p>{% endif %}
     {% if detected %}
     <h3>What the AI saw</h3>
@@ -131,18 +132,20 @@
     <form method="post" action="/photo/{{ photo.id }}/result" class="stack">
       <input type="hidden" name="csrf_token" value="{{ csrf }}">
       <input type="hidden" name="back" value="{{ show }}">
-      <div class="field">
-        <label for="reason">If it was rejected, the reason</label>
-        <select id="reason" name="reason"><option value="">-</option>{% for r in reason_codes %}<option>{{ r }}</option>{% endfor %}</select>
-      </div>
+      <fieldset>
+        <legend>If it was rejected, the reasons (tick all that Shutterstock gave{% if not result_needs_reason %}; you can leave all boxes empty{% endif %})</legend>
+        {% for code, text in result_reasons %}<label class="inline"><input type="checkbox" name="reasons" value="{{ code }}"> {{ text }}</label><br>{% endfor %}
+      </fieldset>
       <div class="field"><label for="note">Note</label><input id="note" name="note"></div>
       <div class="row">
         <button name="outcome" value="accept">Accepted</button>
+        <button name="outcome" value="data_licensing" class="secondary">Data licensing only</button>
         <button name="outcome" value="reject" class="secondary">Rejected</button>
       </div>
+      <p class="hint">"Data licensing only" means Shutterstock accepted the photo for AI data licensing, not for sale as a normal image because of its quality. It is noted as accepted.</p>
     </form>
     {% endif %}
-    {% if rejections %}<h3>Earlier rejections</h3><ul>{% for r in rejections %}<li>{{ r.at }}: {{ r.reason_code }}{% if r.note %} - {{ r.note }}{% endif %}</li>{% endfor %}</ul>{% endif %}
+    {% if rejections %}<h3>Reasons noted so far</h3><ul>{% for r in rejections %}<li>{{ r.at }}: {{ reason_labels.get(r.reason_code, r.reason_code) }}{% if r.note %} - {{ r.note }}{% endif %}</li>{% endfor %}</ul>{% endif %}
   </section>
 </div>
 

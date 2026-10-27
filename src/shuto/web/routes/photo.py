@@ -10,7 +10,7 @@ from fastapi.responses import HTMLResponse
 from shuto.ai import filters as filters_mod
 from shuto.core.errors import PipelineError
 from shuto.core.jobs import JobContext
-from shuto.core.models import ALLOWED, Photo, Status
+from shuto.core.models import ALLOWED, REASON_CODES, REASON_LABELS, Photo, Status
 from shuto.web import ux
 from shuto.web.routes.batch_support import (
     batch_url,
@@ -26,6 +26,18 @@ from shuto.workflow import describing, resend
 from shuto.workflow import review as workflow_review
 
 router = APIRouter()
+
+RESULT_STATUSES = (Status.EXPORTED, Status.SUBMITTED, Status.REJECTED)
+# Reasons offered as tick boxes; "quality_mild" is set by the "Data licensing only" button.
+RESULT_REASONS = [(c, REASON_LABELS[c]) for c in REASON_CODES if c != "quality_mild"]
+# Flip to True to make the web forms ask for a reason when a photo is marked Rejected.
+RESULT_NEEDS_REASON = False
+OUTCOME_VALUES = {"accept": "accepted", "data_licensing": "data_licensing", "reject": "rejected"}
+OUTCOME_NOTICES = {
+    "accepted": "Accepted.",
+    "data_licensing": "Noted: accepted for data licensing only.",
+    "rejected": "Rejection recorded.",
+}
 
 
 def _check_rows(flt: dict[str, Any] | None) -> list[dict[str, str]]:
@@ -145,7 +157,10 @@ def photo_page(request: Request, photo_id: int, ctx: Ctx, back: str | None = Non
         checks_overridden=bool((photo.filters or {}).get("overridden")),
         checked_with_older_rules=_older_rules(ctx, photo),
         can_ready=photo.status != Status.READY and Status.READY in ALLOWED.get(photo.status, ()),
-        can_result=photo.status in (Status.EXPORTED, Status.SUBMITTED),
+        can_result=photo.status in RESULT_STATUSES,
+        result_needs_reason=RESULT_NEEDS_REASON,
+        result_reasons=RESULT_REASONS,
+        reason_labels=REASON_LABELS,
         releases_text="\n".join(photo.release_ids),
         include_gps=ctx.cfg.prepare.include_gps,
         batch_job=ctx.runner.active_job(photo.batch_id) if photo.batch_id else None,
@@ -230,16 +245,19 @@ def photo_regenerate(request: Request, photo_id: int, form: PostForm, ctx: Ctx):
 def photo_result(photo_id: int, form: PostForm, ctx: Ctx):
     ctx.get_photo_or_404(photo_id)
     path = photo_path(photo_id, filter_of(form.get("back")))
-    accepted = form.get("outcome") == "accept"
+    outcome = OUTCOME_VALUES.get(str(form.get("outcome")))
+    if outcome is None:
+        return ctx.back(path, error="Choose Accepted, Data licensing only or Rejected.")
     try:
         resend.record_result(
             ctx.store,
             photo_id,
-            accepted,
-            reason_code=str(form.get("reason") or "") or None,
-            note=str(form.get("note") or "").strip() or None,
+            outcome,
+            [str(v) for v in form.getlist("reasons")],
+            str(form.get("note") or "").strip() or None,
             cfg=ctx.cfg,
+            require_reason=RESULT_NEEDS_REASON,
         )
     except PipelineError as exc:
         return ctx.back(path, error=str(exc))
-    return ctx.back(path, notice="Accepted." if accepted else "Rejection recorded.")
+    return ctx.back(path, notice=OUTCOME_NOTICES[outcome])

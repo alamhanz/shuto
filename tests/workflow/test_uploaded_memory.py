@@ -259,7 +259,7 @@ def test_rejected_wording_and_exact_rejected_stays_known(cfg, store, tmp_path, u
     photo = store.list_photos(uploaded, [Status.UPLOADED])[0]
     exporting.export_batch(cfg, store, uploaded)
     resend.mark_submitted(store, uploaded)
-    resend.record_result(store, photo.id, False, "focus")
+    resend.record_result(store, photo.id, "rejected", ["focus"])
     again = importing.import_folder(cfg, store, tmp_path / "photos")
     assert again.already_known == 3 and len(again.already_uploaded) == 2  # 2 culled + rejected
     assert all(a.name != photo.orig_name for a in again.already_uploaded)

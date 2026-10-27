@@ -141,13 +141,13 @@ def test_full_flow_with_fake_ftp(cfg, store, photos_dir, monkeypatch):
 
     assert len(resend.mark_submitted(store, batch)) == 3
     first = review.find_photo(store, prep.prepared[0])
-    resend.record_result(store, first.id, False, "focus", "soft")
-    resend.record_result(store, review.find_photo(store, prep.prepared[1]).id, True)
+    resend.record_result(store, first.id, "rejected", ["focus"], "soft")
+    resend.record_result(store, review.find_photo(store, prep.prepared[1]).id, "accepted")
     assert store.rejection_stats() == {"focus": 1}
     counts = reports.batch_report(store, batch)[0]["counts"]
     assert counts["rejected"] == 1 and counts["accepted"] == 1
     with pytest.raises(errors.PipelineError):
-        resend.record_result(store, first.id, False, "bogus")
+        resend.record_result(store, first.id, "rejected", ["bogus"])
 
 
 def test_upload_allowed_by_config(cfg, store, photos_dir, monkeypatch):
@@ -177,10 +177,88 @@ def test_rejection_reasons_reach_next_prompt(cfg, store, photos_dir):
         Status.EXPORTED,
     ):
         store.set_status(pid, status, force=status == Status.DESCRIBED)
-    resend.record_result(store, pid, False, "focus", "soft focus on edges")
+    resend.record_result(store, pid, "rejected", ["keywords"], "too generic")
     fake = FakeProvider("fake")
     describing.describe_batch(cfg, store, batch, llm=fake)
-    assert fake.calls and "focus" in (fake.calls[0].system + fake.calls[0].prompt).lower()
+    assert fake.calls and "keywords" in (fake.calls[0].system + fake.calls[0].prompt).lower()
+
+
+def _exported(cfg, store, photos_dir):
+    batch = _setup(cfg, store, photos_dir)
+    ids = [p.id for p in store.list_photos(batch)[:2]]
+    for pid in ids:
+        for status in (
+            Status.DESCRIBED,
+            Status.APPROVED,
+            Status.PREPARED,
+            Status.UPLOADED,
+            Status.EXPORTED,
+        ):
+            store.set_status(pid, status, force=status == Status.DESCRIBED)
+    return ids
+
+
+def test_record_result_several_reasons_and_data_licensing(cfg, store, photos_dir):
+    a, b = _exported(cfg, store, photos_dir)
+    resend.record_result(store, a, "rejected", ["focus", "quality", "focus"], "soft")
+    assert store.get_photo(a).status == Status.REJECTED
+    assert [r.reason_code for r in store.list_rejections(a)] == ["focus", "quality"]
+    resend.record_result(store, b, "data_licensing", ["focus"])
+    assert store.get_photo(b).status == Status.ACCEPTED
+    assert [r.reason_code for r in store.list_rejections(b)] == ["quality_mild"]
+    # already rejected: only more reasons are added
+    resend.record_result(store, a, "rejected", ["noise"])
+    assert store.get_photo(a).status == Status.REJECTED
+    assert [r.reason_code for r in store.list_rejections(a)] == ["focus", "quality", "noise"]
+    with pytest.raises(errors.PipelineError):
+        resend.record_result(store, a, "accepted")
+    with pytest.raises(errors.PipelineError):
+        resend.record_result(store, a, "maybe")
+
+
+def test_record_result_twice_does_not_duplicate_reasons(cfg, store, photos_dir):
+    a, _ = _exported(cfg, store, photos_dir)
+    resend.record_result(store, a, "rejected", ["focus", "noise"], "soft")
+    resend.record_result(store, a, "rejected", ["noise", "lighting"])
+    resend.record_result(store, a, "rejected", ["focus"])
+    assert [r.reason_code for r in store.list_rejections(a)] == ["focus", "noise", "lighting"]
+    assert store.rejection_stats()["noise"] == 1
+
+
+def test_record_result_other_outcome_on_recorded_photo_says_so(cfg, store, photos_dir):
+    a, b = _exported(cfg, store, photos_dir)
+    resend.record_result(store, a, "rejected", ["focus"])
+    with pytest.raises(errors.PipelineError, match="already recorded as rejected.*Reasons can be"):
+        resend.record_result(store, a, "accepted")
+    with pytest.raises(errors.PipelineError, match="already recorded as rejected"):
+        resend.record_result(store, a, "data_licensing")
+    resend.record_result(store, b, "accepted")
+    for outcome in ("rejected", "data_licensing", "accepted"):
+        with pytest.raises(errors.PipelineError, match="already recorded as accepted") as exc:
+            resend.record_result(store, b, outcome, ["focus"])
+        assert "Reasons can be" not in str(exc.value)
+    assert store.list_rejections(b) == []
+
+
+def test_record_result_rejected_without_reason(cfg, store, photos_dir):
+    a, b = _exported(cfg, store, photos_dir)
+    with pytest.raises(errors.PipelineError, match="at least one reason"):
+        resend.record_result(store, a, "rejected")
+    assert store.get_photo(a).status == Status.EXPORTED
+    resend.record_result(store, a, "rejected", require_reason=False)
+    assert store.get_photo(a).status == Status.REJECTED
+    assert store.list_rejections(a) == []
+    done, refused = resend.record_results(
+        store, [(b, "rejected", [])], batch_id=store.get_photo(b).batch_id
+    )
+    assert (done, len(refused)) == (0, 1)
+
+
+def test_record_result_refuses_unsent_photo(cfg, store, photos_dir):
+    batch = _setup(cfg, store, photos_dir)
+    pid = store.list_photos(batch)[0].id
+    with pytest.raises(errors.PipelineError, match="only photos you have uploaded"):
+        resend.record_result(store, pid, "accepted")
 
 
 def test_edit_reruns_guardrails_and_prepared_goes_back(cfg, store, photos_dir):

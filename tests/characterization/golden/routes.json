@@ -311,6 +311,12 @@
   },
   {
     "methods": [
+      "POST"
+    ],
+    "path": "/batch/{batch_id}/results"
+  },
+  {
+    "methods": [
       "GET"
     ],
     "path": "/batch/{batch_id}/report.csv"
@@ -386,6 +392,18 @@
       "POST"
     ],
     "path": "/photo/{photo_id}/result"
+  },
+  {
+    "methods": [
+      "GET"
+    ],
+    "path": "/photo/{photo_id}/crop"
+  },
+  {
+    "methods": [
+      "POST"
+    ],
+    "path": "/quality/measure"
   },
   {
     "methods": [

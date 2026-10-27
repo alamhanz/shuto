@@ -379,6 +379,17 @@ class Store:
             ).fetchall()
         return [Rejection(**dict(r)) for r in rows]
 
+    def rejection_codes_by_photo(self) -> dict[int, list[str]]:
+        """Every photo's reason codes in one query (oldest first)."""
+        with self._read() as conn:
+            rows = conn.execute(
+                "SELECT photo_id, reason_code FROM rejections ORDER BY id"
+            ).fetchall()
+        out: dict[int, list[str]] = {}
+        for r in rows:
+            out.setdefault(r["photo_id"], []).append(r["reason_code"])
+        return out
+
     def rejection_stats(self, since_days: int = 90) -> dict[str, int]:
         """Count of rejections per reason code in the last `since_days`, most frequent first."""
         cutoff = (datetime.now(UTC) - timedelta(days=since_days)).isoformat(timespec="seconds")
@@ -390,14 +401,23 @@ class Store:
             ).fetchall()
         return {r["reason_code"]: r["n"] for r in rows}
 
-    def recent_rejection_examples(self, limit: int = 3) -> list[dict[str, Any]]:
-        """Latest rejections that carry a note, with the photo's title when known."""
+    def recent_rejection_examples(
+        self, limit: int = 3, exclude_codes: Iterable[str] = ()
+    ) -> list[dict[str, Any]]:
+        """Latest rejections that carry a note, with the photo's title when known.
+
+        Rows with a reason code in `exclude_codes` are left out before the limit is applied.
+        """
+        skip = list(exclude_codes)
+        marks = ",".join("?" * len(skip))
         with self._read() as conn:
             rows = conn.execute(
                 "SELECT r.reason_code, r.note, r.at, p.orig_name, p.metadata_json "
                 "FROM rejections r JOIN photos p ON p.id = r.photo_id "
-                "WHERE r.note IS NOT NULL AND r.note != '' ORDER BY r.id DESC LIMIT ?",
-                (limit,),
+                "WHERE r.note IS NOT NULL AND r.note != ''"
+                + (f" AND r.reason_code NOT IN ({marks})" if skip else "")
+                + " ORDER BY r.id DESC LIMIT ?",
+                (*skip, limit),
             ).fetchall()
         out = []
         for r in rows:

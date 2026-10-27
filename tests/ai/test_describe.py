@@ -46,12 +46,19 @@ def test_editorial_caption_format_and_unknown():
 
 def test_feedback_lines():
     lines = feedback_lines(
-        {"focus": 3, "keywords": 1},
-        [{"title": "Red gate", "reason_code": "focus", "note": "soft edges"}],
+        {"title": 3, "keywords": 1},
+        [{"title": "Red gate", "reason_code": "title", "note": "too vague"}],
     )
-    assert "focus x3" in lines[0]
-    assert "Red gate" in lines[1] and "soft edges" in lines[1]
+    assert "title x3" in lines[0]
+    assert "Red gate" in lines[1] and "too vague" in lines[1]
     assert feedback_lines({}, []) == []
+
+
+def test_feedback_lines_skip_quality_reasons():
+    stats = {"focus": 2, "noise": 1, "quality": 3, "quality_mild": 1, "lighting": 1}
+    assert feedback_lines(stats, [{"reason_code": "quality", "note": "soft"}]) == []
+    lines = feedback_lines({**stats, "keywords": 1}, [{"reason_code": "focus", "note": "x"}])
+    assert lines == ["Recent Shutterstock rejections by reason: keywords x1."]
 
 
 def test_describe_photo_commercial_and_prompt_sent():

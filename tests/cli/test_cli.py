@@ -71,6 +71,11 @@ def test_global_flags_before_and_after():
     assert p.parse_args([]).command is None
 
 
+def test_reason_can_repeat():
+    a = build_parser().parse_args(["reject", "a.jpg", "--reason", "focus", "--reason", "quality"])
+    assert a.reason == ["focus", "quality"]
+
+
 def test_bad_reason_code_rejected():
     with pytest.raises(SystemExit):
         build_parser().parse_args(["reject", "a.jpg", "--reason", "nope"])

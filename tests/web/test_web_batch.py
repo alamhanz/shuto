@@ -565,3 +565,66 @@ def test_old_export_files_stay_downloadable(web, described):
     web.state.store.update_photo(photo.id, export_file=str(old_csv))
     r = web.get(f"/batch/{described}/exports/old.csv")
     assert r.status_code == 200 and r.text.startswith("Filename")
+
+
+# ------------------------------------------------------------------ record Shutterstock results
+
+
+def _sent(web, batch, n=2):
+    store = web.state.store
+    photos = _photos(web, batch, Status.DESCRIBED)[:n]
+    for p in photos:
+        for to in (Status.APPROVED, Status.PREPARED, Status.UPLOADED, Status.EXPORTED):
+            store.set_status(p.id, to)
+    return photos
+
+
+def test_batch_results_form_records_two_photos(web, described):
+    a, b = _sent(web, described)
+    page = web.get(f"/batch/{described}/submit").text
+    assert "Record Shutterstock results" in page and f"outcome_{a.id}" in page
+    r = web.post(
+        f"/batch/{described}/results",
+        {
+            "result_ids": [str(a.id), str(b.id)],
+            f"outcome_{a.id}": "reject",
+            f"reasons_{a.id}": ["focus", "quality"],
+            f"outcome_{b.id}": "data_licensing",
+        },
+    )
+    assert r.status_code == 303
+    store = web.state.store
+    assert store.get_photo(a.id).status == Status.REJECTED
+    assert [x.reason_code for x in store.list_rejections(a.id)] == ["focus", "quality"]
+    assert store.get_photo(b.id).status == Status.ACCEPTED
+    assert [x.reason_code for x in store.list_rejections(b.id)] == ["quality_mild"]
+
+
+def test_batch_results_form_refuses_unsent_photos_in_plain_words(web, described):
+    photo = _photos(web, described, Status.DESCRIBED)[0]
+    r = web.post(
+        f"/batch/{described}/results",
+        {"result_ids": [str(photo.id)], f"outcome_{photo.id}": "accept"},
+    )
+    assert r.status_code == 303
+    assert web.state.store.get_photo(photo.id).status == Status.DESCRIBED
+    page = web.get(r.headers["location"]).text
+    assert "only photos you have uploaded get a result" in page
+
+
+def test_batch_results_form_needs_a_choice(web, described):
+    a = _sent(web, described, 1)[0]
+    r = web.post(f"/batch/{described}/results", {"result_ids": [str(a.id)], f"outcome_{a.id}": ""})
+    assert r.status_code == 303
+    assert web.state.store.get_photo(a.id).status == Status.EXPORTED
+
+
+def test_photo_result_data_licensing_and_more_reasons(web, described):
+    a = _sent(web, described, 1)[0]
+    store = web.state.store
+    page = web.get(f"/photo/{a.id}").text
+    assert "Data licensing only" in page and "Quality Standards - Photo &amp; Video" in page
+    web.post(f"/photo/{a.id}/result", {"outcome": "reject", "reasons": ["focus"]})
+    web.post(f"/photo/{a.id}/result", {"outcome": "reject", "reasons": ["noise"]})
+    assert store.get_photo(a.id).status == Status.REJECTED
+    assert [x.reason_code for x in store.list_rejections(a.id)] == ["focus", "noise"]

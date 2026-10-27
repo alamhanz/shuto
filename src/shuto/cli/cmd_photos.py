@@ -297,9 +297,10 @@ def cmd_reject(ctx: Ctx) -> int:
     a = ctx.args
     photo = review.find_photo(ctx.store, a.file)
     assert photo.id is not None
-    resend.record_result(ctx.store, photo.id, False, a.reason, a.note, cfg=ctx.cfg)
+    resend.record_result(ctx.store, photo.id, "rejected", a.reason, a.note, cfg=ctx.cfg)
     out(
-        f"Recorded rejection ({a.reason}) for {photo.orig_name}; later prompts will account for it."
+        f"Recorded rejection ({', '.join(a.reason)}) for {photo.orig_name}; "
+        "later prompts will account for it."
     )
     return 0
 
@@ -307,7 +308,7 @@ def cmd_reject(ctx: Ctx) -> int:
 def cmd_accept(ctx: Ctx) -> int:
     photo = review.find_photo(ctx.store, ctx.args.file)
     assert photo.id is not None
-    resend.record_result(ctx.store, photo.id, True, cfg=ctx.cfg)
+    resend.record_result(ctx.store, photo.id, "accepted", cfg=ctx.cfg)
     out(f"Recorded acceptance for {photo.orig_name}.")
     return 0
 
@@ -399,7 +400,13 @@ def _add_status(sub: argparse._SubParsersAction) -> None:
 def _add_reject(sub: argparse._SubParsersAction) -> None:
     s = add_command(sub, "reject", "record a rejection and its reason")
     s.add_argument("file", help="photo id, original file name or prepared name")
-    s.add_argument("--reason", required=True, choices=REASON_CODES)
+    s.add_argument(
+        "--reason",
+        required=True,
+        action="append",
+        choices=REASON_CODES,
+        help="a reason Shutterstock gave; repeat the option for several",
+    )
     s.add_argument("--note")
 
 

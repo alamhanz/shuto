@@ -16,7 +16,8 @@ them. You stay in charge.
 ## What it does for you
 
 - **You pick the photos.** Choose a folder. Your original files are never changed.
-- **It checks the quality.** Blurry, too dark or too small photos are set aside.
+- **It checks the quality.** Blurry, too dark or too small photos are set aside. Photos that
+  look soft at full size (100% zoom) get a warning, because Shutterstock may reject them.
 - **AI writes titles and keywords.** The AI runs on your own computer, and you can edit everything.
   Neutral wording by default; a **Region focus** option in Settings adds Japan-specific help.
 - **It checks Shutterstock's rules.** It warns you about things like logos or people that can

@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from PIL import ImageFilter, ImageOps, ImageStat
 
+from shuto.ingest import quality as quality_mod
 from shuto.ingest.imaging import open_image, small_gray
 
 _LAPLACIAN = ImageFilter.Kernel((3, 3), [0, 1, 0, 1, -4, 1, 0, 1, 0], scale=1, offset=128)
@@ -21,6 +23,15 @@ class CullThresholds:
     mean_luma_range: tuple[float, float] = (35.0, 220.0)
     max_clipped_shadows_pct: float = 8.0
     max_clipped_highlights_pct: float = 5.0
+    min_detail: float = 400.0
+    min_detail_ratio: float = 0.25
+    max_dark_noise: float = 6.0
+    max_digital_zoom: float = 1.05
+
+    def quality_thresholds(self) -> quality_mod.QualityThresholds:
+        return quality_mod.QualityThresholds(
+            self.min_detail, self.min_detail_ratio, self.max_dark_noise, self.max_digital_zoom
+        )
 
 
 @dataclass(frozen=True)
@@ -32,16 +43,25 @@ class CullResult:
     mean_luma: float = 0.0
     clipped_shadows_pct: float = 0.0
     clipped_highlights_pct: float = 0.0
+    quality: dict[str, Any] = field(default_factory=dict)
+    warnings: list[str] = field(default_factory=list)  # shown quality problems (phase 1: warn only)
 
 
-def evaluate(path_or_bytes: str | Path | bytes, t: CullThresholds | None = None) -> CullResult:
+def evaluate(
+    path_or_bytes: str | Path | bytes, t: CullThresholds | None = None, *, quality: bool = True
+) -> CullResult:
+    """Check one photo. `quality=False` skips the slow full-size quality numbers."""
     t = t or CullThresholds()
     with open_image(path_or_bytes) as im:
+        exif = im.getexif()
         im = ImageOps.exif_transpose(im)
         megapixels = im.width * im.height / 1_000_000
         gray = small_gray(im, 1024)
+        sharpness = float(ImageStat.Stat(gray.filter(_LAPLACIAN)).var[0])
+        report = (
+            quality_mod.measure(im, sharpness, exif, t.quality_thresholds()) if quality else None
+        )
 
-    sharpness = float(ImageStat.Stat(gray.filter(_LAPLACIAN)).var[0])
     mean_luma = float(ImageStat.Stat(gray).mean[0])
     hist = gray.histogram()
     total = max(sum(hist), 1)
@@ -75,6 +95,8 @@ def evaluate(path_or_bytes: str | Path | bytes, t: CullThresholds | None = None)
         mean_luma=mean_luma,
         clipped_shadows_pct=shadows,
         clipped_highlights_pct=highlights,
+        quality=quality_mod.to_dict(report) if report else {},
+        warnings=[p.text for p in report.problems if p.shown] if report else [],
     )
 
 

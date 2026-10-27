@@ -9,6 +9,7 @@
     {% if c.group is not none %}<span class="chip neutral">Similar photos</span>{% endif %}
     {% if c.editorial %}<span class="chip neutral">Editorial</span>{% endif %}
     {% if c.default_place %}<span class="chip review" title="The place in the caption is your default place. Check that it is right for this photo.">Default place</span>{% endif %}
+    {% if c.quality_warning %}<span class="chip review" title="At full size this photo may look soft. Open it to see a close-up.">May be rejected for quality</span>{% endif %}
     {% if c.gps_sent %}<span class="chip review" title="This photo contains the place where it was taken and your settings send it">Place included</span>{% elif c.gps %}<span class="chip neutral" title="The place where this photo was taken is removed from the copy shuto sends">Place removed</span>{% endif %}
     <div class="name"><a href="/photo/{{ c.id }}?back={{ show }}">{{ c.name }}</a></div>
     {% if c.layer %}<span class="chip neutral layer">{{ c.layer }}</span>{% endif %}
